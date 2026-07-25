@@ -1,0 +1,143 @@
+name: Release ShotPut Lite (Mac + Windows)
+
+# Se ruleaza automat cand creezi un "tag" de versiune, de exemplu:
+#   git tag v1.0.0
+#   git push origin v1.0.0
+# Sau manual din tab-ul "Actions" -> "Run workflow" (introduci tag-ul dorit).
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag pentru release (ex: v1.0.0)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Descarca codul din repo
+        uses: actions/checkout@v4
+
+      - name: Instaleaza Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Instaleaza dependintele
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller reportlab tkinterdnd2 plyer
+
+      - name: Compileaza .exe cu PyInstaller
+        run: |
+          pyinstaller --onefile --windowed --name "ShotPut Lite" `
+            --icon=ShotPutLite.ico `
+            --hidden-import=offload_engine `
+            --hidden-import=pdf_report `
+            --hidden-import=config `
+            --collect-all reportlab `
+            --collect-all tkinterdnd2 `
+            main.py
+
+      - name: Arhiveaza .exe
+        run: Compress-Archive -Path "dist/ShotPut Lite.exe" -DestinationPath "ShotPut-Lite-Windows.zip"
+
+      - name: Salveaza pentru pasul de release
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-build
+          path: ShotPut-Lite-Windows.zip
+
+  build-mac:
+    runs-on: macos-latest
+    steps:
+      - name: Descarca codul din repo
+        uses: actions/checkout@v4
+
+      - name: Instaleaza Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Instaleaza dependintele
+        run: |
+          python -m pip install --upgrade pip
+          pip install py2app reportlab tkinterdnd2 plyer
+
+      - name: Compileaza .app cu py2app
+        run: python setup.py py2app
+
+      - name: Arhiveaza .app (ditto pastreaza corect permisiunile Mac)
+        run: |
+          cd dist
+          ditto -c -k --sequesterRsrc --keepParent "ShotPut Lite.app" "ShotPut-Lite-Mac.zip"
+          mv "ShotPut-Lite-Mac.zip" "$GITHUB_WORKSPACE/ShotPut-Lite-Mac.zip"
+
+      - name: Salveaza pentru pasul de release
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-build
+          path: ShotPut-Lite-Mac.zip
+
+      - name: Creeaza instalatorul .pkg (curata automat carantina la instalare)
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          VERSION="${TAG#v}"
+          mkdir -p pkgroot/Applications
+          cp -R "dist/ShotPut Lite.app" "pkgroot/Applications/ShotPut Lite.app"
+          mkdir -p scripts
+          cat > scripts/postinstall << 'POSTEOF'
+          #!/bin/bash
+          xattr -cr "/Applications/ShotPut Lite.app" || true
+          exit 0
+          POSTEOF
+          chmod +x scripts/postinstall
+          pkgbuild --root pkgroot \
+            --scripts scripts \
+            --identifier personal.shotputlite \
+            --version "$VERSION" \
+            --install-location / \
+            "ShotPut-Lite-Mac-Installer.pkg"
+
+      - name: Salveaza .pkg pentru pasul de release
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-pkg-build
+          path: ShotPut-Lite-Mac-Installer.pkg
+
+  create-release:
+    needs: [build-windows, build-mac]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descarca fisierul Windows compilat
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-build
+          path: release-files
+
+      - name: Descarca fisierul Mac compilat (.zip)
+        uses: actions/download-artifact@v4
+        with:
+          name: mac-build
+          path: release-files
+
+      - name: Descarca instalatorul Mac (.pkg)
+        uses: actions/download-artifact@v4
+        with:
+          name: mac-pkg-build
+          path: release-files
+
+      - name: Creeaza Release-ul pe GitHub, cu fisierele atasate
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          files: release-files/*
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
