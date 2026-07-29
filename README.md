@@ -358,10 +358,3 @@ Windows, fiecare folosește lansatorul potrivit sistemului lui
 (`.command` sau `.bat`). Nu există licențe sau activări — rulează local,
 fără cont, fără internet (cu excepția instalării unice a dependințelor).
 
-## Idei de extindere pe viitor
-
-Dacă vrei mai mult: suport pentru formate specifice de cameră (ARRI, RED,
-etc.), rapoarte agregate pentru o sesiune întreagă cu mai multe carduri,
-un istoric al tuturor sesiunilor anterioare căutabil, sau o variantă
-companion pe telefon pentru a urmări progresul de la distanță — spune-mi
-ce prioritizezi și le adaug.
