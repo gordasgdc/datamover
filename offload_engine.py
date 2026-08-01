@@ -4,7 +4,9 @@ offload_engine.py
 Logica de baza pentru ShotPut Lite: scanare surse, copiere cu verificare
 (mai multe modele de securitate posibile), excludere fisiere/extensii,
 verificare spatiu liber, detectare automata a volumelor/drive-urilor
-montate (macOS si Windows) si suport pentru anulare in timpul copierii.
+montate (macOS si Windows), suport pentru anulare in timpul copierii,
+progres separat copiere/verificare, progres per destinatie (viteza
+curenta) si checkpoint pentru reluare automata la erori.
 
 Fara dependinte externe obligatorii (doar librarie standard Python).
 Notificarile native folosesc optional libraria "plyer" (cross-platform);
@@ -14,12 +16,15 @@ restul aplicatiei.
 
 import os
 import csv
+import time
 import shutil
 import string
 import hashlib
 import platform
 import subprocess
 from datetime import datetime
+
+import checkpoint as ckpt
 
 CHUNK_SIZE = 1024 * 1024  # 1 MB
 
@@ -140,7 +145,6 @@ def list_mounted_volumes():
                         result.append(full)
             except OSError:
                 pass
-
     elif system == "Windows":
         try:
             import ctypes
@@ -155,7 +159,6 @@ def list_mounted_volumes():
                             result.append(drive)
         except Exception:
             pass
-
     else:
         # Linux si alte sisteme: incercam locatiile uzuale de montare
         for base in (f"/media/{os.environ.get('USER', '')}", "/media", "/mnt"):
@@ -198,12 +201,32 @@ class CancelledError(Exception):
 
 
 class DestinationJob:
-    """Gestioneaza copierea + verificarea pentru o singura destinatie."""
+    """Gestioneaza copierea + verificarea pentru o singura destinatie.
+
+    Progres:
+    - progress_counter / bytes_counter (partajate global intre toate
+      destinatiile, ca inainte) tin bara de progres GLOBALA.
+    - copy_counter / verify_counter (idem, partajate global, optionale)
+      permit separarea vizuala "Copiere: X% | Verificare: Y%" in UI.
+    - files_done / bytes_done / current_speed_bps / phase_text sunt
+      atribute LOCALE ale job-ului (nu necesita lock strict - sunt scrise
+      doar de thread-ul acestui job si citite periodic de UI pentru bara
+      de progres PROPRIE a acestei destinatii).
+
+    Checkpoint / reluare:
+    - resume=True: la pornire, citeste offload_checkpoint.json din
+      target_root (daca exista) si sare peste fisierele deja "ok"/"sarit".
+    - checkpoint-ul e rescris pe disc periodic (nu la fiecare fisier, ca
+      sa nu incetineasca offload-uri cu multe mii de fisiere).
+    """
 
     def __init__(self, dest_root, folder_name, files, log_queue,
                  progress_counter, bytes_counter, progress_lock,
                  skip_existing_identical=False, cancel_event=None,
-                 verification_model=DEFAULT_VERIFICATION_MODEL):
+                 verification_model=DEFAULT_VERIFICATION_MODEL,
+                 copy_counter=None, verify_counter=None,
+                 resume=False, source_root=None,
+                 checkpoint_interval_files=10, checkpoint_interval_seconds=5.0):
         self.dest_root = dest_root
         self.folder_name = folder_name
         self.files = files  # list of (full_path, rel_path, size)
@@ -217,6 +240,31 @@ class DestinationJob:
         self.hashlib_name = VERIFICATION_MODELS.get(
             verification_model, VERIFICATION_MODELS[DEFAULT_VERIFICATION_MODEL]
         )["hashlib_name"]
+
+        # progres global separat copiere/verificare (optional)
+        self.copy_counter = copy_counter
+        self.verify_counter = verify_counter
+
+        # checkpoint / reluare
+        self.resume = resume
+        self.source_root = source_root
+        self.checkpoint_interval_files = checkpoint_interval_files
+        self.checkpoint_interval_seconds = checkpoint_interval_seconds
+        self._files_status = {}  # rel_path -> "ok"/"sarit"/"fail"
+        self._files_since_checkpoint = 0
+        self._last_checkpoint_time = 0.0
+
+        # progres LOCAL, per-destinatie (citit de UI pentru bara proprie)
+        self.total_files = len(files)
+        self.total_bytes = sum(size for _f, _r, size in files)
+        self.files_done = 0
+        self.bytes_done = 0
+        self.current_speed_bps = 0.0
+        self.phase_text = "In asteptare..."
+        self._job_start_time = None
+        self._last_speed_sample_time = None
+        self._last_speed_sample_bytes = 0
+
         self.report_rows = []
         self.ok_count = 0
         self.skip_count = 0
@@ -226,6 +274,8 @@ class DestinationJob:
         self.report_pdf_path = None
         self.started_at = None
         self.finished_at = None
+
+    # ---------------- verificare ----------------
 
     def _verify_pair(self, full_src, dest_path, size):
         """Verifica sursa vs destinatie conform modelului de securitate ales.
@@ -237,20 +287,66 @@ class DestinationJob:
             dst_size = os.path.getsize(dest_path) if os.path.isfile(dest_path) else -1
             same = (dst_size == size)
             return same, f"marime={size}", f"marime={dst_size}"
-
         src_hash = hash_of_file(full_src, self.hashlib_name)
         dst_hash = hash_of_file(dest_path, self.hashlib_name)
         return src_hash == dst_hash, src_hash, dst_hash
 
+    # ---------------- checkpoint ----------------
+
+    def _load_resume_state(self, target_root):
+        """Incarca checkpoint-ul existent (daca exista) si returneaza setul
+        de rel_path deja terminate cu succes (ok/sarit), care vor fi omise."""
+        data = ckpt.load_checkpoint(target_root)
+        if not data:
+            return set()
+        self._files_status = dict(data.get("files", {}))
+        already_done = {rel for rel, status in self._files_status.items()
+                         if status in ("ok", "sarit")}
+        if already_done:
+            self.log_queue.put(
+                f"[{os.path.basename(self.dest_root)}] Reluare: "
+                f"{len(already_done)} fisiere deja verificate corect vor fi sarite."
+            )
+        return already_done
+
+    def _maybe_write_checkpoint(self, force=False):
+        self._files_since_checkpoint += 1
+        now = time.time()
+        due_by_count = self._files_since_checkpoint >= self.checkpoint_interval_files
+        due_by_time = (now - self._last_checkpoint_time) >= self.checkpoint_interval_seconds
+        if not (force or due_by_count or due_by_time):
+            return
+        target_root = os.path.join(self.dest_root, self.folder_name)
+        ckpt.save_checkpoint(
+            target_root, self.source_root, self.folder_name,
+            self.verification_model, self._files_status, completed=force,
+        )
+        self._files_since_checkpoint = 0
+        self._last_checkpoint_time = now
+
+    # ---------------- rulare principala ----------------
+
     def run(self):
         self.started_at = datetime.now()
+        self._job_start_time = time.time()
+        self._last_speed_sample_time = self._job_start_time
         target_root = os.path.join(self.dest_root, self.folder_name)
         os.makedirs(target_root, exist_ok=True)
+
+        already_done = self._load_resume_state(target_root) if self.resume else set()
 
         for full_src, rel_path, size in self.files:
             if self.cancel_event is not None and self.cancel_event.is_set():
                 self.cancelled = True
                 break
+
+            if rel_path in already_done:
+                # deja confirmat corect la o rulare anterioara - nu recopiem,
+                # dar il numaram la progres ca sa bara de progres fie corecta
+                self.skip_count += 1
+                self.phase_text = f"Sarit (deja verificat): {rel_path}"
+                self._advance(size, phase="skip")
+                continue
 
             dest_path = os.path.join(target_root, rel_path)
             os.makedirs(os.path.dirname(dest_path), exist_ok=True)
@@ -263,16 +359,27 @@ class DestinationJob:
             try:
                 if (self.skip_existing_identical and os.path.isfile(dest_path)
                         and os.path.getsize(dest_path) == size):
+                    self.phase_text = f"Verificare: {rel_path}"
                     same, src_repr, dst_repr = self._verify_pair(full_src, dest_path, size)
+                    self._bump_verify_counter()
                     if same:
                         status = "SARIT (identic)"
                         self.skip_count += 1
+                        self._files_status[rel_path] = "sarit"
                         self._log_row(rel_path, size, src_repr, dst_repr, status, "")
-                        self._advance(size)
+                        self._advance(size, phase="verify")
+                        self._maybe_write_checkpoint()
                         continue
 
+                # faza 1: copiere
+                self.phase_text = f"Copiere: {rel_path}"
                 shutil.copy2(full_src, dest_path)
+                self._bump_copy_counter()
+
+                # faza 2: verificare (separata vizual de copiere)
+                self.phase_text = f"Verificare: {rel_path}"
                 same, src_repr, dst_repr = self._verify_pair(full_src, dest_path, size)
+                self._bump_verify_counter()
                 if not same:
                     status = "NEPOTRIVIRE"
             except Exception as e:
@@ -281,20 +388,28 @@ class DestinationJob:
 
             if status == "OK":
                 self.ok_count += 1
+                self._files_status[rel_path] = "ok"
             elif status.startswith("SARIT"):
                 self.skip_count += 1
+                self._files_status[rel_path] = "sarit"
             else:
                 self.fail_count += 1
+                self._files_status[rel_path] = "fail"
 
             self._log_row(rel_path, size, src_repr, dst_repr, status, error_msg)
-            self._advance(size)
+            self._advance(size, phase="done")
+            self._maybe_write_checkpoint()
 
         self.finished_at = datetime.now()
         self._write_reports(target_root)
+        self._maybe_write_checkpoint(force=not self.cancelled)
 
         if self.cancelled:
-            self.log_queue.put(f"=== ANULAT: {self.dest_root} - oprit de utilizator.")
+            self.phase_text = "Anulat"
+            self.log_queue.put(f"=== ANULAT: {self.dest_root} - oprit de utilizator. "
+                                f"(poti relua mai tarziu doar fisierele ramase)")
         else:
+            self.phase_text = "Complet"
             self.log_queue.put(
                 f"=== Terminat: {self.dest_root} -> {self.ok_count} OK, "
                 f"{self.skip_count} sarite, {self.fail_count} probleme."
@@ -304,6 +419,18 @@ class DestinationJob:
                 f"Destinatie finalizata: {os.path.basename(self.dest_root)} "
                 f"({self.ok_count} OK, {self.fail_count} probleme)"
             )
+
+    # ---------------- helper-e progres ----------------
+
+    def _bump_copy_counter(self):
+        if self.copy_counter is not None:
+            with self.progress_lock:
+                self.copy_counter[0] += 1
+
+    def _bump_verify_counter(self):
+        if self.verify_counter is not None:
+            with self.progress_lock:
+                self.verify_counter[0] += 1
 
     def _log_row(self, rel_path, size, src_repr, dst_repr, status, error_msg):
         self.report_rows.append({
@@ -317,10 +444,22 @@ class DestinationJob:
         line = f"[{os.path.basename(self.dest_root)}] {rel_path} -> {status}"
         self.log_queue.put(line)
 
-    def _advance(self, size):
+    def _advance(self, size, phase="done"):
+        # progres global (partajat intre toate destinatiile)
         with self.progress_lock:
             self.progress_counter[0] += 1
             self.bytes_counter[0] += size
+
+        # progres local (per-destinatie, pentru bara proprie + viteza)
+        self.files_done += 1
+        self.bytes_done += size
+        now = time.time()
+        elapsed_since_sample = now - (self._last_speed_sample_time or now)
+        if elapsed_since_sample >= 0.5:
+            delta_bytes = self.bytes_done - self._last_speed_sample_bytes
+            self.current_speed_bps = delta_bytes / elapsed_since_sample if elapsed_since_sample > 0 else 0.0
+            self._last_speed_sample_time = now
+            self._last_speed_sample_bytes = self.bytes_done
 
     def _write_reports(self, target_root):
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")

@@ -2,8 +2,8 @@
 config.py
 ---------
 Salveaza si incarca automat setarile utilizatorului (proiect, card,
-destinatii, excluderi) intr-un fisier JSON simplu in directorul home,
-astfel incat aplicatia sa retina preferintele intre sesiuni.
+destinatii, excluderi, tema) intr-un fisier JSON simplu in directorul
+home, astfel incat aplicatia sa retina preferintele intre sesiuni.
 """
 
 import os
@@ -18,6 +18,7 @@ DEFAULTS = {
     "exclusions": ".DS_Store, .tmp, Thumbs.db",
     "skip_existing_identical": False,
     "verification_model": "md5",
+    "dark_mode": False,
 }
 
 
