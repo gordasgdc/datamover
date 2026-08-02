@@ -149,6 +149,7 @@ class ShotPutLiteApp(_BASE_CLASS):
         self.bind_all('<Command-q>', lambda e: self._on_close())
 
         self._build_ui()
+        self._build_help_menu()
         self._refresh_volumes()
         for d in self.destinations:
             self.dest_listbox.insert("end", d)
@@ -352,6 +353,24 @@ class ShotPutLiteApp(_BASE_CLASS):
     def _on_toggle_dark_mode(self):
         self._apply_current_theme()
         self._save_settings()
+
+    def _build_help_menu(self):
+        """Inlocuieste meniul nativ 'Help' (care pe Mac apare implicit cu
+        mesajul generic 'Help isn't available...') cu unul functional.
+        Tk recunoaste numele special 'help' pentru un Menu de pe Mac si il
+        leaga automat de intrarea din bara de sus a ecranului - pe Windows,
+        acelasi cod adauga pur si simplu o bara de meniu mica, cu 'Help' ca
+        singurul meniu, ceva util in plus, nu un inlocuitor de nimic."""
+        menubar = tk.Menu(self)
+        self.config(menu=menubar)
+
+        help_menu = tk.Menu(menubar, name="help", tearoff=False)
+        menubar.add_cascade(label="Help", menu=help_menu)
+        help_menu.add_command(label="Ghid ShotPut Lite...", command=self._open_help_guide)
+        help_menu.add_command(label="Despre ShotPut Lite...", command=self._show_about_dialog)
+
+    def _open_help_guide(self):
+        webbrowser.open("https://github.com/gordasgdc/shotput-lite/blob/main/CITESTE-MA.md")
 
     def _show_about_dialog(self):
         palette = theme.DARK if self.dark_mode_var.get() else theme.LIGHT
