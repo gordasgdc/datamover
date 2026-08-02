@@ -19,6 +19,7 @@ DEFAULTS = {
     "skip_existing_identical": False,
     "verification_model": "md5",
     "dark_mode": False,
+    "eject_after": False,
 }
 
 

@@ -55,7 +55,7 @@ except ImportError:
 from offload_engine import (
     list_all_files, list_mounted_volumes, get_free_space_bytes,
     send_notification, DestinationJob, DEFAULT_EXCLUSIONS,
-    VERIFICATION_MODELS, DEFAULT_VERIFICATION_MODEL,
+    VERIFICATION_MODELS, DEFAULT_VERIFICATION_MODEL, log_master,
 )
 import config as cfg
 import theme
@@ -113,6 +113,7 @@ class ShotPutLiteApp(_BASE_CLASS):
             value=self.settings.get("verification_model", DEFAULT_VERIFICATION_MODEL)
         )
         self.dark_mode_var = tk.BooleanVar(value=self.settings.get("dark_mode", False))
+        self.eject_after_var = tk.BooleanVar(value=self.settings.get("eject_after", False))
 
         self.destinations = list(self.settings.get("destinations", []))
 
@@ -133,6 +134,16 @@ class ShotPutLiteApp(_BASE_CLASS):
         self.style = ttk.Style(self)
         self._tk_themed_widgets = []   # widget-uri tk clasice (Text, Listbox) de recolorat
         self._muted_labels = []        # ttk.Label-uri gri deschis (hint-uri)
+
+        # Scurtaturi de tastatura (functioneaza atat pe Mac cat si pe Windows)
+        self.bind_all('<Control-o>', lambda e: self._choose_source())
+        self.bind_all('<Command-o>', lambda e: self._choose_source())
+        self.bind_all('<Control-d>', lambda e: self._add_destination())
+        self.bind_all('<Command-d>', lambda e: self._add_destination())
+        self.bind_all('<Control-Return>', lambda e: self._start_offload())
+        self.bind_all('<Command-Return>', lambda e: self._start_offload())
+        self.bind_all('<Control-q>', lambda e: self._on_close())
+        self.bind_all('<Command-q>', lambda e: self._on_close())
 
         self._build_ui()
         self._refresh_volumes()
@@ -240,6 +251,14 @@ class ShotPutLiteApp(_BASE_CLASS):
         ).pack(side="left")
         from tooltip import add_help_icon_packed
         add_help_icon_packed(skip_row, HELP_TEXTS["skip_existing"])
+
+        if sys.platform == "darwin":
+            eject_row = ttk.Frame(frame_opts)
+            eject_row.grid(row=3, column=0, columnspan=3, padx=8, pady=(0, 6), sticky="w")
+            ttk.Checkbutton(
+                eject_row, text="Ejecteaza cardul sursa dupa finalizare (doar pe Mac)",
+                variable=self.eject_after_var,
+            ).pack(side="left")
 
         # Destinatii
         frame_dest = ttk.LabelFrame(self, text="Destinatii (poti adauga oricate, copiere simultana)")
@@ -504,6 +523,12 @@ class ShotPutLiteApp(_BASE_CLASS):
         total_fail = sum(j.fail_count for j in self.jobs)
         total_skip = sum(j.skip_count for j in self.jobs)
 
+        log_master(
+            f"Sesiune offload {'ANULATA' if any_cancelled else 'finalizata'} -> "
+            f"OK={total_ok}, sarite={total_skip}, probleme={total_fail}, "
+            f"destinatii={len(self.jobs)}"
+        )
+
         if any_cancelled:
             self._append_log(">>> Sesiune anulata de utilizator. Poti relua mai tarziu doar "
                               "fisierele ramase cu butonul 'Reia ultima copiere neterminata...'.")
@@ -528,7 +553,35 @@ class ShotPutLiteApp(_BASE_CLASS):
             else:
                 messagebox.showinfo("ShotPut Lite", "Offload complet, toate fisierele verificate cu succes.")
 
+            self._maybe_eject_source()
+
         self._check_resumable_checkpoints(silent=True)
+
+    def _maybe_eject_source(self):
+        if not self.eject_after_var.get() or sys.platform != "darwin":
+            return
+
+        total_fail = sum(j.fail_count for j in self.jobs)
+        if total_fail > 0:
+            self._append_log(
+                ">>> Cardul NU a fost ejectat automat, deoarece au existat probleme la copiere. "
+                "Verifica jurnalul/rapoartele inainte sa scoti cardul manual."
+            )
+            return
+
+        source_path = self.source_var.get().strip()
+        if not source_path or not os.path.isdir(source_path):
+            return
+        try:
+            volume_name = os.path.basename(source_path.rstrip("/"))
+            result = subprocess.run(["diskutil", "eject", source_path], capture_output=True, text=True)
+            if result.returncode == 0:
+                self._append_log(f">>> Cardul '{volume_name}' a fost ejectat automat.")
+                log_master(f"Card ejectat automat -> {source_path}")
+            else:
+                self._append_log(f">>> Nu am putut ejecta cardul '{volume_name}': {result.stderr.strip()}")
+        except Exception as e:
+            self._append_log(f">>> Nu am putut ejecta cardul: {e}")
 
     # ---------------- Progres per destinatie ----------------
 
@@ -553,6 +606,9 @@ class ShotPutLiteApp(_BASE_CLASS):
             speed_label = ttk.Label(row, text="", width=14, anchor="e")
             speed_label.pack(side="left")
 
+            open_btn = ttk.Button(row, text="📂", width=2, command=lambda d=dest: self._open_destination(d))
+            open_btn.pack(side="left", padx=4)
+
             phase_label = ttk.Label(row, text="In asteptare...", style="Muted.TLabel", anchor="w")
             phase_label.pack(side="left", fill="x", expand=True, padx=(8, 0))
             self._muted_labels.append(phase_label)
@@ -560,6 +616,32 @@ class ShotPutLiteApp(_BASE_CLASS):
             self.dest_progress_rows[dest] = {
                 "bar": bar, "pct": pct_label, "speed": speed_label, "phase": phase_label,
             }
+
+    def _open_destination(self, dest):
+        """Deschide in Finder/Explorer folderul exact creat pentru offload
+        (dest/folder_name), nu doar radacina destinatiei - daca job-ul
+        corespunzator nu mai exista (nu s-a pornit inca niciun offload),
+        deschide macar radacina destinatiei."""
+        target = dest
+        for job in self.jobs:
+            if job.dest_root == dest:
+                candidate = os.path.join(job.dest_root, job.folder_name)
+                if os.path.isdir(candidate):
+                    target = candidate
+                break
+
+        if not os.path.isdir(target):
+            messagebox.showerror("Eroare", f"Folderul {target} nu exista.")
+            return
+        try:
+            if sys.platform == "darwin":
+                subprocess.run(["open", target])
+            elif sys.platform == "win32":
+                subprocess.run(["explorer", target])
+            else:
+                subprocess.run(["xdg-open", target])
+        except Exception as e:
+            messagebox.showerror("Eroare", f"Nu am putut deschide folderul: {e}")
 
     def _update_dest_progress_rows(self):
         for job in self.jobs:
@@ -637,6 +719,7 @@ class ShotPutLiteApp(_BASE_CLASS):
             "skip_existing_identical": self.skip_existing_var.get(),
             "verification_model": self.verification_model_var.get(),
             "dark_mode": self.dark_mode_var.get(),
+            "eject_after": self.eject_after_var.get(),
         })
 
     def _start_offload(self, resume=False):
@@ -691,6 +774,10 @@ class ShotPutLiteApp(_BASE_CLASS):
         )
 
         self._save_settings()
+        log_master(
+            f"Sesiune offload pornita -> sursa={source}, fisiere={len(files)}, "
+            f"destinatii={len(self.destinations)}{' (reluare)' if resume else ''}"
+        )
 
         self.progress_counter = [0]
         self.bytes_counter = [0]
