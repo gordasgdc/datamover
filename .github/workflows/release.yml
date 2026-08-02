@@ -44,6 +44,8 @@ jobs:
             --hidden-import=theme `
             --hidden-import=tooltip `
             --hidden-import=checkpoint `
+            --hidden-import=update_config `
+            --hidden-import=updater `
             --collect-all reportlab `
             --collect-all tkinterdnd2 `
             main.py

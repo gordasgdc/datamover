@@ -29,6 +29,7 @@ import sys
 import subprocess
 import threading
 import queue
+import tempfile
 import webbrowser
 from datetime import datetime
 
@@ -61,6 +62,8 @@ import config as cfg
 import theme
 from tooltip import add_help_icon
 import checkpoint as ckpt
+import update_config
+import updater
 
 
 def format_size(num_bytes):
@@ -170,6 +173,9 @@ class ShotPutLiteApp(_BASE_CLASS):
         ).pack(side="left")
         ttk.Button(
             top_row, text="Despre...", command=self._show_about_dialog
+        ).pack(side="left", padx=(12, 0))
+        ttk.Button(
+            top_row, text="🔍 Verifica actualizari", command=self._check_for_updates
         ).pack(side="left", padx=(12, 0))
         ttk.Button(
             top_row, text="Porneste modul Monitorizare...", command=self._start_monitor_mode
@@ -362,6 +368,10 @@ class ShotPutLiteApp(_BASE_CLASS):
         tk.Label(
             frame, text=APP_NAME, font=("TkDefaultFont", 17, "bold"),
             background=palette["bg"], foreground=palette["fg"],
+        ).pack(pady=(0, 2))
+        tk.Label(
+            frame, text=f"Versiune {update_config.APP_VERSION}",
+            background=palette["bg"], foreground=palette["muted"],
         ).pack(pady=(0, 4))
         tk.Label(
             frame, text="Offload verificat de fisiere media, pentru Mac si Windows.",
@@ -391,6 +401,102 @@ class ShotPutLiteApp(_BASE_CLASS):
         y = self.winfo_rooty() + (self.winfo_height() - win.winfo_height()) // 2
         win.geometry(f"+{max(x, 0)}+{max(y, 0)}")
         win.grab_set()
+
+    # ---------------- Actualizari automate (self-update) ----------------
+
+    def _check_for_updates(self):
+        self._append_log("Se verifica actualizari...")
+        threading.Thread(target=self._check_for_updates_thread, daemon=True).start()
+
+    def _check_for_updates_thread(self):
+        result = updater.check_for_updates(
+            update_config.APP_VERSION, update_config.APP_VERSION_URL,
+            timeout=update_config.UPDATE_CHECK_TIMEOUT,
+        )
+
+        if result.get("error"):
+            self.after(0, lambda: self._append_log(f"Verificare actualizari: {result['error']}"))
+            return
+
+        if not result.get("available"):
+            self.after(0, lambda: self._append_log("Ai deja cea mai recenta versiune."))
+            self.after(0, lambda: messagebox.showinfo(
+                "ShotPut Lite", f"Ai deja ultima versiune ({update_config.APP_VERSION})."
+            ))
+            return
+
+        self.after(0, lambda: self._prompt_update(
+            result["version"], result.get("changes", ""),
+            result.get("download_url", {}), result.get("mandatory", False),
+        ))
+
+    def _prompt_update(self, version, changes, download_url, mandatory):
+        is_frozen = getattr(sys, "frozen", False)
+
+        if not is_frozen:
+            # Rulare din sursa (python3 main.py) - actualizarea automata e
+            # dezactivata din siguranta (vezi updater.py). Doar informam.
+            messagebox.showinfo(
+                "Versiune noua disponibila",
+                f"Este disponibila versiunea {version} (tu rulezi din sursa, versiunea curenta "
+                f"e {update_config.APP_VERSION}).\n\n"
+                f"Ce e nou:\n{changes}\n\n"
+                f"Actualizarea automata functioneaza doar in aplicatia compilata (.app/.exe). "
+                f"Din sursa, actualizezi manual cu 'git pull'."
+            )
+            return
+
+        msg = f"Versiune noua disponibila: {version}\n\nCe este nou:\n{changes}\n\n"
+        if mandatory:
+            msg += "Aceasta actualizare este obligatorie.\n\n"
+        msg += "Doresti sa descarci si sa instalezi acum? Aplicatia se va inchide si reporni automat."
+
+        if not messagebox.askyesno("Actualizare disponibila", msg):
+            return
+
+        threading.Thread(target=self._perform_update_thread, args=(download_url,), daemon=True).start()
+
+    def _perform_update_thread(self, download_url):
+        temp_dir = None
+        try:
+            self.after(0, lambda: self._append_log("Se descarca actualizarea..."))
+            temp_dir = tempfile.mkdtemp(prefix="shotput_update_")
+
+            archive_path, error = updater.download_update(
+                download_url, temp_dir,
+                retry_count=update_config.DOWNLOAD_RETRY_COUNT,
+                timeout=update_config.DOWNLOAD_TIMEOUT,
+            )
+            if error:
+                self.after(0, lambda: messagebox.showerror("Eroare", f"Descarcare esuata: {error}"))
+                return
+            self.after(0, lambda: self._append_log("Descarcare completa."))
+
+            if sys.platform == "win32":
+                extract_dir = updater.extract_archive(archive_path, temp_dir)
+                self.after(0, lambda: self._append_log("Fisiere extrase."))
+                success, error = updater.perform_update_windows(extract_dir, temp_dir)
+            else:
+                # Pe Mac descarcam direct un .pkg (nu se extrage - se instaleaza direct)
+                success, error = updater.perform_update_mac(archive_path, temp_dir)
+
+            if not success:
+                self.after(0, lambda: messagebox.showerror("Eroare", f"Actualizare esuata: {error}"))
+                return
+
+            if sys.platform == "win32":
+                note = "Actualizarea se instaleaza... Aplicatia se va inchide si reporni automat."
+            else:
+                note = ("Actualizarea se instaleaza... macOS iti va cere parola de administrator. "
+                        "Aplicatia se va inchide si reporni automat.")
+            self.after(0, lambda: self._append_log(note))
+            self.after(0, self._save_settings)
+            self.after(1200, self.destroy)
+
+        except Exception as e:
+            self.after(0, lambda: messagebox.showerror("Eroare", f"Eroare la actualizare: {e}"))
+            if temp_dir:
+                updater.cleanup_update(temp_dir)
 
     # ---------------- Volume / sursa ----------------
 

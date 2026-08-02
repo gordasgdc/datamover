@@ -43,6 +43,8 @@ ShotPutLite/
 ├── tooltip.py                               <- iconite "?" cu tooltip-uri explicative
 ├── checkpoint.py                            <- checkpoint pentru reluare automata la erori
 ├── tray_monitor.py                          <- modul Monitorizare (system tray / menu bar)
+├── update_config.py                         <- versiune si configurari pentru self-update
+├── updater.py                                <- logica de self-update (verificare/descarcare/instalare)
 ├── Porneste ShotPut Lite.command            <- lansator pentru Mac (dublu-click)
 ├── Porneste ShotPut Lite (Windows).bat      <- lansator pentru Windows (dublu-click)
 ├── setup.py                                 <- optional, pentru pachetare .app (Mac)
@@ -50,6 +52,7 @@ ShotPutLite/
 ├── ShotPutLite.ico                          <- iconita gata de folosit pentru Windows
 ├── icon_master.png                          <- iconita la rezolutie mare (referinta/arhiva)
 ├── docs/index.html                          <- pagina web de prezentare (GitHub Pages)
+├── docs/update.json                         <- fisierul citit de aplicatie pentru self-update
 ├── LICENSE                                   <- licenta MIT
 ├── .github/workflows/build-windows.yml      <- compileaza .exe automat in cloud, la fiecare push
 ├── .github/workflows/build-mac.yml          <- compileaza .app automat in cloud, la fiecare push
@@ -281,6 +284,63 @@ git push origin :refs/tags/v1.0.0
     Facebook și YouTube.
 
 `Ctrl/Cmd+Q` închide aplicația din orice moment.
+
+## Actualizări automate
+
+ShotPut Lite poate verifica și instala automat versiuni noi, direct din
+aplicație — **doar în versiunea compilată** (`.app`/`.exe`). Dacă rulezi
+din sursă (`python3 main.py`), aplicația verifică versiunea la fel, dar
+nu instalează automat — din siguranță, ca să nu riște să suprascrie
+interpretul Python de pe disc. În acest caz, actualizezi manual cu `git
+pull` (vezi mai sus).
+
+### Cum funcționează
+
+1. Apasă butonul **"🔍 Verifică actualizări"** din bara de sus
+2. Aplicația citește un fișier JSON mic, găzduit static, care anunță cea
+   mai recentă versiune disponibilă
+3. Dacă există o versiune nouă, ești întrebat dacă vrei să actualizezi
+4. **Pe Windows**: se descarcă `.zip`-ul, se extrage, iar un script
+   auxiliar așteaptă ca aplicația să se închidă, apoi înlocuiește
+   `.exe`-ul curent și repornește aplicația automat
+5. **Pe Mac**: se descarcă `.pkg`-ul oficial și se instalează folosind
+   fereastra **nativă** macOS de parolă administrator (aceeași pe care o
+   vezi la orice instalator obișnuit) — nu se deschide Terminal
+6. Aplicația se repornește cu versiunea nouă
+
+### Fișierul de actualizare (`update.json`)
+
+Aplicația verifică:
+```
+https://gordasgdc.github.io/shotput-lite/update.json
+```
+
+Găzduit din folderul `docs/` al acestui repo, prin GitHub Pages (Settings
+→ Pages → Source: branch `main`, folder `/docs`).
+
+**IMPORTANT — la fiecare versiune nouă publicată, trebuie actualizate
+manual DOUĂ locuri**, pe lângă tag-ul de Release:
+
+1. `update_config.py` → `APP_VERSION = "X.Y.Z"` (sursa unică de adevăr —
+   `setup.py` o citește automat de aici, deci **nu** mai trebuie
+   modificată separat)
+2. `docs/update.json` → câmpurile `"version"`, `"changes"`,
+   `"release_date"`
+
+Dacă uiți să actualizezi `docs/update.json`, aplicația va continua să
+raporteze "ai deja ultima versiune" chiar dacă ai publicat un Release nou
+pe GitHub — cele două lucruri sunt independente.
+
+### Depanare
+
+Dacă actualizarea eșuează:
+- Verifică conexiunea la internet
+- Pe Mac, pentru instalarea `.pkg`, ai nevoie de parola de administrator
+  a Mac-ului respectiv (nu de un cont Apple Developer sau altceva)
+- Pe Windows, antivirusul poate bloca temporar scriptul auxiliar de
+  actualizare — permite-i excepție dacă se întâmplă asta
+- Dacă rulezi din sursă (`python3 main.py`), actualizarea automată e
+  dezactivată intenționat — vezi mai sus
 
 ## Pentru echipă
 
