@@ -28,6 +28,15 @@ import checkpoint as ckpt
 
 CHUNK_SIZE = 1024 * 1024  # 1 MB
 
+
+def format_size(num_bytes):
+    for unit in ["B", "KB", "MB", "GB", "TB"]:
+        if num_bytes < 1024.0:
+            return f"{num_bytes:.1f} {unit}"
+        num_bytes /= 1024.0
+    return f"{num_bytes:.1f} PB"
+
+
 DEFAULT_EXCLUSIONS = [
     ".DS_Store", "Thumbs.db", "desktop.ini", ".tmp",
     ".Trashes", ".Spotlight-V100", ".fseventsd", "System Volume Information",
@@ -172,6 +181,22 @@ def list_mounted_volumes():
                     pass
 
     return result
+
+
+def log_master(message, log_file="offload_master.log"):
+    """Scrie un mesaj intr-un jurnal centralizat, in folderul aplicatiei.
+    Util pentru istoric/depanare pe termen lung (cine, cand, ce offload-uri
+    s-au facut) - separat de rapoartele CSV/PDF per destinatie. Scrierea e
+    best-effort: daca esueaza (folder needscriptibil etc.) nu opreste
+    aplicatia."""
+    try:
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        log_path = os.path.join(script_dir, log_file)
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(f"[{timestamp}] {message}\n")
+    except Exception:
+        pass  # Nu lasa aplicatia sa se opreasca daca logarea esueaza
 
 
 def send_notification(title, message):
@@ -335,6 +360,12 @@ class DestinationJob:
 
         already_done = self._load_resume_state(target_root) if self.resume else set()
 
+        log_master(
+            f"Offload pornit -> destinatie={self.dest_root}, folder={self.folder_name}, "
+            f"fisiere={len(self.files)}, model_verificare={self.verification_model}"
+            f"{' (reluare)' if self.resume else ''}"
+        )
+
         for full_src, rel_path, size in self.files:
             if self.cancel_event is not None and self.cancel_event.is_set():
                 self.cancelled = True
@@ -397,7 +428,20 @@ class DestinationJob:
                 self._files_status[rel_path] = "fail"
 
             self._log_row(rel_path, size, src_repr, dst_repr, status, error_msg)
+            if status in ("EROARE", "NEPOTRIVIRE"):
+                log_master(f"EROARE offload -> destinatie={self.dest_root}, fisier={rel_path}, "
+                            f"status={status}, detalii={error_msg}")
             self._advance(size, phase="done")
+
+            # verificare periodica a spatiului liber ramas pe aceasta destinatie
+            if self.files_done % 10 == 0:
+                free_space = get_free_space_bytes(target_root)
+                if free_space is not None and free_space < 1024 * 1024 * 1024:  # < 1GB
+                    self.log_queue.put(
+                        f"[{os.path.basename(self.dest_root)}] ATENTIE: mai putin de 1GB "
+                        f"liber ramas pe aceasta destinatie ({format_size(free_space)})."
+                    )
+
             self._maybe_write_checkpoint()
 
         self.finished_at = datetime.now()
@@ -408,12 +452,16 @@ class DestinationJob:
             self.phase_text = "Anulat"
             self.log_queue.put(f"=== ANULAT: {self.dest_root} - oprit de utilizator. "
                                 f"(poti relua mai tarziu doar fisierele ramase)")
+            log_master(f"Offload ANULAT -> destinatie={self.dest_root}, "
+                        f"OK={self.ok_count}, sarite={self.skip_count}, probleme={self.fail_count}")
         else:
             self.phase_text = "Complet"
             self.log_queue.put(
                 f"=== Terminat: {self.dest_root} -> {self.ok_count} OK, "
                 f"{self.skip_count} sarite, {self.fail_count} probleme."
             )
+            log_master(f"Offload finalizat -> destinatie={self.dest_root}, "
+                        f"OK={self.ok_count}, sarite={self.skip_count}, probleme={self.fail_count}")
             send_notification(
                 "ShotPut Lite",
                 f"Destinatie finalizata: {os.path.basename(self.dest_root)} "
@@ -462,7 +510,7 @@ class DestinationJob:
             self._last_speed_sample_bytes = self.bytes_done
 
     def _write_reports(self, target_root):
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         model_label = VERIFICATION_MODELS.get(
             self.verification_model, VERIFICATION_MODELS[DEFAULT_VERIFICATION_MODEL]
         )["label"]
