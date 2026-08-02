@@ -29,7 +29,16 @@ import sys
 import subprocess
 import threading
 import queue
+import webbrowser
 from datetime import datetime
+
+APP_NAME = "ShotPut Lite"
+AUTHOR_NAME = "Cristi Gordas"
+AUTHOR_LINKS = [
+    ("GitHub", "https://github.com/gordasgdc/shotput-lite"),
+    ("Facebook", "https://web.facebook.com/cristiGDC"),
+    ("YouTube", "https://www.youtube.com/@cristigordas"),
+]
 
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
@@ -148,6 +157,9 @@ class ShotPutLiteApp(_BASE_CLASS):
             top_row, text="Tema intunecata", variable=self.dark_mode_var,
             command=self._on_toggle_dark_mode,
         ).pack(side="left")
+        ttk.Button(
+            top_row, text="Despre...", command=self._show_about_dialog
+        ).pack(side="left", padx=(12, 0))
         ttk.Button(
             top_row, text="Porneste modul Monitorizare...", command=self._start_monitor_mode
         ).pack(side="right")
@@ -315,6 +327,51 @@ class ShotPutLiteApp(_BASE_CLASS):
     def _on_toggle_dark_mode(self):
         self._apply_current_theme()
         self._save_settings()
+
+    def _show_about_dialog(self):
+        palette = theme.DARK if self.dark_mode_var.get() else theme.LIGHT
+
+        win = tk.Toplevel(self)
+        win.title(f"Despre {APP_NAME}")
+        win.resizable(False, False)
+        win.configure(background=palette["bg"])
+        win.transient(self)
+
+        frame = tk.Frame(win, background=palette["bg"], padx=28, pady=22)
+        frame.pack()
+
+        tk.Label(
+            frame, text=APP_NAME, font=("TkDefaultFont", 17, "bold"),
+            background=palette["bg"], foreground=palette["fg"],
+        ).pack(pady=(0, 4))
+        tk.Label(
+            frame, text="Offload verificat de fisiere media, pentru Mac si Windows.",
+            background=palette["bg"], foreground=palette["muted"],
+            wraplength=320, justify="center",
+        ).pack(pady=(0, 16))
+
+        tk.Label(
+            frame, text=f"Creat de {AUTHOR_NAME}", font=("TkDefaultFont", 11, "bold"),
+            background=palette["bg"], foreground=palette["fg"],
+        ).pack(pady=(0, 10))
+
+        for label_text, url in AUTHOR_LINKS:
+            link = tk.Label(
+                frame, text=label_text, font=("TkDefaultFont", 10, "underline"),
+                background=palette["bg"], foreground=palette["select_bg"], cursor="hand2",
+            )
+            link.pack(pady=2)
+            link.bind("<Button-1>", lambda _e, u=url: webbrowser.open(u))
+            link.bind("<Enter>", lambda _e, w=link: w.configure(foreground=palette["fg"]))
+            link.bind("<Leave>", lambda _e, w=link: w.configure(foreground=palette["select_bg"]))
+
+        ttk.Button(frame, text="Inchide", command=win.destroy).pack(pady=(18, 0))
+
+        win.update_idletasks()
+        x = self.winfo_rootx() + (self.winfo_width() - win.winfo_width()) // 2
+        y = self.winfo_rooty() + (self.winfo_height() - win.winfo_height()) // 2
+        win.geometry(f"+{max(x, 0)}+{max(y, 0)}")
+        win.grab_set()
 
     # ---------------- Volume / sursa ----------------
 
