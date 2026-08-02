@@ -23,7 +23,7 @@ jobs:
       - name: Instaleaza dependintele
         run: |
           python -m pip install --upgrade pip
-          pip install pyinstaller reportlab tkinterdnd2 plyer
+          pip install pyinstaller reportlab tkinterdnd2 plyer pystray pillow
 
       - name: Compileaza .exe cu PyInstaller
         run: |
@@ -32,12 +32,34 @@ jobs:
             --hidden-import=offload_engine `
             --hidden-import=pdf_report `
             --hidden-import=config `
+            --hidden-import=theme `
+            --hidden-import=tooltip `
+            --hidden-import=checkpoint `
             --collect-all reportlab `
             --collect-all tkinterdnd2 `
             main.py
 
-      - name: Incarca .exe ca artefact descarcabil
+      - name: Compileaza modulul de Monitorizare (executabil insotitor)
+        run: |
+          pyinstaller --onefile --windowed --name "ShotPut Lite Monitor" `
+            --icon=ShotPutLite.ico `
+            --hidden-import=offload_engine `
+            --hidden-import=config `
+            --collect-all pystray `
+            --collect-all PIL `
+            tray_monitor.py
+
+      - name: Pregateste folderul de distributie (exe + monitor, la un loc)
+        run: |
+          mkdir dist_release
+          copy "dist\ShotPut Lite.exe" dist_release\
+          copy "dist\ShotPut Lite Monitor.exe" dist_release\
+
+      - name: Arhiveaza intr-un singur .zip
+        run: Compress-Archive -Path "dist_release\*" -DestinationPath "dist\ShotPut-Lite-Windows.zip"
+
+      - name: Incarca .zip ca artefact descarcabil
         uses: actions/upload-artifact@v4
         with:
           name: ShotPut-Lite-Windows
-          path: dist/ShotPut Lite.exe
+          path: dist/ShotPut-Lite-Windows.zip
