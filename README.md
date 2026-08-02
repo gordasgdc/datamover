@@ -15,6 +15,8 @@ Funcționează pe **macOS** și pe **Windows**.
 - **Copiere simultană** către oricâte destinații (drive extern, NAS, folder local etc.)
 - **Model de securitate selectabil** — alegi între MD5 (rapid, standard), SHA-1, SHA-256, SHA-512 (maxim de siguranță) sau doar verificare de dimensiune (cel mai rapid, fără checksum) — compromis viteză/siguranță, la fel ca la ShotPut Pro
 - **Verificare** pentru fiecare fișier, conform modelului ales — te asiguri că datele au ajuns intacte
+- **Progres separat "Copiere" / "Verificare"** — vezi exact în ce fază e fiecare destinație, nu doar un procent global
+- **Bare de progres individuale per destinație** — procent și viteză (MB/s) proprii pentru fiecare destinație, pe lângă bara globală
 - **Denumire automată a folderului** de destinație: `Data_Proiect_Card` (ex: `2026-07-21_NuntaAna_CardA`)
 - **Rapoarte CSV + PDF** per destinație, cu status colorat (OK / Nepotrivire / Eroare / Sărit) și sumar
 - **Notificări native** (Notification Center pe macOS, Toast pe Windows) când se termină fiecare destinație și la finalul întregii sesiuni
@@ -23,7 +25,11 @@ Funcționează pe **macOS** și pe **Windows**.
 - **Verificare spațiu liber** înainte de start — te avertizează dacă o destinație nu are loc suficient
 - **Buton de anulare** — poți opri copierea în siguranță în orice moment
 - **"Sări peste fișiere identice"** — la re-rulări, nu recopiază ce e deja verificat corect la destinație
-- **Setările se salvează automat** (proiect, card, destinații, excluderi) — nu mai retastezi de fiecare dată
+- **Reluare automată la erori** — dacă o copiere e întreruptă (anulare, eroare, deconectare), un checkpoint salvat pe disc îți permite să continui exact de unde ai rămas, fără să reiei totul de la capăt
+- **Tema întunecată (dark mode)** — comutabilă din interfață, salvată automat
+- **Tooltip-uri explicative** — iconițe "?" lângă setările mai complexe (model de securitate, excluderi, "sări peste identice")
+- **Modul Monitorizare** — rulează în fundal (system tray pe Windows / menu bar pe Mac), detectează automat un card/drive nou conectat și pornește offload-ul cu ultimele setări salvate, fără intervenție manuală
+- **Setările se salvează automat** (proiect, card, destinații, excluderi, model de verificare, temă) — nu mai retastezi de fiecare dată
 - **Viteză de transfer și progres în timp real** (MB/s, fișiere copiate/total)
 
 ## Structura fișierelor
@@ -34,6 +40,10 @@ ShotPutLite/
 ├── offload_engine.py                       <- logica de copiere/verificare/scanare
 ├── pdf_report.py                            <- generarea rapoartelor PDF
 ├── config.py                                <- salvarea automata a setarilor
+├── theme.py                                 <- tema intunecata/luminoasa
+├── tooltip.py                               <- iconite "?" cu tooltip-uri explicative
+├── checkpoint.py                            <- checkpoint pentru reluare automata la erori
+├── tray_monitor.py                          <- modul Monitorizare (system tray / menu bar)
 ├── Porneste ShotPut Lite.command            <- lansator pentru Mac (dublu-click)
 ├── Porneste ShotPut Lite (Windows).bat      <- lansator pentru Windows (dublu-click)
 ├── setup.py                                 <- optional, pentru pachetare .app (Mac)
@@ -46,37 +56,36 @@ ShotPutLite/
 └── CITESTE-MA.md                            <- acest fisier
 ```
 
-Toate cele 4 fișiere `.py` trebuie să rămână împreună, în același folder,
-indiferent de sistemul de operare. Fișierele de iconiță (`ShotPutLite.icns`,
-`ShotPutLite.ico`, `icon_master.png`) sunt folosite automat de workflow-urile
+Toate fișierele `.py` trebuie să rămână împreună, în același folder,
+indiferent de sistemul de operare. Fișierele de iconiță (`ShotPutLite.icns`, `ShotPutLite.ico`, `icon_master.png`) sunt folosite automat de workflow-urile
 GitHub Actions și de `setup.py` — nu trebuie să faci nimic manual cu ele
 dacă folosești build-ul din cloud.
 
 **Notă despre descărcare:** dacă descarci fișierele individual din chat
 (nu ca o arhivă unică), verifică după copiere că toate fișierele de mai
 sus există local — unele browsere/Finder pot omite fișiere dacă le tragi
-unul câte unul. Cel mai sigur e să le descarci pe rând și să confirmi cu
-`ls -la` în Terminal că regăsești fiecare nume exact ca mai sus.
+unul câte unul. Cel mai sigur e să le descarci pe rând și să confirmi cu `ls -la` în Terminal că regăsești fiecare nume exact ca mai sus.
 
 ---
 
 ## Instalare pe Mac
 
 **Cerințe:**
+
 - macOS (orice versiune recentă)
 - Python 3 (majoritatea Mac-urilor moderne îl au deja; altfel:
-  https://www.python.org/downloads/macos/)
+<https://www.python.org/downloads/macos/>)
 - Dacă la pornire apare eroare legată de "tkinter": `brew install python-tk`
 
 **Pornire:**
+
 1. Copiază tot folderul `ShotPutLite` pe Mac.
 2. Dublu-click pe **"Porneste ShotPut Lite.command"**.
    - Dacă macOS blochează fișierul ("nu poate fi deschis pentru că vine de
      la un dezvoltator neidentificat"): click-dreapta pe fișier → Open →
      confirmă "Open" în fereastra de avertizare. Se face o singură dată.
 3. La prima rulare, aplicația își creează automat un mediu Python izolat
-   (`.venv`, în interiorul folderului) și instalează acolo `reportlab`
-   (rapoarte PDF), `tkinterdnd2` (drag-and-drop) și `plyer` (notificări) —
+   (`.venv`, în interiorul folderului) și instalează acolo `reportlab` (rapoarte PDF), `tkinterdnd2` (drag-and-drop) și `plyer` (notificări) —
    fără să atingă Python-ul de sistem. Asta evită complet eroarea
    `externally-managed-environment`, întâlnită pe Mac-urile cu Python
    instalat prin Homebrew. Durează câteva secunde, e nevoie de internet
@@ -86,6 +95,15 @@ unul câte unul. Cel mai sigur e să le descarci pe rând și să confirmi cu
 Dacă vreo librărie opțională nu se instalează (rar, ex. probleme de
 rețea), aplicația pornește oricum — funcția respectivă (PDF, drag-and-drop
 sau notificări) e pur și simplu dezactivată, restul merge normal.
+
+**Modul Monitorizare** necesită în plus `pystray` și `pillow`:
+```
+pip install pystray pillow
+python3 tray_monitor.py
+```
+Build-urile compilate (`.app`/`.pkg`) includ deja un executabil însoțitor
+("ShotPut Lite Monitor") pentru asta — vezi butonul "Pornește modul
+Monitorizare..." din aplicație.
 
 ### Opțional: transformare într-un `.exe` — compilat automat în cloud (de pe Mac, fără Windows)
 
@@ -105,7 +123,8 @@ poți folosi **GitHub Actions**: un calculator Windows temporar, gratuit,
    bifa "Add a README" (avem deja unul).
 
 3. **Trimite codul pe GitHub** — în Terminal, în folderul `ShotPutLite`:
-   ```bash
+
+   ```
    git init
    git add .
    git commit -m "Prima versiune ShotPut Lite"
@@ -113,6 +132,7 @@ poți folosi **GitHub Actions**: un calculator Windows temporar, gratuit,
    git remote add origin https://github.com/NUMELE_TAU/NUMELE_REPO.git
    git push -u origin main
    ```
+
    (Înlocuiește URL-ul cu cel afișat de GitHub după ce creezi repo-ul —
    îl găsești pe pagina repo-ului, sub "…or push an existing repository".
    La primul push, GitHub îți va cere autentificare — urmează instrucțiunile
@@ -125,29 +145,28 @@ poți folosi **GitHub Actions**: un calculator Windows temporar, gratuit,
 
 5. **Descarcă `.exe`-ul** — click pe rularea terminată → în josul paginii,
    la secțiunea **"Artifacts"**, apeși pe `ShotPut-Lite-Windows` — se
-   descarcă o arhivă `.zip` care conține `ShotPut Lite.exe`.
+   descarcă o arhivă `.zip` care conține `ShotPut Lite.exe` (și, dacă
+   modulul de Monitorizare e activat, `ShotPut Lite Monitor.exe` alături).
 
 6. Trimite acel `.exe` colegilor cu Windows — îl pot rula direct cu
-   dublu-click, fără să mai instaleze Python sau altceva (PyInstaller
-   `--onefile` include tot ce e necesar în interiorul `.exe`-ului).
+   dublu-click, fără să mai instaleze Python sau altceva (PyInstaller `--onefile` include tot ce e necesar în interiorul `.exe`-ului).
 
 **De reținut:** de fiecare dată când modifici codul (`main.py` etc.) și
-faci din nou `git push`, se generează automat o versiune nouă de `.exe`
-— nu trebuie să repeți pașii 1-3, doar `git add . && git commit -m "..." && git push`.
+faci din nou `git push`, se generează automat o versiune nouă de `.exe` — nu trebuie să repeți pașii 1-3, doar `git add . && git commit -m "..." && git push`.
 
-**Același mecanism construiește și `.app`-ul pentru Mac** — fișierul
-`.github/workflows/build-mac.yml` (inclus tot în acest folder) rulează în
+**Același mecanism construiește și `.app`-ul pentru Mac** — fișierul `.github/workflows/build-mac.yml` (inclus tot în acest folder) rulează în
 paralel, automat, la fiecare `git push`. La pasul 4, în tab-ul "Actions",
 vei vedea **două** rulări separate: "Build ShotPut Lite (Windows .exe)" și
 "Build ShotPut Lite (Mac .app)". La pasul 5, artifactul pentru Mac se
-numește `ShotPut-Lite-Mac` și conține un `.zip` cu `ShotPut Lite.app`
-înăuntru. **Important:** acel `.app` descărcat va fi blocat de Gatekeeper
-la prima rulare pe orice Mac — vezi secțiunea "Aprobarea `.app`-ului
-nesemnat" de mai jos pentru pașii exacți de deblocare.
+numește `ShotPut-Lite-Mac` și conține un `.zip` cu `ShotPut Lite.app` (și,
+la fel, `ShotPut Lite Monitor` alături) înăuntru. **Important:** acel `.app`
+descărcat va fi blocat de Gatekeeper la prima rulare pe orice Mac — vezi
+secțiunea "Aprobarea `.app`-ului nesemnat" de mai jos pentru pașii exacți
+de deblocare.
 
 ### Alternativ: `.app` pentru Mac (fără Windows, direct local)
 
-```bash
+```
 cd ShotPutLite
 python3 -m venv .venv-build
 source .venv-build/bin/activate
@@ -161,30 +180,27 @@ muta în `/Applications`.
 
 ### Varianta `.pkg` (instalator, cu curățare automată de carantină)
 
-Pe lângă `.app`/`.zip`, build-ul din cloud produce automat și un fișier
-**`ShotPut Lite.app` ambalat ca instalator `.pkg`** — dublu-click deschide
+Pe lângă `.app`/`.zip`, build-ul din cloud produce automat și un fișier **`ShotPut Lite.app` ambalat ca instalator `.pkg`** — dublu-click deschide
 fereastra clasică de instalare macOS (cu cerere de parolă admin), care
-copiază aplicația în `/Applications` și rulează automat un script ce
-curăță orice steag de carantină de pe ea.
+copiază aplicația (și modulul de Monitorizare) în `/Applications` și
+rulează automat un script ce curăță orice steag de carantină de pe ele.
 
-**De reținut, ca să nu creeze așteptări greșite:** `.pkg`-ul **nu elimină**
-avertismentul inițial de la Gatekeeper — la prima deschidere a
+**De reținut, ca să nu creeze așteptări greșite:** `.pkg`-ul **nu elimină** avertismentul inițial de la Gatekeeper — la prima deschidere a
 instalatorului însuși tot apare mesajul "de la un dezvoltator
 neidentificat" (aceeași aprobare descrisă mai jos, dar făcută o singură
 dată, pe instalator, nu pe aplicație). Ce câștigi cu `.pkg`-ul:
+
 - instalare curată, automată, în `/Applications` (nu mai tragi manual din Finder)
 - odată instalat, aplicația nu mai are NICIODATĂ nevoie de nicio aprobare — scriptul de instalare a curățat deja carantina
 - experiență familiară, ca la orice aplicație "de-adevăratelea"
 
 Singurul mod de a elimina **complet** avertismentul inițial (inclusiv pe
 instalator) e semnarea + notarizarea aplicației cu un cont Apple
-Developer plătit ($99/an) — dacă la un moment dat vrei asta, spune-mi și
-configurez și partea de semnare automată în workflow.
+Developer plătit ($99/an).
 
 ### Aprobarea `.app`-ului nesemnat (necesar pe FIECARE Mac, o singură dată per calculator)
 
-Neavând cont Apple Developer, macOS (Gatekeeper) blochează implicit acest
-`.app` pe orice Mac pe care e instalat — asta e normal, nu înseamnă că
+Neavând cont Apple Developer, macOS (Gatekeeper) blochează implicit acest `.app` pe orice Mac pe care e instalat — asta e normal, nu înseamnă că
 ceva e stricat. La dublu-click simplu, poate apărea un mesaj cu doar
 opțiunea "Move to Trash" (fără "Open"). Trebuie aprobat manual, o singură
 dată pe fiecare Mac:
@@ -195,14 +211,15 @@ asta există și butonul **"Open"** → apasă-l. De atunci încolo merge normal
 cu dublu-click.
 
 **Metoda 2 (dacă metoda 1 arată tot doar "Move to Trash"):** System
-Settings → Privacy & Security → derulează în jos → apare un mesaj despre
-`ShotPut Lite.app` blocat, cu butonul **"Open Anyway"** → apasă-l → încearcă
+Settings → Privacy & Security → derulează în jos → apare un mesaj despre `ShotPut Lite.app` blocat, cu butonul **"Open Anyway"** → apasă-l → încearcă
 din nou dublu-click (mai cere o confirmare finală).
 
 **Metoda 3 (din Terminal, sigură 100%):**
-```bash
+
+```
 xattr -cr "/Applications/ShotPut Lite.app"
 ```
+
 (ajustează calea dacă `.app`-ul nu e mutat în `/Applications`)
 
 Trimite aceste instrucțiuni oricărui coleg căruia îi distribui `.app`-ul —
@@ -214,16 +231,17 @@ singură dată global.
 ## Instalare pe Windows
 
 **Cerințe:**
+
 - Windows 10 sau 11
-- Python 3, instalat de pe https://www.python.org/downloads/windows/
-  - **Important la instalare:** bifează opțiunea **"Add python.exe to PATH"**
-    din primul ecran al instalatorului — altfel scriptul de pornire nu va
+- Python 3, instalat de pe <https://www.python.org/downloads/windows/>
+  - **Important la instalare:** bifează opțiunea **"Add python.exe to PATH"** din primul ecran al instalatorului — altfel scriptul de pornire nu va
     găsi Python.
   - `tkinter` vine deja inclus în instalatorul oficial de Python pentru
     Windows (nu e nevoie de nimic suplimentar, spre deosebire de unele
     distribuții Linux/Homebrew).
 
 **Pornire:**
+
 1. Copiază tot folderul `ShotPutLite` pe calculator.
 2. Dublu-click pe **"Porneste ShotPut Lite (Windows).bat"**.
    - Dacă Windows SmartScreen avertizează ("Windows protected your PC"):
@@ -253,7 +271,7 @@ folosește **GitHub Actions** — vezi secțiunea detaliată "transformare
 Dacă totuși ai acces direct la un Windows (fizic sau VM) și preferi să
 compilezi local, fără GitHub:
 
-```bat
+```
 cd ShotPutLite
 python -m venv .venv-build
 .venv-build\Scripts\activate
@@ -278,19 +296,18 @@ asta automat, de fiecare dată când creezi un **tag de versiune**.
 
 **Pași (din Terminal, pe Mac):**
 
-```bash
+```
 cd ShotPutLite
 git tag v1.0.0
 git push origin v1.0.0
 ```
 
 Asta declanșează automat build-ul pentru **ambele** platforme (Mac și
-Windows), iar la final creează o pagină de Release la
-`https://github.com/gordasgdc/shotput-lite/releases`, cu:
+Windows), iar la final creează o pagină de Release la `https://github.com/gordasgdc/shotput-lite/releases`, cu:
 
-- `ShotPut-Lite-Mac.zip` — conține `ShotPut Lite.app` (drag-and-drop manual în /Applications)
+- `ShotPut-Lite-Mac.zip` — conține `ShotPut Lite.app` + `ShotPut Lite Monitor` (drag-and-drop manual în /Applications)
 - `ShotPut-Lite-Mac-Installer.pkg` — instalator (recomandat) — instalează automat + curăță carantina
-- `ShotPut-Lite-Windows.zip` — conține `ShotPut Lite.exe`
+- `ShotPut-Lite-Windows.zip` — conține `ShotPut Lite.exe` + `ShotPut Lite Monitor.exe`
 - **Source code (zip)** și **Source code (tar.gz)** — adăugate automat de GitHub, cu tot codul sursă
 
 Durează 2-4 minute (rulează build-urile pentru ambele sisteme, apoi le
@@ -300,7 +317,7 @@ combină). Poți urmări progresul în tab-ul "Actions", la workflow-ul
 **Pentru o versiune nouă**, după ce mai faci modificări la cod, repeți
 doar cu un număr de tag diferit:
 
-```bash
+```
 git add .
 git commit -m "Descrierea modificarilor"
 git push
@@ -311,10 +328,12 @@ git push origin v1.0.1
 **Notă:** dacă greșești un tag și vrei să-l refaci (ex. release-ul a eșuat
 la jumătate), șterge-l întâi, altfel GitHub nu va retrigger workflow-ul pe
 același nume de tag:
-```bash
+
+```
 git tag -d v1.0.0
 git push origin :refs/tags/v1.0.0
 ```
+
 apoi recreează-l normal.
 
 ---
@@ -325,10 +344,13 @@ apoi recreează-l normal.
    peste câmpul de sursă, alegi din lista "Volume detectate automat"
    (cardul apare acolo dacă e conectat), sau apeși "Alege manual...".
    Butonul "Reîmprospătează" recitește lista dacă tocmai ai conectat cardul.
+
 2. **Nume proiect / Etichetă card** — ex: `NuntaAna` / `CardA`. Folderul
    rezultat pe fiecare destinație va fi `2026-07-21_NuntaAna_CardA`.
+
 3. **Opțiuni de copiere** — alegi **modelul de securitate** (verificare)
-   din listă:
+   din listă (iconița "?" de lângă fiecare setare explică mai detaliat):
+
    - *Doar dimensiune fișier* — cel mai rapid, doar compară mărimea (fără garanție criptografică)
    - *MD5* — rapid, standard în industrie (setat implicit)
    - *SHA-1* — puțin mai lent, ceva mai sigur decât MD5
@@ -338,18 +360,31 @@ apoi recreează-l normal.
    Poți edita și lista de excluderi (ex: adaugă `.wav` dacă nu vrei să
    copiezi și sunetul separat) și poți bifa "Sări peste fișiere identice"
    pentru re-rulări rapide.
+
 4. **Destinații** — adaugi oricâte ai nevoie: tragi unul sau mai multe
    foldere deodată direct peste lista de destinații, sau apeși
-   "Adaugă destinație...". Toate se completează simultan, în paralel.
+   "Adaugă destinație...". Toate se completează simultan, în paralel,
+   fiecare cu propria bară de progres și viteză (MB/s).
+
 5. Apeși **"Începe offload-ul"**. Dacă o destinație nu are spațiu
    suficient, primești o avertizare înainte de start.
-6. Jurnalul arată status per fișier. Bara de progres arată procent,
-   fișiere copiate și viteza curentă (MB/s).
+
+6. Jurnalul arată status per fișier. Progresul e afișat separat pentru
+   "Copiere" și "Verificare", plus o bară individuală pentru fiecare
+   destinație.
+
 7. Poți apăsa **"Anulează"** oricând — copierea fișierului curent se
-   termină, apoi se oprește (nu lasă fișiere pe jumătate scrise).
+   termină, apoi se oprește (nu lasă fișiere pe jumătate scrise). Dacă
+   offload-ul a fost întrerupt (anulare sau eroare), butonul "Reia ultima
+   copiere neterminată..." apare activ — continuă exact de unde ai rămas.
+
 8. Când se termină, primești o notificare nativă și un rezumat. În
-   fiecare folder de destinație găsești `offload_report_*.csv` și
-   `offload_report_*.pdf` cu toate detaliile.
+   fiecare folder de destinație găsești `offload_report_*.csv` și `offload_report_*.pdf` cu toate detaliile.
+
+9. **Modul Monitorizare** — apeși "Pornește modul Monitorizare..." ca
+   aplicația să ruleze în fundal (tray/menu bar) și să pornească automat
+   offload-ul, cu ultimele setări salvate, de fiecare dată când conectezi
+   un card/drive nou.
 
 ## Pentru echipă
 
@@ -358,3 +393,15 @@ Windows, fiecare folosește lansatorul potrivit sistemului lui
 (`.command` sau `.bat`). Nu există licențe sau activări — rulează local,
 fără cont, fără internet (cu excepția instalării unice a dependințelor).
 
+---
+
+## Autor
+
+Creat de **Cristi Gordas**.
+
+- GitHub: [github.com/gordasgdc](https://github.com/gordasgdc)
+- Facebook: [web.facebook.com/cristiGDC](https://web.facebook.com/cristiGDC)
+- YouTube: [youtube.com/@cristigordas](https://www.youtube.com/@cristigordas)
+
+Aceleași linkuri sunt disponibile și direct din aplicație, din fereastra
+**"Despre..."** din colțul din stânga-sus.
