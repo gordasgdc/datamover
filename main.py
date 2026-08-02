@@ -679,12 +679,29 @@ class ShotPutLiteApp(_BASE_CLASS):
 
     # ---------------- Modul Monitorizare ----------------
 
+    def _find_companion_monitor_executable(self):
+        """Cand aplicatia ruleaza COMPILATA (.app pe Mac / .exe pe Windows), tray_monitor.py
+        nu mai exista ca script Python de rulat cu 'python3' - e compilat separat, ca un
+        executabil insotitor numit 'ShotPut Lite Monitor' (Mac) / 'ShotPut Lite Monitor.exe'
+        (Windows), livrat in ACELASI folder/zip cu aplicatia principala. Aceasta functie il
+        cauta in locurile unde ar trebui sa fie, relativ la executabilul curent."""
+        exe_dir = os.path.dirname(sys.executable)
+
+        if sys.platform == "darwin":
+            # sys.executable e in interiorul bundle-ului: .../ShotPut Lite.app/Contents/MacOS/...
+            # Monitorul e livrat ca fisier separat, ALATURI de .app (nu in interiorul lui),
+            # deci urcam 3 niveluri ca sa iesim din bundle.
+            app_bundle_dir = os.path.abspath(os.path.join(exe_dir, "..", "..", ".."))
+            candidates = [os.path.join(app_bundle_dir, "ShotPut Lite Monitor")]
+        else:
+            candidates = [os.path.join(exe_dir, "ShotPut Lite Monitor.exe")]
+
+        for path in candidates:
+            if os.path.isfile(path):
+                return path
+        return None
+
     def _start_monitor_mode(self):
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        monitor_py = os.path.join(script_dir, "tray_monitor.py")
-        if not os.path.isfile(monitor_py):
-            messagebox.showerror("Eroare", "Nu gasesc tray_monitor.py in acelasi folder cu main.py.")
-            return
         if not self.destinations:
             messagebox.showwarning(
                 "Atentie",
@@ -694,18 +711,49 @@ class ShotPutLiteApp(_BASE_CLASS):
             )
             return
         self._save_settings()
-        try:
-            subprocess.Popen([sys.executable, monitor_py])
-            messagebox.showinfo(
-                "Modul Monitorizare",
-                "Modulul de monitorizare a fost pornit intr-un proces separat "
-                "(iconita in system tray / menu bar). Poti inchide aceasta fereastra - "
-                "monitorizarea continua sa ruleze in fundal.\n\n"
-                "Daca lipsesc bibliotecile necesare (pystray, pillow), vezi consola/terminalul "
-                "pentru instructiuni de instalare."
-            )
-        except Exception as e:
-            messagebox.showerror("Eroare", f"Nu am putut porni modul Monitorizare: {e}")
+
+        is_frozen = getattr(sys, "frozen", False)
+
+        if is_frozen:
+            monitor_exe = self._find_companion_monitor_executable()
+            if not monitor_exe:
+                messagebox.showerror(
+                    "Eroare",
+                    "Nu gasesc executabilul 'ShotPut Lite Monitor' langa aplicatie.\n\n"
+                    "Verifica sa fi extras TOT continutul arhivei descarcate (.zip) - "
+                    "aplicatia principala si 'ShotPut Lite Monitor' trebuie sa ramana "
+                    "in acelasi folder, nu doar aplicatia mutata separat."
+                )
+                return
+            try:
+                if sys.platform != "darwin":
+                    # necesar pe Windows ca sa nu se deschida si o fereastra neagra de consola
+                    creationflags = subprocess.CREATE_NO_WINDOW if hasattr(subprocess, "CREATE_NO_WINDOW") else 0
+                    subprocess.Popen([monitor_exe], creationflags=creationflags)
+                else:
+                    subprocess.Popen([monitor_exe])
+            except Exception as e:
+                messagebox.showerror("Eroare", f"Nu am putut porni modul Monitorizare: {e}")
+                return
+        else:
+            # rulare din sursa (python3 main.py) - pornim scriptul direct
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            monitor_py = os.path.join(script_dir, "tray_monitor.py")
+            if not os.path.isfile(monitor_py):
+                messagebox.showerror("Eroare", "Nu gasesc tray_monitor.py in acelasi folder cu main.py.")
+                return
+            try:
+                subprocess.Popen([sys.executable, monitor_py])
+            except Exception as e:
+                messagebox.showerror("Eroare", f"Nu am putut porni modul Monitorizare: {e}")
+                return
+
+        messagebox.showinfo(
+            "Modul Monitorizare",
+            "Modulul de monitorizare a fost pornit intr-un proces separat "
+            "(iconita in system tray / menu bar). Poti inchide aceasta fereastra - "
+            "monitorizarea continua sa ruleze in fundal."
+        )
 
     # ---------------- Inchidere ----------------
 
