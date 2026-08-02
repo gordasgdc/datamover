@@ -13,18 +13,19 @@ in Applications si il lansezi cu dublu-click ca orice alta aplicatie Mac.
 Iconita (ShotPutLite.icns) e deja inclusa in acest folder, gata de folosit.
 
 Versiunea afisata in fereastra nativa "About ShotPut Lite" (din meniul
-ShotPut Lite -> About ShotPut Lite) vine din campurile "plist" de mai jos -
-actualizeaza CFBundleShortVersionString/CFBundleVersion la fiecare "git tag"
-nou, ca sa ramana sincronizata cu versiunea reala publicata pe GitHub.
+ShotPut Lite -> About ShotPut Lite) vine acum automat din update_config.py
+(APP_VERSION) - SINGURA sursa de adevar pentru numarul de versiune in tot
+proiectul. Actualizeaz-o DOAR acolo, la fiecare "git tag" nou; setup.py o
+citeste automat de aici, nu mai trebuie schimbata si aici separat.
 """
 from setuptools import setup
-
-APP_VERSION = "1.2.0"  # actualizeaza aici la fiecare release (git tag vX.Y.Z)
+from update_config import APP_VERSION
 
 APP = ["main.py"]
 DATA_FILES = [
     "offload_engine.py", "pdf_report.py", "config.py",
     "theme.py", "tooltip.py", "checkpoint.py",
+    "update_config.py", "updater.py",
 ]
 OPTIONS = {
     "argv_emulation": False,
@@ -32,6 +33,7 @@ OPTIONS = {
     "includes": [
         "offload_engine", "pdf_report", "config",
         "theme", "tooltip", "checkpoint",
+        "update_config", "updater",
     ],
     "iconfile": "ShotPutLite.icns",
     "plist": {
