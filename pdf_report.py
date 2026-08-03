@@ -38,24 +38,24 @@ def generate_pdf_report(output_path, destination, folder_name, rows,
                          fail_count, cancelled=False, verification_label=""):
     styles = getSampleStyleSheet()
     title_style = ParagraphStyle(
-        "TitleShotPut", parent=styles["Title"], fontSize=18, spaceAfter=4
+        "TitleDataMover", parent=styles["Title"], fontSize=18, spaceAfter=4
     )
     meta_style = ParagraphStyle(
-        "MetaShotPut", parent=styles["Normal"], fontSize=9, textColor=colors.HexColor("#444444")
+        "MetaDataMover", parent=styles["Normal"], fontSize=9, textColor=colors.HexColor("#444444")
     )
     small_style = ParagraphStyle(
-        "SmallShotPut", parent=styles["Normal"], fontSize=8
+        "SmallDataMover", parent=styles["Normal"], fontSize=8
     )
 
     doc = SimpleDocTemplate(
         output_path, pagesize=A4,
         leftMargin=18 * mm, rightMargin=18 * mm,
         topMargin=16 * mm, bottomMargin=16 * mm,
-        title="Raport offload ShotPut Lite",
+        title="Raport offload DataMover",
     )
 
     elements = []
-    elements.append(Paragraph("Raport offload &ndash; ShotPut Lite", title_style))
+    elements.append(Paragraph("Raport offload &ndash; DataMover", title_style))
 
     status_text = "ANULAT DE UTILIZATOR" if cancelled else "FINALIZAT"
     duration = ""

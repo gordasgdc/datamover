@@ -2,7 +2,7 @@
 tooltip.py
 ----------
 Iconite "?" cu tooltip explicativ, pentru setarile mai complexe din
-ShotPut Lite (model de securitate, excluderi, "sari peste identice").
+DataMover (model de securitate, excluderi, "sari peste identice").
 Fara dependinte externe - foloseste doar tkinter.
 
 Tooltip-ul apare atat la hover (trecere cu mouse-ul), cat si la click
@@ -92,24 +92,27 @@ class ToolTip:
 def add_help_icon(parent, row, column, text, sticky="w", padx=4, pady=0, columnspan=1):
     """Creeaza o iconita '?' folosind grid() in 'parent', la (row, column),
     cu un ToolTip atasat, si returneaza label-ul (util daca vrei sa-l
-    recolorezi pentru dark mode)."""
+    recolorezi pentru dark mode). Instanta ToolTip e expusa la
+    icon.dm_tooltip, ca sa poti actualiza textul mai tarziu (ex. la
+    schimbarea limbii interfetei) fara sa recreezi iconita."""
     icon = tk.Label(
         parent, text=" ? ", font=("TkDefaultFont", 9, "bold"),
         background="#dddddd", foreground="#333333",
         relief="raised", borderwidth=1, cursor="question_arrow",
     )
     icon.grid(row=row, column=column, sticky=sticky, padx=padx, pady=pady, columnspan=columnspan)
-    ToolTip(icon, text)
+    icon.dm_tooltip = ToolTip(icon, text)
     return icon
 
 
 def add_help_icon_packed(parent, text, side="left", padx=4, pady=0):
-    """Varianta cu pack() in loc de grid(), pentru randuri construite cu pack()."""
+    """Varianta cu pack() in loc de grid(), pentru randuri construite cu pack().
+    La fel ca add_help_icon, expune ToolTip-ul la icon.dm_tooltip."""
     icon = tk.Label(
         parent, text=" ? ", font=("TkDefaultFont", 9, "bold"),
         background="#dddddd", foreground="#333333",
         relief="raised", borderwidth=1, cursor="question_arrow",
     )
     icon.pack(side=side, padx=padx, pady=pady)
-    ToolTip(icon, text)
+    icon.dm_tooltip = ToolTip(icon, text)
     return icon

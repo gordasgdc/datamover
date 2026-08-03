@@ -1,5 +1,5 @@
 @echo off
-REM Porneste ShotPut Lite pe Windows - dublu-click pe acest fisier
+REM Porneste DataMover pe Windows - dublu-click pe acest fisier
 setlocal
 
 cd /d "%~dp0"

@@ -1,4 +1,4 @@
-# ShotPut Lite — Ghid detaliat
+# DataMover — Ghid detaliat
 
 Acest fișier conține instrucțiunile complete de instalare, compilare,
 publicare și utilizare. Pentru un rezumat rapid și link-urile de
@@ -6,6 +6,7 @@ descărcare, vezi [README.md](README.md).
 
 ## Funcții
 
+- **Interfață multilingvă** — Română, English, Español, comutabilă din bara de sus (🌐), salvată automat
 - **Iconiță personalizată** — inclusă pentru `.app` (Mac) și `.exe` (Windows), generată automat la compilare
 - **Drag-and-drop** — tragi direct folderul sursă (cardul) peste aplicație, la fel și pentru destinații (poți trage mai multe foldere deodată); butoanele "Alege manual..." rămân disponibile ca alternativă
 - **Copiere simultană** către oricâte destinații (drive extern, NAS, folder local etc.)
@@ -34,7 +35,7 @@ descărcare, vezi [README.md](README.md).
 ## Structura fișierelor
 
 ```
-ShotPutLite/
+DataMover/
 ├── main.py                                 <- interfata grafica
 ├── offload_engine.py                       <- logica de copiere/verificare/scanare
 ├── pdf_report.py                            <- generarea rapoartelor PDF
@@ -45,15 +46,18 @@ ShotPutLite/
 ├── tray_monitor.py                          <- modul Monitorizare (system tray / menu bar)
 ├── update_config.py                         <- versiune si configurari pentru self-update
 ├── updater.py                                <- logica de self-update (verificare/descarcare/instalare)
-├── Porneste ShotPut Lite.command            <- lansator pentru Mac (dublu-click)
-├── Porneste ShotPut Lite (Windows).bat      <- lansator pentru Windows (dublu-click)
+├── translations.py                           <- traduceri interfata (RO/EN/ES)
+├── Porneste DataMover.command            <- lansator pentru Mac (dublu-click)
+├── Porneste DataMover (Windows).bat      <- lansator pentru Windows (dublu-click)
 ├── setup.py                                 <- optional, pentru pachetare .app (Mac)
-├── ShotPutLite.icns                         <- iconita gata de folosit pentru Mac
-├── ShotPutLite.ico                          <- iconita gata de folosit pentru Windows
-├── icon_master.png                          <- iconita la rezolutie mare (referinta/arhiva)
+├── DataMover.icns                         <- iconita gata de folosit pentru Mac
+├── DataMover.ico                          <- iconita gata de folosit pentru Windows
+├── DataMover-icon.png                          <- iconita la rezolutie mare (referinta/arhiva)
 ├── docs/index.html                          <- pagina web de prezentare (GitHub Pages)
 ├── docs/update.json                         <- fisierul citit de aplicatie pentru self-update
 ├── LICENSE                                   <- licenta MIT
+├── README.en.md                              <- README, versiunea in engleza
+├── README.es.md                              <- README, versiunea in spaniola
 ├── .github/workflows/build-windows.yml      <- compileaza .exe automat in cloud, la fiecare push
 ├── .github/workflows/build-mac.yml          <- compileaza .app automat in cloud, la fiecare push
 ├── .github/workflows/release.yml            <- publica Release oficial (Mac+Windows+Sursa), la fiecare tag
@@ -77,8 +81,8 @@ indiferent de sistemul de operare.
 
 **Pornire (din sursă):**
 
-1. Copiază tot folderul `ShotPutLite` pe Mac.
-2. Dublu-click pe **"Porneste ShotPut Lite.command"**.
+1. Copiază tot folderul `DataMover` pe Mac.
+2. Dublu-click pe **"Porneste DataMover.command"**.
    - Dacă macOS blochează fișierul: click-dreapta pe fișier → Open →
      confirmă "Open" în fereastra de avertizare. Se face o singură dată.
 3. La prima rulare, aplicația își creează automat un mediu Python izolat
@@ -92,7 +96,7 @@ pip install pystray pillow
 python3 tray_monitor.py
 ```
 Build-urile compilate (`.app`/`.pkg`) includ deja un executabil însoțitor
-("ShotPut Lite Monitor") pentru asta — vezi butonul "Pornește modul
+("DataMover Monitor") pentru asta — vezi butonul "Pornește modul
 Monitorizare..." din aplicație.
 
 ### Opțional: compilare automată în cloud (GitHub Actions)
@@ -106,10 +110,10 @@ incluse în acest folder.
 **Pași (de pe Mac, din Terminal):**
 
 ```bash
-cd ShotPutLite
+cd DataMover
 git init
 git add .
-git commit -m "Prima versiune ShotPut Lite"
+git commit -m "Prima versiune DataMover"
 git branch -M main
 git remote add origin https://github.com/NUMELE_TAU/NUMELE_REPO.git
 git push -u origin main
@@ -126,23 +130,23 @@ generează automat o versiune nouă — nu trebuie să repeți pașii de mai sus
 ### Alternativ: `.app` pentru Mac, local, fără cloud
 
 ```bash
-cd ShotPutLite
+cd DataMover
 python3 -m venv .venv-build
 source .venv-build/bin/activate
 pip install py2app pyinstaller reportlab tkinterdnd2 plyer pystray pillow
 python3 setup.py py2app
-pyinstaller --onefile --name "ShotPut Lite Monitor" tray_monitor.py
+pyinstaller --onefile --name "DataMover Monitor" tray_monitor.py
 deactivate
 ```
 
-Rezultatul apare în `dist/ShotPut Lite.app` (și `dist/ShotPut Lite
+Rezultatul apare în `dist/DataMover.app` (și `dist/DataMover
 Monitor` pentru modulul de monitorizare). Le poți muta pe amândouă în
 `/Applications`.
 
 ### Varianta `.pkg` (instalator, cu curățare automată de carantină)
 
 Build-ul din cloud (workflow-ul de Release) produce automat un instalator
-`ShotPut-Lite-Mac-Installer.pkg` — dublu-click deschide fereastra clasică
+`DataMover-Mac-Installer.pkg` — dublu-click deschide fereastra clasică
 de instalare macOS, care copiază aplicația (și modulul de Monitorizare) în
 `/Applications` și rulează automat un script ce curăță orice steag de
 carantină de pe ele.
@@ -160,15 +164,15 @@ instalator) e semnarea + notarizarea cu un cont Apple Developer plătit
 
 ### Aprobarea `.app`-ului nesemnat (o singură dată per Mac)
 
-**Metoda 1:** Click-dreapta pe `ShotPut Lite.app` → **"Open"** → în
+**Metoda 1:** Click-dreapta pe `DataMover.app` → **"Open"** → în
 avertisment, apasă **"Open"**.
 
 **Metoda 2:** System Settings → Privacy & Security → derulează jos →
-buton **"Open Anyway"** lângă mesajul despre `ShotPut Lite.app`.
+buton **"Open Anyway"** lângă mesajul despre `DataMover.app`.
 
 **Metoda 3 (Terminal):**
 ```bash
-xattr -cr "/Applications/ShotPut Lite.app"
+xattr -cr "/Applications/DataMover.app"
 ```
 
 ---
@@ -183,8 +187,8 @@ xattr -cr "/Applications/ShotPut Lite.app"
 
 **Pornire (din sursă):**
 
-1. Copiază tot folderul `ShotPutLite` pe calculator.
-2. Dublu-click pe **"Porneste ShotPut Lite (Windows).bat"**.
+1. Copiază tot folderul `DataMover` pe calculator.
+2. Dublu-click pe **"Porneste DataMover (Windows).bat"**.
    - Dacă SmartScreen avertizează: "More info" → "Run anyway".
 3. La prima rulare, aplicația își creează automat un mediu Python izolat
    (`.venv`) și instalează dependințele necesare.
@@ -200,16 +204,16 @@ xattr -cr "/Applications/ShotPut Lite.app"
 ### Opțional: compilare `.exe`, local, fără cloud
 
 ```
-cd ShotPutLite
+cd DataMover
 python -m venv .venv-build
 .venv-build\Scripts\activate
 pip install pyinstaller reportlab tkinterdnd2 plyer pystray pillow
-pyinstaller --onefile --windowed --name "ShotPut Lite" --icon=ShotPutLite.ico main.py
-pyinstaller --onefile --windowed --name "ShotPut Lite Monitor" --icon=ShotPutLite.ico tray_monitor.py
+pyinstaller --onefile --windowed --name "DataMover" --icon=DataMover.ico main.py
+pyinstaller --onefile --windowed --name "DataMover Monitor" --icon=DataMover.ico tray_monitor.py
 deactivate
 ```
 
-Rezultatul apare în `dist\ShotPut Lite.exe` și `dist\ShotPut Lite
+Rezultatul apare în `dist\DataMover.exe` și `dist\DataMover
 Monitor.exe`.
 
 ---
@@ -217,17 +221,17 @@ Monitor.exe`.
 ## Publicare oficială (GitHub Releases — Mac + Windows + Sursă)
 
 ```bash
-cd ShotPutLite
+cd DataMover
 git tag v1.0.0
 git push origin v1.0.0
 ```
 
 Declanșează automat build-ul pentru ambele platforme, apoi creează o
-pagină de Release la `https://github.com/gordasgdc/shotput-lite/releases`, cu:
+pagină de Release la `https://github.com/gordasgdc/datamover/releases`, cu:
 
-- `ShotPut-Lite-Mac.zip` — `ShotPut Lite.app` + `ShotPut Lite Monitor`
-- `ShotPut-Lite-Mac-Installer.pkg` — instalator recomandat
-- `ShotPut-Lite-Windows.zip` — `ShotPut Lite.exe` + `ShotPut Lite Monitor.exe`
+- `DataMover-Mac.zip` — `DataMover.app` + `DataMover Monitor`
+- `DataMover-Mac-Installer.pkg` — instalator recomandat
+- `DataMover-Windows.zip` — `DataMover.exe` + `DataMover Monitor.exe`
 - **Source code (zip / tar.gz)** — generate automat de GitHub
 
 Pentru o versiune nouă, repeți doar cu alt număr de tag:
@@ -287,7 +291,7 @@ git push origin :refs/tags/v1.0.0
 
 ## Actualizări automate
 
-ShotPut Lite poate verifica și instala automat versiuni noi, direct din
+DataMover poate verifica și instala automat versiuni noi, direct din
 aplicație — **doar în versiunea compilată** (`.app`/`.exe`). Dacă rulezi
 din sursă (`python3 main.py`), aplicația verifică versiunea la fel, dar
 nu instalează automat — din siguranță, ca să nu riște să suprascrie
@@ -312,7 +316,7 @@ pull` (vezi mai sus).
 
 Aplicația verifică:
 ```
-https://gordasgdc.github.io/shotput-lite/update.json
+https://gordasgdc.github.io/datamover/update.json
 ```
 
 Găzduit din folderul `docs/` al acestui repo, prin GitHub Pages (Settings
@@ -342,9 +346,38 @@ Dacă actualizarea eșuează:
 - Dacă rulezi din sursă (`python3 main.py`), actualizarea automată e
   dezactivată intenționat — vezi mai sus
 
+## Schimbarea limbii
+
+DataMover suportă trei limbi pentru interfață:
+- 🇷🇴 Română (implicit)
+- 🇬🇧 English
+- 🇪🇸 Español
+
+Pentru a schimba limba, selectează din meniul derulant **🌐** din bara de
+sus a aplicației. Limba selectată se salvează automat (în același fișier
+de config, `~/.datamover_config.json`) și va fi folosită la următoarea
+pornire.
+
+**Ce e tradus:** toate butoanele, etichetele, tooltip-urile, mesajele de
+eroare/confirmare, fereastra "Despre" și meniul Help.
+
+**Ce NU e tradus (rămâne în română, intenționat):** liniile interne de
+jurnal generate de `offload_engine.py` în timpul copierii (ex. "Copiere:
+nume_fisier.jpg", "Verificare: ..."), pentru că motorul de copiere rulează
+pe thread-uri separate, fără acces direct la limba curentă a interfeței.
+O extindere ulterioară ar putea trece limba și către motor, dacă devine
+necesar.
+
+**Pentru dezvoltatori** — traducerile sunt centralizate în
+`translations.py` (dicționarul `TRANSLATIONS`, cu chei precum
+`"action_start"`, `"msg_error_title"` etc.). Pentru a adăuga o limbă nouă,
+adaugi un bloc nou în acel dicționar cu aceleași chei, apoi adaugi codul
+de limbă (ex. `"fr"`) în `SUPPORTED_LANGUAGES` și `LANGUAGE_LABELS` din
+`main.py`.
+
 ## Pentru echipă
 
-Distribuie folderul `ShotPutLite` fiecărui membru — Mac sau Windows,
+Distribuie folderul `DataMover` fiecărui membru — Mac sau Windows,
 fiecare folosește lansatorul potrivit sistemului lui. Fără licențe sau
 activări — rulează local, fără cont, fără internet (cu excepția
 instalării unice a dependințelor).

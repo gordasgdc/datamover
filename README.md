@@ -1,4 +1,6 @@
-# ShotPut Lite
+# DataMover
+
+[🇷🇴 Română](README.md) | [🇬🇧 English](README.en.md) | [🇪🇸 Español](README.es.md)
 
 **Offload verificat pentru echipele de producție video**
 
@@ -33,30 +35,30 @@
 
 ## 🚀 Download
 
-Descarcă ultima versiune de la [Releases](https://github.com/gordasgdc/shotput-lite/releases)
+Descarcă ultima versiune de la [Releases](https://github.com/gordasgdc/datamover/releases)
 
 | Platformă | Fișier | Descriere |
 |-----------|--------|-----------|
-| **Mac** | `ShotPut-Lite-Mac-Installer.pkg` | Instalator recomandat (curăță automat carantina) |
-| | `ShotPut-Lite-Mac.zip` | Aplicație portabilă `.app` |
-| **Windows** | `ShotPut-Lite-Windows.zip` | Conține `ShotPut Lite.exe` |
+| **Mac** | `DataMover-Mac-Installer.pkg` | Instalator recomandat (curăță automat carantina) |
+| | `DataMover-Mac.zip` | Aplicație portabilă `.app` |
+| **Windows** | `DataMover-Windows.zip` | Conține `DataMover.exe` |
 
 ## 📖 Instalare rapidă
 
 ### Mac (cu .pkg — recomandat)
-1. Descarcă `ShotPut-Lite-Mac-Installer.pkg`
+1. Descarcă `DataMover-Mac-Installer.pkg`
 2. Dublu-click pe fișier și urmează instrucțiunile instalatorului
 3. Aplicația se instalează în `/Applications`
 4. La prima rulare, click-dreapta → `Open` → confirmă (se face o singură dată)
 
 ### Mac (cu .app — portabil)
-1. Descarcă `ShotPut-Lite-Mac.zip` și extrage
-2. Mută `ShotPut Lite.app` în `/Applications` (recomandat)
+1. Descarcă `DataMover-Mac.zip` și extrage
+2. Mută `DataMover.app` în `/Applications` (recomandat)
 3. Click-dreapta → `Open` la prima rulare
 
 ### Windows
-1. Descarcă `ShotPut-Lite-Windows.zip` și extrage conținutul
-2. Rulează `ShotPut Lite.exe`
+1. Descarcă `DataMover-Windows.zip` și extrage conținutul
+2. Rulează `DataMover.exe`
 3. Dacă SmartScreen avertizează, apasă "More info" → "Run anyway"
 
 ## 🎬 Tutorial video
@@ -71,7 +73,7 @@ Vezi [CITESTE-MA.md](CITESTE-MA.md) pentru instrucțiuni detaliate de instalare,
 
 **Cristi Gordas** (@gordasgdc)
 
-- 🌐 [GitHub](https://github.com/gordasgdc/shotput-lite)
+- 🌐 [GitHub](https://github.com/gordasgdc/datamover)
 - 📘 [Facebook](https://web.facebook.com/cristiGDC)
 - 🎥 [YouTube](https://www.youtube.com/@cristigordas)
 

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Porneste ShotPut Lite - dublu-click pe acest fisier pe Mac
+# Porneste DataMover - dublu-click pe acest fisier pe Mac
 cd "$(dirname "$0")"
 
 VENV_DIR=".venv"

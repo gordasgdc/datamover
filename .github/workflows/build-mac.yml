@@ -1,4 +1,4 @@
-name: Build ShotPut Lite (Mac .app)
+name: Build DataMover (Mac .app)
 
 # Se ruleaza automat cand faci "git push" pe branch-ul main,
 # sau manual din tab-ul "Actions" al repo-ului (butonul "Run workflow").
@@ -29,22 +29,22 @@ jobs:
         run: python setup.py py2app
 
       - name: Compileaza modulul de Monitorizare (executabil insotitor)
-        run: pyinstaller --onefile --name "ShotPut Lite Monitor" tray_monitor.py
+        run: pyinstaller --onefile --name "DataMover Monitor" tray_monitor.py
 
       - name: Pregateste folderul de distributie (app + monitor, la un loc)
         run: |
           mkdir -p dist_release
-          cp -R "dist/ShotPut Lite.app" dist_release/
-          cp "dist/ShotPut Lite Monitor" dist_release/
-          chmod +x "dist_release/ShotPut Lite Monitor"
+          cp -R "dist/DataMover.app" dist_release/
+          cp "dist/DataMover Monitor" dist_release/
+          chmod +x "dist_release/DataMover Monitor"
 
       - name: Arhiveaza (ditto pastreaza corect permisiunile Mac)
         run: |
           cd dist_release
-          ditto -c -k --sequesterRsrc "." "../dist/ShotPut-Lite-Mac.zip"
+          ditto -c -k --sequesterRsrc "." "../dist/DataMover-Mac.zip"
 
       - name: Incarca .zip ca artefact descarcabil
         uses: actions/upload-artifact@v4
         with:
-          name: ShotPut-Lite-Mac
-          path: dist/ShotPut-Lite-Mac.zip
+          name: DataMover-Mac
+          path: dist/DataMover-Mac.zip

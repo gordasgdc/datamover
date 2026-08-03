@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-ShotPut Lite
-------------
+DataMover
+---------
 Aplicatie personala/echipa pentru offload verificat de fisiere media,
-inspirata de ShotPut Pro: copiere catre mai multe destinatii simultan,
+inspirata de instrumentele profesionale de offload: copiere catre mai multe destinatii simultan,
 verificare (MD5/SHA-1/SHA-256/SHA-512/doar-dimensiune, la alegere),
 denumire automata de foldere, rapoarte CSV + PDF, notificari native
 (macOS si Windows), detectare automata a cardurilor/drive-urilor
@@ -33,10 +33,10 @@ import tempfile
 import webbrowser
 from datetime import datetime
 
-APP_NAME = "ShotPut Lite"
+APP_NAME = "DataMover"
 AUTHOR_NAME = "Cristi Gordas"
 AUTHOR_LINKS = [
-    ("GitHub", "https://github.com/gordasgdc/shotput-lite"),
+    ("GitHub", "https://github.com/gordasgdc/datamover"),
     ("Facebook", "https://web.facebook.com/cristiGDC"),
     ("YouTube", "https://www.youtube.com/@cristigordas"),
 ]
@@ -64,6 +64,7 @@ from tooltip import add_help_icon
 import checkpoint as ckpt
 import update_config
 import updater
+from translations import get_text
 
 
 def format_size(num_bytes):
@@ -74,34 +75,14 @@ def format_size(num_bytes):
     return f"{num_bytes:.1f} PB"
 
 
-HELP_TEXTS = {
-    "verification_model": (
-        "Modelul de securitate stabileste cum se verifica fiecare fisier dupa copiere:\n\n"
-        "- Doar dimensiune: cel mai rapid, dar nu detecteaza coruperi subtile ale datelor.\n"
-        "- MD5: rapid, standard in industrie (ShotPut Pro il foloseste implicit).\n"
-        "- SHA-1: putin mai lent, ceva mai sigur decat MD5.\n"
-        "- SHA-256: recomandat pentru arhivare pe termen lung.\n"
-        "- SHA-512: maxim de siguranta, dar cel mai lent."
-    ),
-    "exclusions": (
-        "Lista de fisiere/extensii care NU vor fi copiate, separate prin virgula.\n\n"
-        "Poti folosi nume exacte (ex: Thumbs.db) sau extensii (ex: .tmp, .wav).\n"
-        "Fisierele ascunse de sistem (care incep cu punct) sunt excluse automat, "
-        "indiferent de aceasta lista."
-    ),
-    "skip_existing": (
-        "Daca e bifat, la o re-rulare peste acelasi folder de destinatie, fisierele "
-        "deja copiate SI verificate corect nu mai sunt recopiate - doar re-verificate "
-        "rapid (dimensiune identica) sau sarite. Util cand o copiere a fost intrerupta "
-        "si vrei sa completezi restul fara sa iei totul de la capat."
-    ),
-}
+SUPPORTED_LANGUAGES = ["ro", "en", "es"]
+LANGUAGE_LABELS = {"ro": "RO", "en": "EN", "es": "ES"}
 
 
-class ShotPutLiteApp(_BASE_CLASS):
+class DataMoverApp(_BASE_CLASS):
     def __init__(self):
         super().__init__()
-        self.title("ShotPut Lite")
+        self.title("DataMover")
         self.geometry("880x760")
         self.minsize(760, 620)
 
@@ -117,6 +98,9 @@ class ShotPutLiteApp(_BASE_CLASS):
         )
         self.dark_mode_var = tk.BooleanVar(value=self.settings.get("dark_mode", False))
         self.eject_after_var = tk.BooleanVar(value=self.settings.get("eject_after", False))
+        self.language_var = tk.StringVar(
+            value=self.settings.get("language", "ro") if self.settings.get("language") in SUPPORTED_LANGUAGES else "ro"
+        )
 
         self.destinations = list(self.settings.get("destinations", []))
 
@@ -137,6 +121,11 @@ class ShotPutLiteApp(_BASE_CLASS):
         self.style = ttk.Style(self)
         self._tk_themed_widgets = []   # widget-uri tk clasice (Text, Listbox) de recolorat
         self._muted_labels = []        # ttk.Label-uri gri deschis (hint-uri)
+
+        # Structuri pentru retextare dinamica la schimbarea limbii (fara sa
+        # distrugem/reconstruim widget-urile - doar le actualizam .config(text=))
+        self._i18n_widgets = {}   # widget -> cheie de traducere (Label/Button/Checkbutton/LabelFrame)
+        self._i18n_tooltips = {}  # icon "?" -> cheie de traducere
 
         # Scurtaturi de tastatura (functioneaza atat pe Mac cat si pe Windows)
         self.bind_all('<Control-o>', lambda e: self._choose_source())
@@ -160,118 +149,138 @@ class ShotPutLiteApp(_BASE_CLASS):
         self.after(150, self._poll_log_queue)
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
+    # ---------------- Traduceri (i18n) ----------------
+
+    def t(self, key, **kwargs):
+        return get_text(self.language_var.get(), key, **kwargs)
+
+    def _reg(self, widget, key, **kwargs):
+        """Inregistreaza un widget pentru retextare automata la schimbarea
+        limbii, si ii seteaza textul curent."""
+        widget.config(text=self.t(key, **kwargs))
+        self._i18n_widgets[widget] = (key, kwargs)
+        return widget
+
+    def _reg_tooltip(self, icon, key):
+        icon.dm_tooltip.text = self.t(key)
+        self._i18n_tooltips[icon] = key
+        return icon
+
     # ---------------- UI ----------------
 
     def _build_ui(self):
         pad = {"padx": 10, "pady": 6}
 
-        # Bara de sus: tema + modul monitorizare
+        # Bara de sus: tema + limba + Despre + actualizari + monitorizare
         top_row = ttk.Frame(self)
         top_row.pack(fill="x", padx=10, pady=(8, 0))
-        ttk.Checkbutton(
-            top_row, text="Tema intunecata", variable=self.dark_mode_var,
-            command=self._on_toggle_dark_mode,
-        ).pack(side="left")
-        ttk.Button(
-            top_row, text="Despre...", command=self._show_about_dialog
-        ).pack(side="left", padx=(12, 0))
-        ttk.Button(
-            top_row, text="🔍 Verifica actualizari", command=self._check_for_updates
-        ).pack(side="left", padx=(12, 0))
-        ttk.Button(
-            top_row, text="Porneste modul Monitorizare...", command=self._start_monitor_mode
-        ).pack(side="right")
-        self.resume_btn = ttk.Button(
-            top_row, text="Reia ultima copiere neterminata...", command=self._show_resume_dialog,
-            state="disabled",
+        self._reg(ttk.Checkbutton(
+            top_row, variable=self.dark_mode_var, command=self._on_toggle_dark_mode,
+        ), "dark_mode").pack(side="left")
+        self._reg(ttk.Button(
+            top_row, command=self._show_about_dialog
+        ), "about").pack(side="left", padx=(12, 0))
+        self._reg(ttk.Button(
+            top_row, command=self._check_for_updates
+        ), "check_updates").pack(side="left", padx=(12, 0))
+
+        lang_frame = ttk.Frame(top_row)
+        lang_frame.pack(side="left", padx=(12, 0))
+        ttk.Label(lang_frame, text="🌐").pack(side="left")
+        self.lang_combo = ttk.Combobox(
+            lang_frame, state="readonly", width=4,
+            values=[LANGUAGE_LABELS[lg] for lg in SUPPORTED_LANGUAGES],
         )
+        self.lang_combo.set(LANGUAGE_LABELS[self.language_var.get()])
+        self.lang_combo.pack(side="left", padx=4)
+        self.lang_combo.bind("<<ComboboxSelected>>", self._on_language_selected)
+
+        self._reg(ttk.Button(
+            top_row, command=self._start_monitor_mode
+        ), "start_monitor").pack(side="right")
+        self.resume_btn = self._reg(ttk.Button(
+            top_row, command=self._show_resume_dialog, state="disabled",
+        ), "resume")
         self.resume_btn.pack(side="right", padx=(0, 8))
 
         # Sursa
-        frame_src = ttk.LabelFrame(self, text="Sursa (card / drive de offload)")
-        frame_src.pack(fill="x", **pad)
+        self.frame_src = self._reg(ttk.LabelFrame(self), "source_label")
+        self.frame_src.pack(fill="x", **pad)
 
-        row1 = ttk.Frame(frame_src)
+        row1 = ttk.Frame(self.frame_src)
         row1.pack(fill="x", padx=8, pady=(8, 4))
-        ttk.Label(row1, text="Volume detectate automat:").pack(side="left")
+        self._reg(ttk.Label(row1), "source_volumes").pack(side="left")
         self.volume_combo = ttk.Combobox(row1, state="readonly", width=40)
         self.volume_combo.pack(side="left", padx=8)
         self.volume_combo.bind("<<ComboboxSelected>>", self._on_volume_selected)
-        ttk.Button(row1, text="Reimprospateaza", command=self._refresh_volumes).pack(side="left")
+        self._reg(ttk.Button(row1, command=self._refresh_volumes), "source_refresh").pack(side="left")
 
-        row2 = ttk.Frame(frame_src)
+        row2 = ttk.Frame(self.frame_src)
         row2.pack(fill="x", padx=8, pady=(0, 4))
         self.source_entry = ttk.Entry(row2, textvariable=self.source_var)
         self.source_entry.pack(side="left", fill="x", expand=True)
-        ttk.Button(row2, text="Alege manual...", command=self._choose_source).pack(side="left", padx=8)
+        self._reg(ttk.Button(row2, command=self._choose_source), "source_manual").pack(side="left", padx=8)
 
-        dnd_hint_src = "(sau trage un folder aici din Finder)" if _DND_AVAILABLE else \
-            "(drag-and-drop indisponibil - vezi CITESTE-MA.md pentru activare)"
-        hint_src_label = ttk.Label(frame_src, text=dnd_hint_src, style="Muted.TLabel")
-        hint_src_label.pack(anchor="w", padx=8, pady=(0, 8))
-        self._muted_labels.append(hint_src_label)
+        self.hint_src_label = ttk.Label(self.frame_src, style="Muted.TLabel")
+        self._reg(self.hint_src_label, "source_dnd" if _DND_AVAILABLE else "source_dnd_unavailable")
+        self.hint_src_label.pack(anchor="w", padx=8, pady=(0, 8))
+        self._muted_labels.append(self.hint_src_label)
 
         if _DND_AVAILABLE:
             self.source_entry.drop_target_register(DND_FILES)
             self.source_entry.dnd_bind("<<Drop>>", self._on_source_drop)
-            frame_src.drop_target_register(DND_FILES)
-            frame_src.dnd_bind("<<Drop>>", self._on_source_drop)
+            self.frame_src.drop_target_register(DND_FILES)
+            self.frame_src.dnd_bind("<<Drop>>", self._on_source_drop)
 
         # Proiect / Card
-        frame_meta = ttk.LabelFrame(self, text="Denumire automata folder (Data_Proiect_Card)")
-        frame_meta.pack(fill="x", **pad)
-        ttk.Label(frame_meta, text="Nume proiect:").grid(row=0, column=0, padx=8, pady=6, sticky="e")
-        ttk.Entry(frame_meta, textvariable=self.project_var, width=25).grid(row=0, column=1, padx=8, pady=6, sticky="w")
-        ttk.Label(frame_meta, text="Eticheta card:").grid(row=0, column=2, padx=8, pady=6, sticky="e")
-        ttk.Entry(frame_meta, textvariable=self.card_var, width=20).grid(row=0, column=3, padx=8, pady=6, sticky="w")
+        self.frame_meta = self._reg(ttk.LabelFrame(self), "meta_label")
+        self.frame_meta.pack(fill="x", **pad)
+        self._reg(ttk.Label(self.frame_meta), "meta_project").grid(row=0, column=0, padx=8, pady=6, sticky="e")
+        ttk.Entry(self.frame_meta, textvariable=self.project_var, width=25).grid(row=0, column=1, padx=8, pady=6, sticky="w")
+        self._reg(ttk.Label(self.frame_meta), "meta_card").grid(row=0, column=2, padx=8, pady=6, sticky="e")
+        ttk.Entry(self.frame_meta, textvariable=self.card_var, width=20).grid(row=0, column=3, padx=8, pady=6, sticky="w")
 
         # Excluderi + optiuni
-        frame_opts = ttk.LabelFrame(self, text="Optiuni de copiere")
-        frame_opts.pack(fill="x", **pad)
+        self.frame_opts = self._reg(ttk.LabelFrame(self), "opts_label")
+        self.frame_opts.pack(fill="x", **pad)
 
-        ttk.Label(frame_opts, text="Model de securitate (verificare):").grid(
+        self._reg(ttk.Label(self.frame_opts), "opts_security").grid(
             row=0, column=0, padx=8, pady=6, sticky="e")
-        self.verification_labels = {v["label"]: k for k, v in VERIFICATION_MODELS.items()}
-        self.verification_combo = ttk.Combobox(
-            frame_opts, state="readonly", width=56,
-            values=[v["label"] for v in VERIFICATION_MODELS.values()]
-        )
-        current_label = VERIFICATION_MODELS.get(
-            self.verification_model_var.get(), VERIFICATION_MODELS[DEFAULT_VERIFICATION_MODEL]
-        )["label"]
-        self.verification_combo.set(current_label)
+        self.verification_combo = ttk.Combobox(self.frame_opts, state="readonly", width=56)
+        self._refresh_verification_combo()
         self.verification_combo.grid(row=0, column=1, padx=8, pady=6, sticky="w")
         self.verification_combo.bind("<<ComboboxSelected>>", self._on_verification_selected)
-        add_help_icon(frame_opts, row=0, column=2, text=HELP_TEXTS["verification_model"])
+        self.verification_help_icon = add_help_icon(self.frame_opts, row=0, column=2, text="")
+        self._reg_tooltip(self.verification_help_icon, "tooltip_verification")
 
-        ttk.Label(frame_opts, text="Exclude fisiere/extensii (separate prin virgula):").grid(
+        self._reg(ttk.Label(self.frame_opts), "opts_exclusions").grid(
             row=1, column=0, padx=8, pady=6, sticky="w")
-        ttk.Entry(frame_opts, textvariable=self.exclusions_var, width=48).grid(
+        ttk.Entry(self.frame_opts, textvariable=self.exclusions_var, width=48).grid(
             row=1, column=1, padx=8, pady=6, sticky="w")
-        add_help_icon(frame_opts, row=1, column=2, text=HELP_TEXTS["exclusions"])
+        self.exclusions_help_icon = add_help_icon(self.frame_opts, row=1, column=2, text="")
+        self._reg_tooltip(self.exclusions_help_icon, "tooltip_exclusions")
 
-        skip_row = ttk.Frame(frame_opts)
+        skip_row = ttk.Frame(self.frame_opts)
         skip_row.grid(row=2, column=0, columnspan=3, padx=8, pady=(0, 6), sticky="w")
-        ttk.Checkbutton(
-            skip_row, text="Sari peste fisiere deja identice la destinatie (economiseste timp la re-rulari)",
-            variable=self.skip_existing_var
-        ).pack(side="left")
+        self._reg(ttk.Checkbutton(
+            skip_row, variable=self.skip_existing_var
+        ), "opts_skip").pack(side="left")
         from tooltip import add_help_icon_packed
-        add_help_icon_packed(skip_row, HELP_TEXTS["skip_existing"])
+        self.skip_help_icon = add_help_icon_packed(skip_row, "")
+        self._reg_tooltip(self.skip_help_icon, "tooltip_skip")
 
         if sys.platform == "darwin":
-            eject_row = ttk.Frame(frame_opts)
+            eject_row = ttk.Frame(self.frame_opts)
             eject_row.grid(row=3, column=0, columnspan=3, padx=8, pady=(0, 6), sticky="w")
-            ttk.Checkbutton(
-                eject_row, text="Ejecteaza cardul sursa dupa finalizare (doar pe Mac)",
-                variable=self.eject_after_var,
-            ).pack(side="left")
+            self._reg(ttk.Checkbutton(
+                eject_row, variable=self.eject_after_var,
+            ), "opts_eject").pack(side="left")
 
         # Destinatii
-        frame_dest = ttk.LabelFrame(self, text="Destinatii (poti adauga oricate, copiere simultana)")
-        frame_dest.pack(fill="both", expand=False, **pad)
+        self.frame_dest = self._reg(ttk.LabelFrame(self), "dest_label")
+        self.frame_dest.pack(fill="both", expand=False, **pad)
 
-        list_frame = ttk.Frame(frame_dest)
+        list_frame = ttk.Frame(self.frame_dest)
         list_frame.pack(fill="both", expand=True, padx=8, pady=8)
         self.dest_listbox = tk.Listbox(list_frame, height=4)
         self.dest_listbox.pack(side="left", fill="both", expand=True)
@@ -280,49 +289,48 @@ class ShotPutLiteApp(_BASE_CLASS):
         self.dest_listbox.config(yscrollcommand=scrollbar.set)
         self._tk_themed_widgets.append(self.dest_listbox)
 
-        btn_frame = ttk.Frame(frame_dest)
+        btn_frame = ttk.Frame(self.frame_dest)
         btn_frame.pack(fill="x", padx=8, pady=(0, 4))
-        ttk.Button(btn_frame, text="Adauga destinatie...", command=self._add_destination).pack(side="left")
-        ttk.Button(btn_frame, text="Sterge selectia", command=self._remove_destination).pack(side="left", padx=8)
+        self._reg(ttk.Button(btn_frame, command=self._add_destination), "dest_add").pack(side="left")
+        self._reg(ttk.Button(btn_frame, command=self._remove_destination), "dest_remove").pack(side="left", padx=8)
 
-        dnd_hint_dest = "(sau trage unul sau mai multe foldere aici din Finder)" if _DND_AVAILABLE else \
-            "(drag-and-drop indisponibil - vezi CITESTE-MA.md pentru activare)"
-        hint_dest_label = ttk.Label(frame_dest, text=dnd_hint_dest, style="Muted.TLabel")
-        hint_dest_label.pack(anchor="w", padx=8, pady=(0, 8))
-        self._muted_labels.append(hint_dest_label)
+        self.hint_dest_label = ttk.Label(self.frame_dest, style="Muted.TLabel")
+        self._reg(self.hint_dest_label, "dest_dnd" if _DND_AVAILABLE else "dest_dnd_unavailable")
+        self.hint_dest_label.pack(anchor="w", padx=8, pady=(0, 8))
+        self._muted_labels.append(self.hint_dest_label)
 
         if _DND_AVAILABLE:
             self.dest_listbox.drop_target_register(DND_FILES)
             self.dest_listbox.dnd_bind("<<Drop>>", self._on_dest_drop)
-            frame_dest.drop_target_register(DND_FILES)
-            frame_dest.dnd_bind("<<Drop>>", self._on_dest_drop)
+            self.frame_dest.drop_target_register(DND_FILES)
+            self.frame_dest.dnd_bind("<<Drop>>", self._on_dest_drop)
 
         # Progres global + separat copiere/verificare
-        frame_progress = ttk.LabelFrame(self, text="Progres global")
-        frame_progress.pack(fill="x", **pad)
+        self.frame_progress = self._reg(ttk.LabelFrame(self), "progress_global")
+        self.frame_progress.pack(fill="x", **pad)
 
-        self.progress = ttk.Progressbar(frame_progress, orient="horizontal", mode="determinate")
+        self.progress = ttk.Progressbar(self.frame_progress, orient="horizontal", mode="determinate")
         self.progress.pack(fill="x", padx=8, pady=(8, 0))
 
-        info_row = ttk.Frame(frame_progress)
+        info_row = ttk.Frame(self.frame_progress)
         info_row.pack(fill="x", padx=8, pady=(4, 2))
-        self.progress_label = ttk.Label(info_row, text="Inactiv")
+        self.progress_label = self._reg(ttk.Label(info_row), "progress_inactive")
         self.progress_label.pack(side="left")
         self.speed_label = ttk.Label(info_row, text="")
         self.speed_label.pack(side="right")
 
-        phase_row = ttk.Frame(frame_progress)
+        phase_row = ttk.Frame(self.frame_progress)
         phase_row.pack(fill="x", padx=8, pady=(0, 8))
-        self.phase_label = ttk.Label(phase_row, text="Copiere: 0% | Verificare: 0%")
+        self.phase_label = ttk.Label(phase_row, text=self._phase_text(0, 0))
         self.phase_label.pack(side="left")
 
         # Progres per destinatie (randurile se creeaza dinamic la start)
-        self.frame_dest_progress = ttk.LabelFrame(self, text="Progres per destinatie")
+        self.frame_dest_progress = self._reg(ttk.LabelFrame(self), "progress_per_dest")
         self.frame_dest_progress.pack(fill="both", expand=False, **pad)
         self.dest_progress_container = ttk.Frame(self.frame_dest_progress)
         self.dest_progress_container.pack(fill="both", expand=True, padx=8, pady=8)
-        self.dest_progress_placeholder = ttk.Label(
-            self.dest_progress_container, text="(apar aici cand incepe o copiere)", style="Muted.TLabel"
+        self.dest_progress_placeholder = self._reg(
+            ttk.Label(self.dest_progress_container, style="Muted.TLabel"), "progress_placeholder"
         )
         self.dest_progress_placeholder.pack(anchor="w")
         self._muted_labels.append(self.dest_progress_placeholder)
@@ -330,17 +338,49 @@ class ShotPutLiteApp(_BASE_CLASS):
         # Butoane start/anuleaza
         action_row = ttk.Frame(self)
         action_row.pack(pady=(0, 6))
-        self.start_btn = ttk.Button(action_row, text="Incepe offload-ul", command=self._start_offload)
+        self.start_btn = self._reg(ttk.Button(action_row, command=self._start_offload), "action_start")
         self.start_btn.pack(side="left", padx=6)
-        self.cancel_btn = ttk.Button(action_row, text="Anuleaza", command=self._cancel_offload, state="disabled")
+        self.cancel_btn = self._reg(
+            ttk.Button(action_row, command=self._cancel_offload, state="disabled"), "action_cancel"
+        )
         self.cancel_btn.pack(side="left", padx=6)
 
         # Log
-        frame_log = ttk.LabelFrame(self, text="Jurnal")
-        frame_log.pack(fill="both", expand=True, **pad)
-        self.log_text = tk.Text(frame_log, height=10, state="disabled", wrap="word")
+        self.frame_log = self._reg(ttk.LabelFrame(self), "log_label")
+        self.frame_log.pack(fill="both", expand=True, **pad)
+        self.log_text = tk.Text(self.frame_log, height=10, state="disabled", wrap="word")
         self.log_text.pack(fill="both", expand=True, padx=8, pady=8)
         self._tk_themed_widgets.append(self.log_text)
+
+    def _phase_text(self, copy_pct, verify_pct):
+        return f"{self.t('progress_copy')}: {copy_pct}% | {self.t('progress_verify')}: {verify_pct}%"
+
+    def _refresh_verification_combo(self):
+        """(Re)construieste lista de modele de verificare in limba curenta,
+        pastrand selectia curenta (dupa cheia interna, ex. 'md5', nu dupa
+        eticheta afisata, care se schimba odata cu limba)."""
+        key_to_translation_key = {
+            "size_only": "verification_size_only", "md5": "verification_md5",
+            "sha1": "verification_sha1", "sha256": "verification_sha256",
+            "sha512": "verification_sha512",
+        }
+        self.verification_labels = {}
+        display_values = []
+        for model_key in VERIFICATION_MODELS.keys():
+            translation_key = key_to_translation_key.get(model_key)
+            label = self.t(translation_key) if translation_key else VERIFICATION_MODELS[model_key]["label"]
+            self.verification_labels[label] = model_key
+            display_values.append(label)
+
+        self.verification_combo["values"] = display_values
+        current_key = self.verification_model_var.get()
+        for label, model_key in self.verification_labels.items():
+            if model_key == current_key:
+                self.verification_combo.set(label)
+                break
+        else:
+            if display_values:
+                self.verification_combo.set(display_values[0])
 
     # ---------------- Tema (dark mode) ----------------
 
@@ -354,6 +394,36 @@ class ShotPutLiteApp(_BASE_CLASS):
         self._apply_current_theme()
         self._save_settings()
 
+    def _on_language_selected(self, _event=None):
+        label = self.lang_combo.get()
+        for code, lbl in LANGUAGE_LABELS.items():
+            if lbl == label:
+                self.language_var.set(code)
+                break
+        self._apply_language()
+        self._save_settings()
+
+    def _apply_language(self):
+        """Retexteaza toate widget-urile inregistrate (fara sa le distruga
+        sau reconstruiasca), in limba curenta. Nu afecteaza liniile deja
+        scrise in jurnal, nici mesajele generate de offload_engine.py (care
+        raman intentionat in romana - vezi nota din antetul acestui fisier)."""
+        for widget, (key, kwargs) in self._i18n_widgets.items():
+            widget.config(text=self.t(key, **kwargs))
+        for icon, key in self._i18n_tooltips.items():
+            icon.dm_tooltip.text = self.t(key)
+
+        self._refresh_verification_combo()
+
+        if not self.running:
+            self.progress_label.config(text=self.t("progress_inactive"))
+        self.phase_label.config(text=self._phase_text(0, 0) if not self.running else self.phase_label.cget("text"))
+
+        if not self.jobs:
+            self.dest_progress_placeholder.config(text=self.t("progress_placeholder"))
+
+        self._build_help_menu()
+
     def _build_help_menu(self):
         """Inlocuieste meniul nativ 'Help' (care pe Mac apare implicit cu
         mesajul generic 'Help isn't available...') cu unul functional.
@@ -365,18 +435,18 @@ class ShotPutLiteApp(_BASE_CLASS):
         self.config(menu=menubar)
 
         help_menu = tk.Menu(menubar, name="help", tearoff=False)
-        menubar.add_cascade(label="Help", menu=help_menu)
-        help_menu.add_command(label="Ghid ShotPut Lite...", command=self._open_help_guide)
-        help_menu.add_command(label="Despre ShotPut Lite...", command=self._show_about_dialog)
+        menubar.add_cascade(label=self.t("help_menu"), menu=help_menu)
+        help_menu.add_command(label=self.t("help_guide"), command=self._open_help_guide)
+        help_menu.add_command(label=self.t("help_about"), command=self._show_about_dialog)
 
     def _open_help_guide(self):
-        webbrowser.open("https://github.com/gordasgdc/shotput-lite/blob/main/CITESTE-MA.md")
+        webbrowser.open("https://github.com/gordasgdc/datamover/blob/main/CITESTE-MA.md")
 
     def _show_about_dialog(self):
         palette = theme.DARK if self.dark_mode_var.get() else theme.LIGHT
 
         win = tk.Toplevel(self)
-        win.title(f"Despre {APP_NAME}")
+        win.title(self.t("about_title"))
         win.resizable(False, False)
         win.configure(background=palette["bg"])
         win.transient(self)
@@ -389,17 +459,17 @@ class ShotPutLiteApp(_BASE_CLASS):
             background=palette["bg"], foreground=palette["fg"],
         ).pack(pady=(0, 2))
         tk.Label(
-            frame, text=f"Versiune {update_config.APP_VERSION}",
+            frame, text=self.t("about_version", version=update_config.APP_VERSION),
             background=palette["bg"], foreground=palette["muted"],
         ).pack(pady=(0, 4))
         tk.Label(
-            frame, text="Offload verificat de fisiere media, pentru Mac si Windows.",
+            frame, text=self.t("about_description"),
             background=palette["bg"], foreground=palette["muted"],
             wraplength=320, justify="center",
         ).pack(pady=(0, 16))
 
         tk.Label(
-            frame, text=f"Creat de {AUTHOR_NAME}", font=("TkDefaultFont", 11, "bold"),
+            frame, text=self.t("about_creator", name=AUTHOR_NAME), font=("TkDefaultFont", 11, "bold"),
             background=palette["bg"], foreground=palette["fg"],
         ).pack(pady=(0, 10))
 
@@ -413,7 +483,7 @@ class ShotPutLiteApp(_BASE_CLASS):
             link.bind("<Enter>", lambda _e, w=link: w.configure(foreground=palette["fg"]))
             link.bind("<Leave>", lambda _e, w=link: w.configure(foreground=palette["select_bg"]))
 
-        ttk.Button(frame, text="Inchide", command=win.destroy).pack(pady=(18, 0))
+        ttk.Button(frame, text=self.t("about_close"), command=win.destroy).pack(pady=(18, 0))
 
         win.update_idletasks()
         x = self.winfo_rootx() + (self.winfo_width() - win.winfo_width()) // 2
@@ -440,7 +510,7 @@ class ShotPutLiteApp(_BASE_CLASS):
         if not result.get("available"):
             self.after(0, lambda: self._append_log("Ai deja cea mai recenta versiune."))
             self.after(0, lambda: messagebox.showinfo(
-                "ShotPut Lite", f"Ai deja ultima versiune ({update_config.APP_VERSION})."
+                APP_NAME, self.t("msg_no_update", version=update_config.APP_VERSION)
             ))
             return
 
@@ -456,21 +526,17 @@ class ShotPutLiteApp(_BASE_CLASS):
             # Rulare din sursa (python3 main.py) - actualizarea automata e
             # dezactivata din siguranta (vezi updater.py). Doar informam.
             messagebox.showinfo(
-                "Versiune noua disponibila",
-                f"Este disponibila versiunea {version} (tu rulezi din sursa, versiunea curenta "
-                f"e {update_config.APP_VERSION}).\n\n"
-                f"Ce e nou:\n{changes}\n\n"
-                f"Actualizarea automata functioneaza doar in aplicatia compilata (.app/.exe). "
-                f"Din sursa, actualizezi manual cu 'git pull'."
+                self.t("msg_update_available_title"),
+                self.t("msg_update_source_only", version=version,
+                       current=update_config.APP_VERSION, changes=changes),
             )
             return
 
-        msg = f"Versiune noua disponibila: {version}\n\nCe este nou:\n{changes}\n\n"
+        msg = self.t("msg_update_available", version=version, changes=changes)
         if mandatory:
-            msg += "Aceasta actualizare este obligatorie.\n\n"
-        msg += "Doresti sa descarci si sa instalezi acum? Aplicatia se va inchide si reporni automat."
+            msg = self.t("msg_update_mandatory") + msg
 
-        if not messagebox.askyesno("Actualizare disponibila", msg):
+        if not messagebox.askyesno(self.t("msg_update_available_title"), msg):
             return
 
         threading.Thread(target=self._perform_update_thread, args=(download_url,), daemon=True).start()
@@ -479,7 +545,7 @@ class ShotPutLiteApp(_BASE_CLASS):
         temp_dir = None
         try:
             self.after(0, lambda: self._append_log("Se descarca actualizarea..."))
-            temp_dir = tempfile.mkdtemp(prefix="shotput_update_")
+            temp_dir = tempfile.mkdtemp(prefix="datamover_update_")
 
             archive_path, error = updater.download_update(
                 download_url, temp_dir,
@@ -487,7 +553,8 @@ class ShotPutLiteApp(_BASE_CLASS):
                 timeout=update_config.DOWNLOAD_TIMEOUT,
             )
             if error:
-                self.after(0, lambda: messagebox.showerror("Eroare", f"Descarcare esuata: {error}"))
+                self.after(0, lambda: messagebox.showerror(
+                    self.t("msg_error_title"), self.t("msg_update_download_error", error=error)))
                 return
             self.after(0, lambda: self._append_log("Descarcare completa."))
 
@@ -500,7 +567,8 @@ class ShotPutLiteApp(_BASE_CLASS):
                 success, error = updater.perform_update_mac(archive_path, temp_dir)
 
             if not success:
-                self.after(0, lambda: messagebox.showerror("Eroare", f"Actualizare esuata: {error}"))
+                self.after(0, lambda: messagebox.showerror(
+                    self.t("msg_error_title"), self.t("msg_update_install_error", error=error)))
                 return
 
             if sys.platform == "win32":
@@ -513,7 +581,7 @@ class ShotPutLiteApp(_BASE_CLASS):
             self.after(1200, self.destroy)
 
         except Exception as e:
-            self.after(0, lambda: messagebox.showerror("Eroare", f"Eroare la actualizare: {e}"))
+            self.after(0, lambda: messagebox.showerror(self.t("msg_error_title"), str(e)))
             if temp_dir:
                 updater.cleanup_update(temp_dir)
 
@@ -537,7 +605,7 @@ class ShotPutLiteApp(_BASE_CLASS):
         self.verification_model_var.set(key)
 
     def _choose_source(self):
-        path = filedialog.askdirectory(title="Alege folderul sursa (cardul sau drive-ul)")
+        path = filedialog.askdirectory(title=self.t("source_manual"))
         if path:
             self.source_var.set(path)
 
@@ -556,7 +624,7 @@ class ShotPutLiteApp(_BASE_CLASS):
             return
         folders = [p for p in paths if os.path.isdir(p)]
         if not folders:
-            messagebox.showwarning("Atentie", "Te rog trage un folder (nu un fisier individual).")
+            messagebox.showwarning(self.t("msg_warning_title"), self.t("msg_drop_source_only"))
             return
         if len(folders) > 1:
             self._append_log(f"Ai tras {len(folders)} foldere - folosesc doar primul ca sursa: {folders[0]}")
@@ -578,12 +646,12 @@ class ShotPutLiteApp(_BASE_CLASS):
         if added:
             self._append_log(f"Adaugate {added} destinatie(i) prin drag-and-drop.")
         else:
-            messagebox.showwarning("Atentie", "Te rog trage unul sau mai multe foldere (nu fisiere individuale).")
+            messagebox.showwarning(self.t("msg_warning_title"), self.t("msg_drop_dest_only"))
 
     # ---------------- Destinatii ----------------
 
     def _add_destination(self):
-        path = filedialog.askdirectory(title="Alege un folder destinatie")
+        path = filedialog.askdirectory(title=self.t("dest_add"))
         if path and path not in self.destinations:
             self.destinations.append(path)
             self.dest_listbox.insert("end", path)
@@ -657,26 +725,25 @@ class ShotPutLiteApp(_BASE_CLASS):
         if any_cancelled:
             self._append_log(">>> Sesiune anulata de utilizator. Poti relua mai tarziu doar "
                               "fisierele ramase cu butonul 'Reia ultima copiere neterminata...'.")
-            send_notification("ShotPut Lite", "Offload anulat de utilizator.")
-            messagebox.showwarning("ShotPut Lite", "Offload-ul a fost anulat.")
+            send_notification(APP_NAME, self.t("msg_offload_cancelled"))
+            messagebox.showwarning(self.t("msg_offload_cancelled_title"), self.t("msg_offload_cancelled"))
         else:
             self._append_log(
                 f">>> Toate destinatiile au fost finalizate. Total: {total_ok} OK, "
                 f"{total_skip} sarite, {total_fail} probleme."
             )
             send_notification(
-                "ShotPut Lite",
+                APP_NAME,
                 f"Offload complet: {total_ok} OK, {total_fail} probleme pe "
                 f"{len(self.jobs)} destinatie(i)."
             )
             if total_fail > 0:
                 messagebox.showwarning(
-                    "ShotPut Lite",
-                    f"Offload complet, dar cu {total_fail} probleme. Verifica jurnalul si rapoartele PDF/CSV.\n\n"
-                    f"Poti folosi 'Reia ultima copiere neterminata...' ca sa reincerci doar fisierele cu probleme."
+                    self.t("msg_offload_cancelled_title"),
+                    self.t("msg_offload_complete_problems", count=total_fail),
                 )
             else:
-                messagebox.showinfo("ShotPut Lite", "Offload complet, toate fisierele verificate cu succes.")
+                messagebox.showinfo(self.t("msg_offload_cancelled_title"), self.t("msg_offload_complete_ok"))
 
             self._maybe_eject_source()
 
@@ -756,7 +823,7 @@ class ShotPutLiteApp(_BASE_CLASS):
                 break
 
         if not os.path.isdir(target):
-            messagebox.showerror("Eroare", f"Folderul {target} nu exista.")
+            messagebox.showerror(self.t("msg_error_title"), f"Folderul {target} nu exista.")
             return
         try:
             if sys.platform == "darwin":
@@ -766,7 +833,7 @@ class ShotPutLiteApp(_BASE_CLASS):
             else:
                 subprocess.run(["xdg-open", target])
         except Exception as e:
-            messagebox.showerror("Eroare", f"Nu am putut deschide folderul: {e}")
+            messagebox.showerror(self.t("msg_error_title"), f"Nu am putut deschide folderul: {e}")
 
     def _update_dest_progress_rows(self):
         for job in self.jobs:
@@ -815,16 +882,12 @@ class ShotPutLiteApp(_BASE_CLASS):
     def _show_resume_dialog(self):
         found = self._check_resumable_checkpoints(silent=True)
         if not found:
-            messagebox.showinfo("Reluare", "Nu am gasit nicio copiere neterminata pentru "
-                                            "proiectul/cardul curent.")
+            messagebox.showinfo(self.t("msg_resume_none_title"), self.t("msg_resume_none"))
             return
         details = "\n".join(f"- {dest} ({folder_name}): {remaining} fisiere ramase"
                              for dest, folder_name, _root, remaining in found)
         proceed = messagebox.askyesno(
-            "Reia copierea",
-            f"Am gasit urmatoarele copieri neterminate:\n\n{details}\n\n"
-            f"Vrei sa incepi offload-ul acum, reluand automat de unde a ramas "
-            f"(fisierele deja verificate corect NU vor fi recopiate)?"
+            self.t("msg_resume_title"), self.t("msg_resume_details", details=details)
         )
         if proceed:
             self._start_offload(resume=True)
@@ -850,10 +913,10 @@ class ShotPutLiteApp(_BASE_CLASS):
     def _start_offload(self, resume=False):
         source = self.source_var.get().strip()
         if not source or not os.path.isdir(source):
-            messagebox.showerror("Eroare", "Alege un folder sursa valid.")
+            messagebox.showerror(self.t("msg_error_title"), self.t("msg_source_error"))
             return
         if not self.destinations:
-            messagebox.showerror("Eroare", "Adauga cel putin o destinatie.")
+            messagebox.showerror(self.t("msg_error_title"), self.t("msg_dest_error"))
             return
 
         project = self.project_var.get().strip() or "Proiect"
@@ -870,8 +933,7 @@ class ShotPutLiteApp(_BASE_CLASS):
 
         files = list_all_files(source, exclusions=exclusions)
         if not files:
-            messagebox.showwarning("Atentie", "Nu am gasit niciun fisier relevant in sursa selectata "
-                                               "(sau toate au fost excluse).")
+            messagebox.showwarning(self.t("msg_warning_title"), self.t("msg_no_files"))
             return
 
         total_size = sum(size for _f, _r, size in files)
@@ -884,10 +946,8 @@ class ShotPutLiteApp(_BASE_CLASS):
                 insufficient.append(f"{dest} (liber: {format_size(free)}, necesar: {format_size(total_size)})")
         if insufficient:
             proceed = messagebox.askyesno(
-                "Spatiu insuficient",
-                "Spatiu liber insuficient pe urmatoarele destinatii:\n\n" +
-                "\n".join(insufficient) +
-                "\n\nVrei sa continui oricum?"
+                self.t("msg_space_warning_title"),
+                self.t("msg_space_warning", details="\n".join(insufficient)),
             )
             if not proceed:
                 return
@@ -913,9 +973,9 @@ class ShotPutLiteApp(_BASE_CLASS):
         self.running = True
         self.start_time = datetime.now()
         self.progress["value"] = 0
-        self.progress_label.config(text="Se pregateste...")
+        self.progress_label.config(text=self.t("progress_preparing"))
         self.speed_label.config(text="")
-        self.phase_label.config(text="Copiere: 0% | Verificare: 0%")
+        self.phase_label.config(text=self._phase_text(0, 0))
         self.start_btn.config(state="disabled")
         self.cancel_btn.config(state="normal")
         self.cancel_event = threading.Event()
@@ -940,7 +1000,7 @@ class ShotPutLiteApp(_BASE_CLASS):
 
     def _cancel_offload(self):
         if self.running:
-            confirmed = messagebox.askyesno("Anuleaza", "Sigur vrei sa anulezi offload-ul in curs?")
+            confirmed = messagebox.askyesno(self.t("action_cancel"), self.t("msg_confirm_cancel"))
             if confirmed:
                 self.cancel_event.set()
                 self._append_log(">>> Se anuleaza... (fisierul curent se termina de copiat, apoi se opreste)")
@@ -951,19 +1011,19 @@ class ShotPutLiteApp(_BASE_CLASS):
     def _find_companion_monitor_executable(self):
         """Cand aplicatia ruleaza COMPILATA (.app pe Mac / .exe pe Windows), tray_monitor.py
         nu mai exista ca script Python de rulat cu 'python3' - e compilat separat, ca un
-        executabil insotitor numit 'ShotPut Lite Monitor' (Mac) / 'ShotPut Lite Monitor.exe'
+        executabil insotitor numit 'DataMover Monitor' (Mac) / 'DataMover Monitor.exe'
         (Windows), livrat in ACELASI folder/zip cu aplicatia principala. Aceasta functie il
         cauta in locurile unde ar trebui sa fie, relativ la executabilul curent."""
         exe_dir = os.path.dirname(sys.executable)
 
         if sys.platform == "darwin":
-            # sys.executable e in interiorul bundle-ului: .../ShotPut Lite.app/Contents/MacOS/...
+            # sys.executable e in interiorul bundle-ului: .../DataMover.app/Contents/MacOS/...
             # Monitorul e livrat ca fisier separat, ALATURI de .app (nu in interiorul lui),
             # deci urcam 3 niveluri ca sa iesim din bundle.
             app_bundle_dir = os.path.abspath(os.path.join(exe_dir, "..", "..", ".."))
-            candidates = [os.path.join(app_bundle_dir, "ShotPut Lite Monitor")]
+            candidates = [os.path.join(app_bundle_dir, "DataMover Monitor")]
         else:
-            candidates = [os.path.join(exe_dir, "ShotPut Lite Monitor.exe")]
+            candidates = [os.path.join(exe_dir, "DataMover Monitor.exe")]
 
         for path in candidates:
             if os.path.isfile(path):
@@ -972,12 +1032,7 @@ class ShotPutLiteApp(_BASE_CLASS):
 
     def _start_monitor_mode(self):
         if not self.destinations:
-            messagebox.showwarning(
-                "Atentie",
-                "Modul Monitorizare foloseste ultimele destinatii SALVATE. "
-                "Adauga cel putin o destinatie si porneste un offload manual o data, "
-                "apoi incearca din nou."
-            )
+            messagebox.showwarning(self.t("msg_warning_title"), self.t("msg_monitor_no_dest"))
             return
         self._save_settings()
 
@@ -986,13 +1041,7 @@ class ShotPutLiteApp(_BASE_CLASS):
         if is_frozen:
             monitor_exe = self._find_companion_monitor_executable()
             if not monitor_exe:
-                messagebox.showerror(
-                    "Eroare",
-                    "Nu gasesc executabilul 'ShotPut Lite Monitor' langa aplicatie.\n\n"
-                    "Verifica sa fi extras TOT continutul arhivei descarcate (.zip) - "
-                    "aplicatia principala si 'ShotPut Lite Monitor' trebuie sa ramana "
-                    "in acelasi folder, nu doar aplicatia mutata separat."
-                )
+                messagebox.showerror(self.t("msg_error_title"), self.t("msg_monitor_missing_exe"))
                 return
             try:
                 if sys.platform != "darwin":
@@ -1002,36 +1051,28 @@ class ShotPutLiteApp(_BASE_CLASS):
                 else:
                     subprocess.Popen([monitor_exe])
             except Exception as e:
-                messagebox.showerror("Eroare", f"Nu am putut porni modul Monitorizare: {e}")
+                messagebox.showerror(self.t("msg_error_title"), self.t("msg_monitor_error", error=e))
                 return
         else:
             # rulare din sursa (python3 main.py) - pornim scriptul direct
             script_dir = os.path.dirname(os.path.abspath(__file__))
             monitor_py = os.path.join(script_dir, "tray_monitor.py")
             if not os.path.isfile(monitor_py):
-                messagebox.showerror("Eroare", "Nu gasesc tray_monitor.py in acelasi folder cu main.py.")
+                messagebox.showerror(self.t("msg_error_title"), "Nu gasesc tray_monitor.py in acelasi folder cu main.py.")
                 return
             try:
                 subprocess.Popen([sys.executable, monitor_py])
             except Exception as e:
-                messagebox.showerror("Eroare", f"Nu am putut porni modul Monitorizare: {e}")
+                messagebox.showerror(self.t("msg_error_title"), self.t("msg_monitor_error", error=e))
                 return
 
-        messagebox.showinfo(
-            "Modul Monitorizare",
-            "Modulul de monitorizare a fost pornit intr-un proces separat "
-            "(iconita in system tray / menu bar). Poti inchide aceasta fereastra - "
-            "monitorizarea continua sa ruleze in fundal."
-        )
+        messagebox.showinfo(self.t("msg_monitor_ready_title"), self.t("msg_monitor_ready"))
 
     # ---------------- Inchidere ----------------
 
     def _on_close(self):
         if self.running:
-            if not messagebox.askyesno(
-                "Iesire", "Un offload este in curs. Sigur vrei sa inchizi aplicatia? "
-                          "Copierea in desfasurare va fi intrerupta."
-            ):
+            if not messagebox.askyesno(self.t("action_cancel"), self.t("msg_confirm_exit")):
                 return
             self.cancel_event.set()
         self._save_settings()
@@ -1039,5 +1080,5 @@ class ShotPutLiteApp(_BASE_CLASS):
 
 
 if __name__ == "__main__":
-    app = ShotPutLiteApp()
+    app = DataMoverApp()
     app.mainloop()

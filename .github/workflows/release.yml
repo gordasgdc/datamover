@@ -1,4 +1,4 @@
-name: Release ShotPut Lite (Mac + Windows)
+name: Release DataMover (Mac + Windows)
 
 # Se ruleaza automat cand creezi un "tag" de versiune, de exemplu:
 #   git tag v1.0.0
@@ -36,8 +36,8 @@ jobs:
 
       - name: Compileaza .exe cu PyInstaller
         run: |
-          pyinstaller --onefile --windowed --name "ShotPut Lite" `
-            --icon=ShotPutLite.ico `
+          pyinstaller --onefile --windowed --name "DataMover" `
+            --icon=DataMover.ico `
             --hidden-import=offload_engine `
             --hidden-import=pdf_report `
             --hidden-import=config `
@@ -46,14 +46,15 @@ jobs:
             --hidden-import=checkpoint `
             --hidden-import=update_config `
             --hidden-import=updater `
+            --hidden-import=translations `
             --collect-all reportlab `
             --collect-all tkinterdnd2 `
             main.py
 
       - name: Compileaza modulul de Monitorizare (executabil insotitor)
         run: |
-          pyinstaller --onefile --windowed --name "ShotPut Lite Monitor" `
-            --icon=ShotPutLite.ico `
+          pyinstaller --onefile --windowed --name "DataMover Monitor" `
+            --icon=DataMover.ico `
             --hidden-import=offload_engine `
             --hidden-import=config `
             --collect-all pystray `
@@ -63,17 +64,17 @@ jobs:
       - name: Pregateste folderul de distributie (exe + monitor, la un loc)
         run: |
           mkdir dist_release
-          copy "dist\ShotPut Lite.exe" dist_release\
-          copy "dist\ShotPut Lite Monitor.exe" dist_release\
+          copy "dist\DataMover.exe" dist_release\
+          copy "dist\DataMover Monitor.exe" dist_release\
 
       - name: Arhiveaza intr-un singur .zip
-        run: Compress-Archive -Path "dist_release\*" -DestinationPath "ShotPut-Lite-Windows.zip"
+        run: Compress-Archive -Path "dist_release\*" -DestinationPath "DataMover-Windows.zip"
 
       - name: Salveaza pentru pasul de release
         uses: actions/upload-artifact@v4
         with:
           name: windows-build
-          path: ShotPut-Lite-Windows.zip
+          path: DataMover-Windows.zip
 
   build-mac:
     runs-on: macos-latest
@@ -95,54 +96,54 @@ jobs:
         run: python setup.py py2app
 
       - name: Compileaza modulul de Monitorizare (executabil insotitor)
-        run: pyinstaller --onefile --name "ShotPut Lite Monitor" tray_monitor.py
+        run: pyinstaller --onefile --name "DataMover Monitor" tray_monitor.py
 
       - name: Pregateste folderul de distributie (app + monitor, la un loc)
         run: |
           mkdir -p dist_release
-          cp -R "dist/ShotPut Lite.app" dist_release/
-          cp "dist/ShotPut Lite Monitor" dist_release/
-          chmod +x "dist_release/ShotPut Lite Monitor"
+          cp -R "dist/DataMover.app" dist_release/
+          cp "dist/DataMover Monitor" dist_release/
+          chmod +x "dist_release/DataMover Monitor"
 
       - name: Arhiveaza (ditto pastreaza corect permisiunile Mac)
         run: |
           cd dist_release
-          ditto -c -k --sequesterRsrc "." "$GITHUB_WORKSPACE/ShotPut-Lite-Mac.zip"
+          ditto -c -k --sequesterRsrc "." "$GITHUB_WORKSPACE/DataMover-Mac.zip"
 
       - name: Salveaza pentru pasul de release
         uses: actions/upload-artifact@v4
         with:
           name: mac-build
-          path: ShotPut-Lite-Mac.zip
+          path: DataMover-Mac.zip
 
       - name: Creeaza instalatorul .pkg (curata automat carantina la instalare)
         run: |
           TAG="${{ github.event.inputs.tag || github.ref_name }}"
           VERSION="${TAG#v}"
           mkdir -p pkgroot/Applications
-          cp -R "dist/ShotPut Lite.app" "pkgroot/Applications/ShotPut Lite.app"
-          cp "dist/ShotPut Lite Monitor" "pkgroot/Applications/ShotPut Lite Monitor"
-          chmod +x "pkgroot/Applications/ShotPut Lite Monitor"
+          cp -R "dist/DataMover.app" "pkgroot/Applications/DataMover.app"
+          cp "dist/DataMover Monitor" "pkgroot/Applications/DataMover Monitor"
+          chmod +x "pkgroot/Applications/DataMover Monitor"
           mkdir -p scripts
           cat > scripts/postinstall << 'POSTEOF'
           #!/bin/bash
-          xattr -cr "/Applications/ShotPut Lite.app" || true
-          xattr -cr "/Applications/ShotPut Lite Monitor" || true
+          xattr -cr "/Applications/DataMover.app" || true
+          xattr -cr "/Applications/DataMover Monitor" || true
           exit 0
           POSTEOF
           chmod +x scripts/postinstall
           pkgbuild --root pkgroot \
             --scripts scripts \
-            --identifier personal.shotputlite \
+            --identifier com.gordasgdc.datamover \
             --version "$VERSION" \
             --install-location / \
-            "ShotPut-Lite-Mac-Installer.pkg"
+            "DataMover-Mac-Installer.pkg"
 
       - name: Salveaza .pkg pentru pasul de release
         uses: actions/upload-artifact@v4
         with:
           name: mac-pkg-build
-          path: ShotPut-Lite-Mac-Installer.pkg
+          path: DataMover-Mac-Installer.pkg
 
   create-release:
     needs: [build-windows, build-mac]
