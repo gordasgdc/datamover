@@ -1,7 +1,7 @@
 """
 theme.py
 --------
-Tema intunecata (dark mode) pentru ShotPut Lite. Fara dependinte externe.
+Tema intunecata (dark mode) pentru DataMover. Fara dependinte externe.
 
 ttk foloseste un sistem de "style" global (nu culori per-widget), deci
 schimbam paleta printr-un ttk.Style unificat. Widget-urile clasice tk

@@ -1,4 +1,4 @@
-name: Build ShotPut Lite (Windows .exe)
+name: Build DataMover (Windows .exe)
 
 # Se ruleaza automat cand faci "git push" pe branch-ul main,
 # sau manual din tab-ul "Actions" al repo-ului (butonul "Run workflow").
@@ -27,8 +27,8 @@ jobs:
 
       - name: Compileaza .exe cu PyInstaller
         run: |
-          pyinstaller --onefile --windowed --name "ShotPut Lite" `
-            --icon=ShotPutLite.ico `
+          pyinstaller --onefile --windowed --name "DataMover" `
+            --icon=DataMover.ico `
             --hidden-import=offload_engine `
             --hidden-import=pdf_report `
             --hidden-import=config `
@@ -37,14 +37,15 @@ jobs:
             --hidden-import=checkpoint `
             --hidden-import=update_config `
             --hidden-import=updater `
+            --hidden-import=translations `
             --collect-all reportlab `
             --collect-all tkinterdnd2 `
             main.py
 
       - name: Compileaza modulul de Monitorizare (executabil insotitor)
         run: |
-          pyinstaller --onefile --windowed --name "ShotPut Lite Monitor" `
-            --icon=ShotPutLite.ico `
+          pyinstaller --onefile --windowed --name "DataMover Monitor" `
+            --icon=DataMover.ico `
             --hidden-import=offload_engine `
             --hidden-import=config `
             --collect-all pystray `
@@ -54,14 +55,14 @@ jobs:
       - name: Pregateste folderul de distributie (exe + monitor, la un loc)
         run: |
           mkdir dist_release
-          copy "dist\ShotPut Lite.exe" dist_release\
-          copy "dist\ShotPut Lite Monitor.exe" dist_release\
+          copy "dist\DataMover.exe" dist_release\
+          copy "dist\DataMover Monitor.exe" dist_release\
 
       - name: Arhiveaza intr-un singur .zip
-        run: Compress-Archive -Path "dist_release\*" -DestinationPath "dist\ShotPut-Lite-Windows.zip"
+        run: Compress-Archive -Path "dist_release\*" -DestinationPath "dist\DataMover-Windows.zip"
 
       - name: Incarca .zip ca artefact descarcabil
         uses: actions/upload-artifact@v4
         with:
-          name: ShotPut-Lite-Windows
-          path: dist/ShotPut-Lite-Windows.zip
+          name: DataMover-Windows
+          path: dist/DataMover-Windows.zip

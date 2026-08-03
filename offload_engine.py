@@ -1,7 +1,7 @@
 """
 offload_engine.py
 ------------------
-Logica de baza pentru ShotPut Lite: scanare surse, copiere cu verificare
+Logica de baza pentru DataMover: scanare surse, copiere cu verificare
 (mai multe modele de securitate posibile), excludere fisiere/extensii,
 verificare spatiu liber, detectare automata a volumelor/drive-urilor
 montate (macOS si Windows), suport pentru anulare in timpul copierii,
@@ -51,7 +51,7 @@ VERIFICATION_MODELS = {
         "hashlib_name": None,
     },
     "md5": {
-        "label": "MD5 (rapid - standard in industrie, folosit si de ShotPut Pro implicit)",
+        "label": "MD5 (rapid - standard in industrie)",
         "hashlib_name": "md5",
     },
     "sha1": {
@@ -463,7 +463,7 @@ class DestinationJob:
             log_master(f"Offload finalizat -> destinatie={self.dest_root}, "
                         f"OK={self.ok_count}, sarite={self.skip_count}, probleme={self.fail_count}")
             send_notification(
-                "ShotPut Lite",
+                "DataMover",
                 f"Destinatie finalizata: {os.path.basename(self.dest_root)} "
                 f"({self.ok_count} OK, {self.fail_count} probleme)"
             )

@@ -1,7 +1,7 @@
 """
 updater.py
 ----------
-Logica de self-update pentru ShotPut Lite: verificare versiune noua,
+Logica de self-update pentru DataMover: verificare versiune noua,
 descarcare, si instalare (Windows: inlocuire .exe; Mac: instalare .pkg
 cu prompt nativ de parola admin). Foloseste doar biblioteca standard
 Python - fara dependinte externe.
@@ -45,7 +45,7 @@ def check_for_updates(current_version, update_url, timeout=10):
     update_url. Returneaza un dict cu 'available' (True/False) si, daca e
     disponibila o versiune noua, detaliile ei."""
     try:
-        request = urllib.request.Request(update_url, headers={"User-Agent": "ShotPutLite-Updater"})
+        request = urllib.request.Request(update_url, headers={"User-Agent": "DataMover-Updater"})
         with urllib.request.urlopen(request, timeout=timeout) as response:
             data = json.loads(response.read().decode("utf-8"))
 
@@ -79,12 +79,12 @@ def download_update(download_urls, temp_dir, retry_count=3, timeout=60):
         return None, f"Nu exista un link de descarcare pentru platforma '{platform_key}'."
 
     ext = os.path.splitext(url.split("?")[0])[1] or ".bin"
-    download_path = os.path.join(temp_dir, f"shotput_update_{platform_key}{ext}")
+    download_path = os.path.join(temp_dir, f"datamover_update_{platform_key}{ext}")
 
     last_error = None
     for attempt in range(1, retry_count + 1):
         try:
-            request = urllib.request.Request(url, headers={"User-Agent": "ShotPutLite-Updater"})
+            request = urllib.request.Request(url, headers={"User-Agent": "DataMover-Updater"})
             with urllib.request.urlopen(request, timeout=timeout) as response, \
                     open(download_path, "wb") as out_file:
                 shutil.copyfileobj(response, out_file)
@@ -111,7 +111,7 @@ def _find_file(directory, exact_name):
 
 
 def perform_update_windows(extract_dir, overall_temp_dir):
-    """Inlocuieste 'ShotPut Lite.exe' curent cu cel nou-descarcat, printr-un
+    """Inlocuieste 'DataMover.exe' curent cu cel nou-descarcat, printr-un
     script .bat auxiliar care asteapta (in bucla, nu cu un timp fix) ca
     procesul curent sa elibereze fisierul, apoi il inlocuieste si reporneste
     aplicatia. Functioneaza DOAR daca aplicatia ruleaza compilata."""
@@ -119,13 +119,13 @@ def perform_update_windows(extract_dir, overall_temp_dir):
         return False, ("Actualizarea automata functioneaza doar in versiunea compilata "
                         "(.exe) - nu si cand rulezi din sursa cu 'python3 main.py'.")
 
-    new_exe = _find_file(extract_dir, "ShotPut Lite.exe")
+    new_exe = _find_file(extract_dir, "DataMover.exe")
     if not new_exe:
-        return False, "Nu am gasit 'ShotPut Lite.exe' in arhiva descarcata."
+        return False, "Nu am gasit 'DataMover.exe' in arhiva descarcata."
 
     current_exe = sys.executable
-    bat_path = os.path.join(overall_temp_dir, "shotput_update.bat")
-    log_path = os.path.join(overall_temp_dir, "shotput_update.log")
+    bat_path = os.path.join(overall_temp_dir, "datamover_update.bat")
+    log_path = os.path.join(overall_temp_dir, "datamover_update.log")
 
     bat_content = f"""@echo off
 setlocal enabledelayedexpansion
@@ -171,8 +171,8 @@ def perform_update_mac(pkg_path, overall_temp_dir):
     if not pkg_path or not os.path.isfile(pkg_path):
         return False, "Nu am gasit fisierul .pkg descarcat."
 
-    script_path = os.path.join(overall_temp_dir, "shotput_update.sh")
-    log_path = os.path.join(overall_temp_dir, "shotput_update.log")
+    script_path = os.path.join(overall_temp_dir, "datamover_update.sh")
+    log_path = os.path.join(overall_temp_dir, "datamover_update.log")
 
     script_content = f"""#!/bin/bash
 exec > "{log_path}" 2>&1
@@ -185,7 +185,7 @@ if [ $status -ne 0 ]; then
     exit $status
 fi
 echo "Pornesc aplicatia actualizata..."
-open -a "ShotPut Lite"
+open -a "DataMover"
 rm -rf "{overall_temp_dir}"
 """
     with open(script_path, "w", encoding="utf-8") as f:

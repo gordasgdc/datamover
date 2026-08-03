@@ -2,10 +2,10 @@
 """
 tray_monitor.py
 ----------------
-Modul "Monitorizare" pentru ShotPut Lite: ruleaza in fundal (iconita in
+Modul "Monitorizare" pentru DataMover: ruleaza in fundal (iconita in
 system tray pe Windows / menu bar pe macOS), detecteaza automat cand
 apare un card/drive nou montat, si porneste automat un offload folosind
-ULTIMELE setari salvate (din ~/.shotputlite_config.json), catre toate
+ULTIMELE setari salvate (din ~/.datamover_config.json), catre toate
 destinatiile salvate. Trimite notificare nativa la final.
 
 Necesita o dependinta suplimentara (spre deosebire de restul aplicatiei):
@@ -16,7 +16,7 @@ Necesita o dependinta suplimentara (spre deosebire de restul aplicatiei):
 'Pillow' e folosit doar ca sa genereze o iconita simpla din cod, fara sa
 mai avem nevoie de un fisier .png separat.) Daca oricare din cele doua
 lipseste, modulul afiseaza un mesaj clar in consola si iese - restul
-aplicatiei (ShotPut Lite normal, cu fereastra) nu e afectat deloc.
+aplicatiei (DataMover normal, cu fereastra) nu e afectat deloc.
 
 Rulare:
     python3 tray_monitor.py
@@ -100,13 +100,13 @@ class OffloadMonitor:
         destinations = settings.get("destinations", [])
         if not destinations:
             print(f"[monitor] Card detectat ({source}) dar nu exista destinatii "
-                  f"salvate - deschide ShotPut Lite normal si configureaza-le o data.")
+                  f"salvate - deschide DataMover normal si configureaza-le o data.")
             return
 
         self._busy = True
         self.on_status_change(True)
         print(f"[monitor] Card/drive nou detectat: {source} -> pornesc offload automat...")
-        send_notification("ShotPut Lite", f"Card detectat ({os.path.basename(source)}) - pornesc offload-ul automat.")
+        send_notification("DataMover", f"Card detectat ({os.path.basename(source)}) - pornesc offload-ul automat.")
 
         try:
             project = settings.get("project", "").strip() or "Proiect"
@@ -147,7 +147,7 @@ class OffloadMonitor:
             total_ok = sum(j.ok_count for j in jobs)
             total_fail = sum(j.fail_count for j in jobs)
             send_notification(
-                "ShotPut Lite",
+                "DataMover",
                 f"Offload automat complet ({os.path.basename(source)}): "
                 f"{total_ok} OK, {total_fail} probleme pe {len(jobs)} destinatie(i).",
             )
@@ -162,7 +162,7 @@ def main():
     if missing:
         print("Modul 'Monitorizare' necesita biblioteci suplimentare care lipsesc:")
         print(f"    pip install {' '.join(missing)}")
-        print("Restul aplicatiei ShotPut Lite functioneaza normal fara acest modul.")
+        print("Restul aplicatiei DataMover functioneaza normal fara acest modul.")
         sys.exit(1)
 
     import pystray
@@ -175,7 +175,7 @@ def main():
         icon = icon_holder.get("icon")
         if icon is not None:
             icon.icon = _make_icon_image(busy=busy)
-            icon.title = "ShotPut Lite - copiere in curs..." if busy else "ShotPut Lite - monitorizare activa"
+            icon.title = "DataMover - copiere in curs..." if busy else "DataMover - monitorizare activa"
 
     monitor.on_status_change = on_status_change
 
@@ -192,13 +192,13 @@ def main():
         subprocess.Popen([sys.executable, main_py])
 
     menu = pystray.Menu(
-        pystray.MenuItem("ShotPut Lite - Monitorizare activa", None, enabled=False),
+        pystray.MenuItem("DataMover - Monitorizare activa", None, enabled=False),
         pystray.MenuItem("Deschide setarile...", on_open_settings),
         pystray.MenuItem("Iesire", on_quit),
     )
 
-    icon = pystray.Icon("shotput-lite-monitor", _make_icon_image(busy=False),
-                         "ShotPut Lite - monitorizare activa", menu)
+    icon = pystray.Icon("datamover-monitor", _make_icon_image(busy=False),
+                         "DataMover - monitorizare activa", menu)
     icon_holder["icon"] = icon
 
     monitor_thread = threading.Thread(target=monitor.run_loop, daemon=True)

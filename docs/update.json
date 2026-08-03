@@ -3,8 +3,8 @@
   "release_date": "2026-08-02",
   "changes": "Self-update, buton deschide folder, ejectare card, log centralizat, pagina web si branding.",
   "download_url": {
-    "windows": "https://github.com/gordasgdc/shotput-lite/releases/latest/download/ShotPut-Lite-Windows.zip",
-    "mac": "https://github.com/gordasgdc/shotput-lite/releases/latest/download/ShotPut-Lite-Mac-Installer.pkg"
+    "windows": "https://github.com/gordasgdc/datamover/releases/latest/download/DataMover-Windows.zip",
+    "mac": "https://github.com/gordasgdc/datamover/releases/latest/download/DataMover-Mac-Installer.pkg"
   },
   "mandatory": false,
   "min_version": "1.0.0"
