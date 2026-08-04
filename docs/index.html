@@ -1,147 +1,829 @@
 <!DOCTYPE html>
 <html lang="ro">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DataMover - Offload verificat pentru echipe video</title>
-    <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, sans-serif; max-width: 900px; margin: 0 auto; padding: 2rem 1.5rem; line-height: 1.6; color: #1a1a1a; background: #f8f9fa; }
-        .header { text-align: center; padding: 2rem 0; border-bottom: 2px solid #2b6cb0; }
-        .header h1 { font-size: 2.5rem; margin: 0; color: #2b6cb0; }
-        .header p { font-size: 1.2rem; color: #4a5568; }
-        .language-selector { display: flex; gap: 8px; justify-content: center; margin: 16px 0 0; }
-        .language-selector a { text-decoration: none; padding: 4px 12px; border-radius: 4px; background: #e2e8f0; color: #2d3748; font-weight: bold; }
-        .language-selector a:hover { background: #2b6cb0; color: white; }
-        .language-selector a.active { background: #2b6cb0; color: white; }
-        .lang-content { display: none; }
-        .lang-content.active { display: block; }
-        .features { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 2rem 0; }
-        .feature { background: white; padding: 1rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        .feature h3 { margin: 0 0 0.5rem 0; color: #2d3748; }
-        .download { background: #2b6cb0; color: white; padding: 2rem; border-radius: 8px; text-align: center; margin: 2rem 0; }
-        .download a { color: white; background: #1a365d; padding: 0.75rem 1.5rem; border-radius: 4px; text-decoration: none; margin: 0 0.5rem; display: inline-block; }
-        .download a:hover { background: #1a202c; }
-        .footer { text-align: center; margin-top: 2rem; padding-top: 1rem; border-top: 1px solid #e2e8f0; color: #718096; }
-        .footer a { color: #2b6cb0; text-decoration: none; }
-        @media (max-width: 600px) { .features { grid-template-columns: 1fr; } }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DataMover — Offload verificat pentru echipe video</title>
+<meta name="description" content="Aplicatie Mac si Windows pentru offload de media cu verificare de integritate, copiere simultana catre mai multe destinatii si rapoarte profesionale. De Cristi Gordas.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0d0f;
+    --bg-elevated: #121618;
+    --bg-elevated-2: #191e21;
+    --ink: #e7ece9;
+    --ink-dim: #889290;
+    --ink-faint: #4d5658;
+    --accent-verify: #4fd18b;
+    --accent-copy: #5b9cd6;
+    --line: #212a2d;
+    --mono: 'IBM Plex Mono', ui-monospace, monospace;
+    --sans: 'Inter', -apple-system, sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  a { color: inherit; }
+  ::selection { background: var(--accent-verify); color: #08120d; }
+
+  .wrap { max-width: 940px; margin: 0 auto; padding: 0 28px; }
+
+  /* ── Lang switcher ─────────────────────────────────────────── */
+
+  .lang-switch {
+    position: fixed;
+    top: 22px;
+    right: 22px;
+    display: flex;
+    gap: 4px;
+    background: rgba(18,22,24,0.7);
+    backdrop-filter: blur(8px);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 4px;
+    z-index: 50;
+  }
+
+  .lang-btn {
+    font-family: var(--mono);
+    font-size: 12px;
+    background: none;
+    border: none;
+    color: var(--ink-faint);
+    padding: 6px 10px;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: color 0.15s ease, background 0.15s ease;
+  }
+
+  .lang-btn:hover { color: var(--ink); }
+
+  .lang-btn.active {
+    color: #08120d;
+    background: var(--accent-verify);
+  }
+
+  /* ── Hero / checksum scan ──────────────────────────────────── */
+
+  .hero {
+    min-height: 100svh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 40px 24px;
+    background:
+      radial-gradient(ellipse 900px 500px at 50% 15%, rgba(79,209,139,0.06), transparent 60%),
+      var(--bg);
+    position: relative;
+  }
+
+  .scanner {
+    position: relative;
+    margin-bottom: 30px;
+    padding: 18px 22px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--bg-elevated);
+    overflow: hidden;
+  }
+
+  .scanner::before {
+    content: '';
+    position: absolute;
+    top: 0; bottom: 0; left: -30%;
+    width: 30%;
+    background: linear-gradient(90deg, transparent, rgba(79,209,139,0.16), transparent);
+    animation: scanline 1.9s ease-in-out 3;
+  }
+
+  @keyframes scanline {
+    to { left: 130%; }
+  }
+
+  .hash-line {
+    font-family: var(--mono);
+    font-size: clamp(13px, 3.4vw, 17px);
+    letter-spacing: 0.02em;
+    color: var(--ink-dim);
+    white-space: nowrap;
+  }
+
+  .verify-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--mono);
+    font-size: 11.5px;
+    letter-spacing: 0.08em;
+    color: var(--accent-verify);
+    margin-top: 10px;
+    opacity: 0;
+    transform: translateY(4px);
+    transition: opacity 0.4s ease, transform 0.4s ease;
+  }
+
+  .verify-badge.show { opacity: 1; transform: translateY(0); }
+
+  .hero-eyebrow {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent-verify);
+    opacity: 0;
+    animation: fadeUp 0.7s ease-out 1.9s forwards;
+  }
+
+  .hero h1 {
+    font-size: clamp(38px, 7vw, 60px);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    margin: 10px 0 14px;
+    opacity: 0;
+    animation: fadeUp 0.7s ease-out 2.05s forwards;
+  }
+
+  .hero p.sub {
+    color: var(--ink-dim);
+    font-size: 17px;
+    max-width: 500px;
+    margin: 0 auto;
+    opacity: 0;
+    animation: fadeUp 0.7s ease-out 2.2s forwards;
+  }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .hero-actions {
+    display: flex;
+    gap: 12px;
+    margin-top: 30px;
+    flex-wrap: wrap;
+    justify-content: center;
+    opacity: 0;
+    animation: fadeUp 0.7s ease-out 2.35s forwards;
+  }
+
+  .btn {
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 500;
+    padding: 13px 22px;
+    border-radius: 8px;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    border: 1px solid transparent;
+    transition: transform 0.15s ease, border-color 0.15s ease;
+  }
+
+  .btn:hover { transform: translateY(-1px); }
+
+  .btn-primary { background: var(--accent-verify); color: #08120d; }
+  .btn-primary:hover { background: #63dd9c; }
+
+  .btn-ghost { border-color: var(--line); color: var(--ink); }
+  .btn-ghost:hover { border-color: var(--ink-faint); }
+
+  .scroll-cue {
+    position: absolute;
+    bottom: 30px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--ink-faint);
+    letter-spacing: 0.1em;
+    opacity: 0;
+    animation: fadeUp 0.7s ease-out 2.5s forwards;
+  }
+
+  /* ── Sections ──────────────────────────────────────────────── */
+
+  section { padding: 90px 0; border-top: 1px solid var(--line); }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent-verify);
+    margin-bottom: 12px;
+  }
+
+  h2 {
+    font-size: clamp(26px, 4vw, 34px);
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    margin-bottom: 16px;
+  }
+
+  .section-intro {
+    color: var(--ink-dim);
+    max-width: 580px;
+    font-size: 16px;
+    margin-bottom: 48px;
+  }
+
+  /* ── Feature grid ──────────────────────────────────────────── */
+
+  .features {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+  }
+
+  .feature-card {
+    background: var(--bg-elevated);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 22px;
+  }
+
+  .feature-icon {
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    background: rgba(79,209,139,0.12);
+    color: var(--accent-verify);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--mono);
+    font-size: 15px;
+    margin-bottom: 14px;
+  }
+
+  .feature-card h3 {
+    font-size: 15.5px;
+    font-weight: 600;
+    margin-bottom: 6px;
+  }
+
+  .feature-card p {
+    color: var(--ink-dim);
+    font-size: 13.5px;
+  }
+
+  /* ── Algoritmi chips ───────────────────────────────────────── */
+
+  .chip-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .chip {
+    font-family: var(--mono);
+    font-size: 13px;
+    padding: 10px 16px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--bg-elevated);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .chip .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent-copy);
+  }
+
+  /* ── Steps ─────────────────────────────────────────────────── */
+
+  .steps { display: flex; flex-direction: column; }
+
+  .step {
+    display: grid;
+    grid-template-columns: 56px 1fr;
+    gap: 20px;
+    padding: 26px 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .step:last-child { border-bottom: none; }
+
+  .step-num {
+    font-family: var(--mono);
+    font-size: 14px;
+    color: var(--accent-verify);
+    padding-top: 2px;
+  }
+
+  .step h3 { font-size: 16.5px; font-weight: 600; margin-bottom: 6px; }
+  .step p { color: var(--ink-dim); font-size: 14.5px; max-width: 540px; }
+
+  /* ── Cerinte ───────────────────────────────────────────────── */
+
+  .reqs {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+  }
+
+  .req {
+    background: var(--bg-elevated);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 22px;
+  }
+
+  .req-label {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--ink-faint);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 8px;
+  }
+
+  .req-value { font-size: 15px; font-weight: 600; }
+
+  /* ── Footer ────────────────────────────────────────────────── */
+
+  footer { padding: 70px 0 50px; border-top: 1px solid var(--line); }
+
+  .credit-row {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    margin-bottom: 34px;
+  }
+
+  .credit-badge {
+    width: 56px;
+    height: 56px;
+    border-radius: 14px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--line);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--mono);
+    font-size: 20px;
+    color: var(--accent-verify);
+  }
+
+  .credit-name { font-weight: 600; font-size: 16px; }
+  .credit-role { color: var(--ink-dim); font-size: 13.5px; margin-top: 2px; }
+
+  .footer-links { display: flex; flex-wrap: wrap; gap: 10px; }
+
+  .footer-links a {
+    font-family: var(--mono);
+    font-size: 13px;
+    padding: 10px 16px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    text-decoration: none;
+    color: var(--ink-dim);
+    transition: color 0.15s ease, border-color 0.15s ease;
+  }
+
+  .footer-links a:hover { color: var(--ink); border-color: var(--ink-faint); }
+
+  .footer-fine {
+    margin-top: 40px;
+    font-size: 12.5px;
+    color: var(--ink-faint);
+    font-family: var(--mono);
+  }
+
+  @media (max-width: 720px) {
+    .features { grid-template-columns: 1fr 1fr; }
+    .reqs { grid-template-columns: 1fr; }
+  }
+
+  @media (max-width: 480px) {
+    .features { grid-template-columns: 1fr; }
+    .step { grid-template-columns: 36px 1fr; }
+    .lang-switch { top: 14px; right: 14px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .scanner::before, .hero-eyebrow, .hero h1, .hero p.sub, .hero-actions, .scroll-cue, .verify-badge {
+      animation: none !important;
+      transition: none !important;
+      opacity: 1 !important;
+      transform: none !important;
+    }
+  }
+
+  a:focus-visible, button:focus-visible {
+    outline: 2px solid var(--accent-verify);
+    outline-offset: 2px;
+  }
+</style>
 </head>
 <body>
-    <div class="header">
-        <h1>📁 DataMover</h1>
-        <p id="tagline"><strong>Offload verificat</strong> pentru echipele de producție video</p>
-        <div class="language-selector">
-            <a href="#" onclick="setLanguage('ro'); return false;" id="lang-ro">🇷🇴 Română</a>
-            <a href="#" onclick="setLanguage('en'); return false;" id="lang-en">🇬🇧 English</a>
-            <a href="#" onclick="setLanguage('es'); return false;" id="lang-es">🇪🇸 Español</a>
+
+<div class="lang-switch" role="group" aria-label="Limba paginii">
+  <button class="lang-btn active" data-lang="ro">RO</button>
+  <button class="lang-btn" data-lang="en">EN</button>
+  <button class="lang-btn" data-lang="es">ES</button>
+</div>
+
+<section class="hero">
+  <div class="scanner" aria-hidden="true">
+    <div class="hash-line" id="hashLine">a3f9c1e0b7d24856f0a1c9e3b6d7f402</div>
+    <div class="verify-badge" id="verifyBadge">&#10003; <span data-i18n="hero.verified">VERIFICAT</span></div>
+  </div>
+
+  <p class="hero-eyebrow" data-i18n="hero.eyebrow">macOS &amp; Windows</p>
+  <h1>DataMover</h1>
+  <p class="sub" data-i18n="hero.sub">Offload verificat pentru echipele de productie video.</p>
+
+  <div class="hero-actions">
+    <a class="btn btn-primary" href="https://github.com/gordasgdc/datamover/releases/latest" data-i18n="hero.download">Descarca ultima versiune</a>
+    <a class="btn btn-ghost" href="https://github.com/gordasgdc/datamover" data-i18n="hero.source">Vezi codul sursa</a>
+  </div>
+
+  <p class="scroll-cue" data-i18n="hero.scroll">DERULEAZA</p>
+</section>
+
+<div class="wrap">
+
+  <section id="functii">
+    <p class="eyebrow" data-i18n="features.eyebrow">Ce face</p>
+    <h2 data-i18n="features.title">Fiecare fisier copiat, verificat, raportat.</h2>
+    <p class="section-intro" data-i18n="features.intro">Construit pentru cardurile care nu au voie sa fie sterse pana esti sigur ca datele au ajuns intacte in cel putin doua locuri.</p>
+
+    <div class="features">
+      <div class="feature-card">
+        <div class="feature-icon">&#8644;</div>
+        <h3 data-i18n="features.copy.title">Copiere simultana</h3>
+        <p data-i18n="features.copy.desc">Catre oricate destinatii deodata — drive-uri externe, NAS sau foldere locale.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">&#10003;</div>
+        <h3 data-i18n="features.verify.title">Verificare integritate</h3>
+        <p data-i18n="features.verify.desc">MD5, SHA-1, SHA-256, SHA-512, sau comparatie rapida dupa dimensiune.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">&#8635;</div>
+        <h3 data-i18n="features.resume.title">Reluare automata</h3>
+        <p data-i18n="features.resume.desc">Checkpoint la fiecare fisier — daca se intrerupe, continua exact de unde a ramas.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">&#128196;</div>
+        <h3 data-i18n="features.reports.title">Rapoarte profesionale</h3>
+        <p data-i18n="features.reports.desc">Export CSV si PDF, cu status colorat pe fisier si timestamp exact.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">&#128190;</div>
+        <h3 data-i18n="features.detect.title">Detectare automata volume</h3>
+        <p data-i18n="features.detect.desc">Recunoaste cardurile introduse fara sa cauti manual prin Finder sau Explorer.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">&#8987;</div>
+        <h3 data-i18n="features.skip.title">Sare fisierele identice</h3>
+        <p data-i18n="features.skip.desc">Nu recopiaza ce a mai fost deja copiat corect — economiseste timp pe carduri mari.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">&#9099;</div>
+        <h3 data-i18n="features.eject.title">Ejectare card (Mac)</h3>
+        <p data-i18n="features.eject.desc">Scoate in siguranta cardul direct din aplicatie dupa un offload verificat.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">&#9728;</div>
+        <h3 data-i18n="features.dark.title">Tema intunecata</h3>
+        <p data-i18n="features.dark.desc">Interfata gandita pentru lucru pe platou sau in camera de montaj, seara.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">&#8593;</div>
+        <h3 data-i18n="features.update.title">Actualizari automate</h3>
+        <p data-i18n="features.update.desc">Aplicatia se auto-verifica si te anunta cand apare o versiune noua.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="algoritmi">
+    <p class="eyebrow" data-i18n="algo.eyebrow">Algoritmi de verificare</p>
+    <h2 data-i18n="algo.title">Alegi nivelul de siguranta.</h2>
+    <div class="chip-row">
+      <span class="chip"><span class="dot"></span>MD5</span>
+      <span class="chip"><span class="dot"></span>SHA-1</span>
+      <span class="chip"><span class="dot"></span>SHA-256</span>
+      <span class="chip"><span class="dot"></span>SHA-512</span>
+      <span class="chip"><span class="dot"></span><span data-i18n="algo.sizeonly">Doar dimensiune</span></span>
+    </div>
+  </section>
+
+  <section id="cum-se-foloseste">
+    <p class="eyebrow" data-i18n="steps.eyebrow">Cum se foloseste</p>
+    <h2 data-i18n="steps.title">De la card la backup verificat.</h2>
+
+    <div class="steps">
+      <div class="step">
+        <span class="step-num">01</span>
+        <div>
+          <h3 data-i18n="steps.s1.title">Descarca si instaleaza</h3>
+          <p data-i18n="steps.s1.desc">Iei ultima versiune pentru Mac sau Windows din pagina de Releases si o instalezi normal.</p>
         </div>
+      </div>
+      <div class="step">
+        <span class="step-num">02</span>
+        <div>
+          <h3 data-i18n="steps.s2.title">Conectezi cardul sau drive-ul sursa</h3>
+          <p data-i18n="steps.s2.desc">DataMover il detecteaza automat, fara sa umbli manual prin foldere.</p>
+        </div>
+      </div>
+      <div class="step">
+        <span class="step-num">03</span>
+        <div>
+          <h3 data-i18n="steps.s3.title">Alegi destinatiile</h3>
+          <p data-i18n="steps.s3.desc">Adaugi oricate foldere sau drive-uri de backup dorești — copierea se face simultan pe toate.</p>
+        </div>
+      </div>
+      <div class="step">
+        <span class="step-num">04</span>
+        <div>
+          <h3 data-i18n="steps.s4.title">Alegi algoritmul de verificare</h3>
+          <p data-i18n="steps.s4.desc">SHA-256 e recomandat pentru siguranta maxima; MD5 e mai rapid pe carduri foarte mari.</p>
+        </div>
+      </div>
+      <div class="step">
+        <span class="step-num">05</span>
+        <div>
+          <h3 data-i18n="steps.s5.title">Pornesti offload-ul</h3>
+          <p data-i18n="steps.s5.desc">La final primesti un raport CSV/PDF cu statusul fiecarui fisier si poti ejecta cardul direct din aplicatie.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="cerinte">
+    <p class="eyebrow" data-i18n="reqs.eyebrow">Cerinte</p>
+    <h2 data-i18n="reqs.title">Ce iti trebuie pe masina.</h2>
+
+    <div class="reqs">
+      <div class="req">
+        <p class="req-label" data-i18n="reqs.os.label">Sistem</p>
+        <p class="req-value" data-i18n="reqs.os.value">macOS &amp; Windows</p>
+      </div>
+      <div class="req">
+        <p class="req-label" data-i18n="reqs.dest.label">Destinatii</p>
+        <p class="req-value" data-i18n="reqs.dest.value">Nelimitate, simultan</p>
+      </div>
+      <div class="req">
+        <p class="req-label" data-i18n="reqs.license.label">Licenta</p>
+        <p class="req-value">MIT &middot; Open Source</p>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<footer>
+  <div class="wrap">
+    <div class="credit-row">
+      <div class="credit-badge">GDC</div>
+      <div>
+        <p class="credit-name">Cristi Gordas</p>
+        <p class="credit-role" data-i18n="footer.role">Colorist &amp; video editor &middot; autorul aplicatiei</p>
+      </div>
     </div>
 
-    <!-- Romana -->
-    <div id="content-ro" class="lang-content">
-        <div class="features">
-            <div class="feature"><h3>📂 Copiere simultană</h3><p>Către oricâte destinații (drive-uri externe, NAS, foldere locale)</p></div>
-            <div class="feature"><h3>🔒 Verificare integritate</h3><p>MD5, SHA-1, SHA-256, SHA-512 sau doar dimensiune</p></div>
-            <div class="feature"><h3>🌙 Temă întunecată</h3><p>Perfectă pentru lucru noaptea</p></div>
-            <div class="feature"><h3>📊 Rapoarte profesionale</h3><p>CSV + PDF, cu status colorat și timestamp exact</p></div>
-            <div class="feature"><h3>🔄 Reluare automată</h3><p>Checkpoint și reluare de unde a rămas</p></div>
-            <div class="feature"><h3>🖥️ Mod Monitorizare</h3><p>Detectează automat cardurile introduse</p></div>
-        </div>
-        <div class="download">
-            <h2>⬇️ Descarcă ultima versiune</h2>
-            <a href="https://github.com/gordasgdc/datamover/releases/latest">📦 Mac &amp; Windows</a>
-            <a href="https://github.com/gordasgdc/datamover">🐙 GitHub</a>
-        </div>
+    <div class="footer-links">
+      <a href="https://web.facebook.com/cristiGDC" target="_blank" rel="noopener">Facebook</a>
+      <a href="https://youtube.com/@cristigordas" target="_blank" rel="noopener">YouTube — @cristigordas</a>
+      <a href="https://resolvemaster.training" target="_blank" rel="noopener">resolvemaster.training</a>
+      <a href="https://github.com/gordasgdc/datamover" target="_blank" rel="noopener" data-i18n="footer.source">Cod sursa pe GitHub</a>
+      <a href="https://github.com/gordasgdc/datamover/releases" target="_blank" rel="noopener" data-i18n="footer.releases">Toate versiunile</a>
     </div>
 
-    <!-- English -->
-    <div id="content-en" class="lang-content">
-        <div class="features">
-            <div class="feature"><h3>📂 Simultaneous Copy</h3><p>To any number of destinations (external drives, NAS, local folders)</p></div>
-            <div class="feature"><h3>🔒 Integrity Verification</h3><p>MD5, SHA-1, SHA-256, SHA-512, or size-only</p></div>
-            <div class="feature"><h3>🌙 Dark Theme</h3><p>Perfect for night work</p></div>
-            <div class="feature"><h3>📊 Professional Reports</h3><p>CSV + PDF, with color-coded status and exact timestamp</p></div>
-            <div class="feature"><h3>🔄 Automatic Resume</h3><p>Checkpoint and resume from where it left off</p></div>
-            <div class="feature"><h3>🖥️ Monitor Mode</h3><p>Automatically detects inserted cards</p></div>
-        </div>
-        <div class="download">
-            <h2>⬇️ Download Latest Version</h2>
-            <a href="https://github.com/gordasgdc/datamover/releases/latest">📦 Mac &amp; Windows</a>
-            <a href="https://github.com/gordasgdc/datamover">🐙 GitHub</a>
-        </div>
-    </div>
+    <p class="footer-fine" data-i18n="footer.fine">DataMover &middot; Licenta MIT &middot; proiect open-source pentru comunitatea video</p>
+  </div>
+</footer>
 
-    <!-- Espanol -->
-    <div id="content-es" class="lang-content">
-        <div class="features">
-            <div class="feature"><h3>📂 Copia Simultánea</h3><p>A cualquier número de destinos (unidades externas, NAS, carpetas locales)</p></div>
-            <div class="feature"><h3>🔒 Verificación de Integridad</h3><p>MD5, SHA-1, SHA-256, SHA-512, o solo tamaño</p></div>
-            <div class="feature"><h3>🌙 Tema Oscuro</h3><p>Perfecto para trabajar de noche</p></div>
-            <div class="feature"><h3>📊 Informes Profesionales</h3><p>CSV + PDF, con estado codificado por colores y marca de tiempo exacta</p></div>
-            <div class="feature"><h3>🔄 Reanudación Automática</h3><p>Checkpoint y reanudación desde donde quedó</p></div>
-            <div class="feature"><h3>🖥️ Modo Monitor</h3><p>Detecta automáticamente las tarjetas insertadas</p></div>
-        </div>
-        <div class="download">
-            <h2>⬇️ Descargar Última Versión</h2>
-            <a href="https://github.com/gordasgdc/datamover/releases/latest">📦 Mac &amp; Windows</a>
-            <a href="https://github.com/gordasgdc/datamover">🐙 GitHub</a>
-        </div>
-    </div>
+<script>
+  /* ── Animatie hash de verificare ─────────────────────────────*/
+  const hashEl = document.getElementById('hashLine');
+  const badgeEl = document.getElementById('verifyBadge');
+  const hexChars = '0123456789abcdef';
+  const finalHash = 'a3f9c1e0b7d24856f0a1c9e3b6d7f402';
+  let ticks = 0;
+  const maxTicks = 22;
 
-    <div style="text-align: center; margin: 2rem 0;">
-        <p><strong>Creat de Cristi Gordas</strong></p>
-        <p>
-            <a href="https://web.facebook.com/cristiGDC">Facebook</a> ·
-            <a href="https://www.youtube.com/@cristigordas">YouTube</a> ·
-            <a href="https://github.com/gordasgdc">GitHub</a>
-        </p>
-    </div>
+  const scramble = setInterval(() => {
+    ticks++;
+    if (ticks >= maxTicks) {
+      hashEl.textContent = finalHash;
+      clearInterval(scramble);
+      badgeEl.classList.add('show');
+      return;
+    }
+    let out = '';
+    for (let i = 0; i < finalHash.length; i++) {
+      const revealed = ticks / maxTicks * finalHash.length;
+      out += i < revealed ? finalHash[i] : hexChars[Math.floor(Math.random() * 16)];
+    }
+    hashEl.textContent = out;
+  }, 75);
 
-    <div class="footer">
-        <p id="footer-text">Distribuit sub Licența MIT · Proiect open-source pentru comunitatea video</p>
-    </div>
+  /* ── Comutator de limba ──────────────────────────────────────*/
+  const translations = {
+    ro: {
+      'hero.eyebrow': 'macOS &amp; Windows',
+      'hero.verified': 'VERIFICAT',
+      'hero.sub': 'Offload verificat pentru echipele de productie video.',
+      'hero.download': 'Descarca ultima versiune',
+      'hero.source': 'Vezi codul sursa',
+      'hero.scroll': 'DERULEAZA',
+      'features.eyebrow': 'Ce face',
+      'features.title': 'Fiecare fisier copiat, verificat, raportat.',
+      'features.intro': 'Construit pentru cardurile care nu au voie sa fie sterse pana esti sigur ca datele au ajuns intacte in cel putin doua locuri.',
+      'features.copy.title': 'Copiere simultana',
+      'features.copy.desc': 'Catre oricate destinatii deodata — drive-uri externe, NAS sau foldere locale.',
+      'features.verify.title': 'Verificare integritate',
+      'features.verify.desc': 'MD5, SHA-1, SHA-256, SHA-512, sau comparatie rapida dupa dimensiune.',
+      'features.resume.title': 'Reluare automata',
+      'features.resume.desc': 'Checkpoint la fiecare fisier — daca se intrerupe, continua exact de unde a ramas.',
+      'features.reports.title': 'Rapoarte profesionale',
+      'features.reports.desc': 'Export CSV si PDF, cu status colorat pe fisier si timestamp exact.',
+      'features.detect.title': 'Detectare automata volume',
+      'features.detect.desc': 'Recunoaste cardurile introduse fara sa cauti manual prin Finder sau Explorer.',
+      'features.skip.title': 'Sare fisierele identice',
+      'features.skip.desc': 'Nu recopiaza ce a mai fost deja copiat corect — economiseste timp pe carduri mari.',
+      'features.eject.title': 'Ejectare card (Mac)',
+      'features.eject.desc': 'Scoate in siguranta cardul direct din aplicatie dupa un offload verificat.',
+      'features.dark.title': 'Tema intunecata',
+      'features.dark.desc': 'Interfata gandita pentru lucru pe platou sau in camera de montaj, seara.',
+      'features.update.title': 'Actualizari automate',
+      'features.update.desc': 'Aplicatia se auto-verifica si te anunta cand apare o versiune noua.',
+      'algo.eyebrow': 'Algoritmi de verificare',
+      'algo.title': 'Alegi nivelul de siguranta.',
+      'algo.sizeonly': 'Doar dimensiune',
+      'steps.eyebrow': 'Cum se foloseste',
+      'steps.title': 'De la card la backup verificat.',
+      'steps.s1.title': 'Descarca si instaleaza',
+      'steps.s1.desc': 'Iei ultima versiune pentru Mac sau Windows din pagina de Releases si o instalezi normal.',
+      'steps.s2.title': 'Conectezi cardul sau drive-ul sursa',
+      'steps.s2.desc': 'DataMover il detecteaza automat, fara sa umbli manual prin foldere.',
+      'steps.s3.title': 'Alegi destinatiile',
+      'steps.s3.desc': 'Adaugi oricate foldere sau drive-uri de backup dorești — copierea se face simultan pe toate.',
+      'steps.s4.title': 'Alegi algoritmul de verificare',
+      'steps.s4.desc': 'SHA-256 e recomandat pentru siguranta maxima; MD5 e mai rapid pe carduri foarte mari.',
+      'steps.s5.title': 'Pornesti offload-ul',
+      'steps.s5.desc': 'La final primesti un raport CSV/PDF cu statusul fiecarui fisier si poti ejecta cardul direct din aplicatie.',
+      'reqs.eyebrow': 'Cerinte',
+      'reqs.title': 'Ce iti trebuie pe masina.',
+      'reqs.os.label': 'Sistem',
+      'reqs.os.value': 'macOS &amp; Windows',
+      'reqs.dest.label': 'Destinatii',
+      'reqs.dest.value': 'Nelimitate, simultan',
+      'footer.role': 'Colorist &amp; video editor &middot; autorul aplicatiei',
+      'footer.source': 'Cod sursa pe GitHub',
+      'footer.releases': 'Toate versiunile',
+      'footer.fine': 'DataMover &middot; Licenta MIT &middot; proiect open-source pentru comunitatea video'
+    },
+    en: {
+      'hero.eyebrow': 'macOS &amp; Windows',
+      'hero.verified': 'VERIFIED',
+      'hero.sub': 'Verified offload for video production teams.',
+      'hero.download': 'Download latest version',
+      'hero.source': 'View source code',
+      'hero.scroll': 'SCROLL',
+      'features.eyebrow': 'What it does',
+      'features.title': 'Every file copied, verified, reported.',
+      'features.intro': 'Built for cards that can\'t be wiped until you\'re certain the data has landed intact in at least two places.',
+      'features.copy.title': 'Simultaneous copy',
+      'features.copy.desc': 'To any number of destinations at once — external drives, NAS, or local folders.',
+      'features.verify.title': 'Integrity verification',
+      'features.verify.desc': 'MD5, SHA-1, SHA-256, SHA-512, or a quick size-only comparison.',
+      'features.resume.title': 'Automatic resume',
+      'features.resume.desc': 'Checkpoints on every file — if interrupted, it picks up exactly where it left off.',
+      'features.reports.title': 'Professional reports',
+      'features.reports.desc': 'CSV and PDF export, with color-coded status per file and exact timestamps.',
+      'features.detect.title': 'Automatic volume detection',
+      'features.detect.desc': 'Recognizes inserted cards without you hunting through Finder or Explorer.',
+      'features.skip.title': 'Skips identical files',
+      'features.skip.desc': 'Won\'t recopy what\'s already been copied correctly — saves time on large cards.',
+      'features.eject.title': 'Card eject (Mac)',
+      'features.eject.desc': 'Safely eject the card directly from the app after a verified offload.',
+      'features.dark.title': 'Dark theme',
+      'features.dark.desc': 'Interface built for working on set or in the edit bay at night.',
+      'features.update.title': 'Automatic updates',
+      'features.update.desc': 'The app checks itself and lets you know when a new version is out.',
+      'algo.eyebrow': 'Verification algorithms',
+      'algo.title': 'Choose your level of certainty.',
+      'algo.sizeonly': 'Size only',
+      'steps.eyebrow': 'How to use it',
+      'steps.title': 'From card to verified backup.',
+      'steps.s1.title': 'Download and install',
+      'steps.s1.desc': 'Grab the latest Mac or Windows build from the Releases page and install it normally.',
+      'steps.s2.title': 'Connect the source card or drive',
+      'steps.s2.desc': 'DataMover detects it automatically — no manual folder hunting.',
+      'steps.s3.title': 'Choose your destinations',
+      'steps.s3.desc': 'Add as many backup folders or drives as you want — copying happens to all of them at once.',
+      'steps.s4.title': 'Pick a verification algorithm',
+      'steps.s4.desc': 'SHA-256 is recommended for maximum confidence; MD5 is faster on very large cards.',
+      'steps.s5.title': 'Start the offload',
+      'steps.s5.desc': 'You get a CSV/PDF report with each file\'s status, and can eject the card straight from the app.',
+      'reqs.eyebrow': 'Requirements',
+      'reqs.title': 'What you\'ll need.',
+      'reqs.os.label': 'System',
+      'reqs.os.value': 'macOS &amp; Windows',
+      'reqs.dest.label': 'Destinations',
+      'reqs.dest.value': 'Unlimited, simultaneous',
+      'footer.role': 'Colorist &amp; video editor &middot; app author',
+      'footer.source': 'Source code on GitHub',
+      'footer.releases': 'All releases',
+      'footer.fine': 'DataMover &middot; MIT License &middot; open-source project for the video community'
+    },
+    es: {
+      'hero.eyebrow': 'macOS y Windows',
+      'hero.verified': 'VERIFICADO',
+      'hero.sub': 'Copia de seguridad verificada para equipos de produccion de video.',
+      'hero.download': 'Descargar ultima version',
+      'hero.source': 'Ver codigo fuente',
+      'hero.scroll': 'DESPLAZAR',
+      'features.eyebrow': 'Que hace',
+      'features.title': 'Cada archivo copiado, verificado, reportado.',
+      'features.intro': 'Creado para tarjetas que no se pueden borrar hasta que estes seguro de que los datos llegaron intactos a por lo menos dos lugares.',
+      'features.copy.title': 'Copia simultanea',
+      'features.copy.desc': 'A cualquier numero de destinos a la vez — discos externos, NAS o carpetas locales.',
+      'features.verify.title': 'Verificacion de integridad',
+      'features.verify.desc': 'MD5, SHA-1, SHA-256, SHA-512, o una comparacion rapida por tamano.',
+      'features.resume.title': 'Reanudacion automatica',
+      'features.resume.desc': 'Checkpoint en cada archivo — si se interrumpe, continua justo donde quedo.',
+      'features.reports.title': 'Informes profesionales',
+      'features.reports.desc': 'Exportacion CSV y PDF, con estado codificado por color y marca de tiempo exacta.',
+      'features.detect.title': 'Deteccion automatica de volumenes',
+      'features.detect.desc': 'Reconoce las tarjetas insertadas sin que tengas que buscarlas manualmente.',
+      'features.skip.title': 'Omite archivos identicos',
+      'features.skip.desc': 'No vuelve a copiar lo que ya se copio correctamente — ahorra tiempo en tarjetas grandes.',
+      'features.eject.title': 'Expulsar tarjeta (Mac)',
+      'features.eject.desc': 'Expulsa la tarjeta de forma segura directamente desde la app tras una copia verificada.',
+      'features.dark.title': 'Tema oscuro',
+      'features.dark.desc': 'Interfaz pensada para trabajar en set o en la sala de edicion por la noche.',
+      'features.update.title': 'Actualizaciones automaticas',
+      'features.update.desc': 'La app se autoverifica y te avisa cuando hay una version nueva.',
+      'algo.eyebrow': 'Algoritmos de verificacion',
+      'algo.title': 'Elige tu nivel de seguridad.',
+      'algo.sizeonly': 'Solo tamano',
+      'steps.eyebrow': 'Como se usa',
+      'steps.title': 'De la tarjeta a la copia verificada.',
+      'steps.s1.title': 'Descarga e instala',
+      'steps.s1.desc': 'Toma la ultima version para Mac o Windows desde la pagina de Releases e instalala normalmente.',
+      'steps.s2.title': 'Conecta la tarjeta o disco de origen',
+      'steps.s2.desc': 'DataMover la detecta automaticamente, sin buscar manualmente en carpetas.',
+      'steps.s3.title': 'Elige los destinos',
+      'steps.s3.desc': 'Agrega tantas carpetas o discos de respaldo como quieras — la copia se hace simultaneamente en todos.',
+      'steps.s4.title': 'Elige el algoritmo de verificacion',
+      'steps.s4.desc': 'SHA-256 se recomienda para maxima seguridad; MD5 es mas rapido en tarjetas muy grandes.',
+      'steps.s5.title': 'Inicia la copia',
+      'steps.s5.desc': 'Al final recibes un informe CSV/PDF con el estado de cada archivo y puedes expulsar la tarjeta desde la app.',
+      'reqs.eyebrow': 'Requisitos',
+      'reqs.title': 'Que necesitas en tu equipo.',
+      'reqs.os.label': 'Sistema',
+      'reqs.os.value': 'macOS y Windows',
+      'reqs.dest.label': 'Destinos',
+      'reqs.dest.value': 'Ilimitados, simultaneos',
+      'footer.role': 'Colorista y editor de video &middot; autor de la aplicacion',
+      'footer.source': 'Codigo fuente en GitHub',
+      'footer.releases': 'Todas las versiones',
+      'footer.fine': 'DataMover &middot; Licencia MIT &middot; proyecto de codigo abierto para la comunidad de video'
+    }
+  };
 
-    <script>
-        var TAGLINES = {
-            ro: "<strong>Offload verificat</strong> pentru echipele de producție video",
-            en: "<strong>Verified offload</strong> for video production teams",
-            es: "<strong>Offload verificado</strong> para equipos de producción de video"
-        };
-        var FOOTERS = {
-            ro: "Distribuit sub Licența MIT · Proiect open-source pentru comunitatea video",
-            en: "Distributed under the MIT License · Open-source project for the video community",
-            es: "Distribuido bajo la Licencia MIT · Proyecto de código abierto para la comunidad de video"
-        };
+  function applyLang(lang) {
+    const dict = translations[lang];
+    document.querySelectorAll('[data-i18n]').forEach(el => {
+      const key = el.getAttribute('data-i18n');
+      if (dict[key]) el.innerHTML = dict[key];
+    });
+    document.documentElement.lang = lang;
+    document.querySelectorAll('.lang-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.lang === lang);
+    });
+    localStorage.setItem('dm-lang', lang);
+  }
 
-        function setLanguage(lang) {
-            document.querySelectorAll('.lang-content').forEach(function (el) {
-                el.classList.remove('active');
-            });
-            document.getElementById('content-' + lang).classList.add('active');
+  document.querySelectorAll('.lang-btn').forEach(btn => {
+    btn.addEventListener('click', () => applyLang(btn.dataset.lang));
+  });
 
-            document.querySelectorAll('.language-selector a').forEach(function (el) {
-                el.classList.remove('active');
-            });
-            document.getElementById('lang-' + lang).classList.add('active');
+  const saved = localStorage.getItem('dm-lang');
+  if (saved && translations[saved]) applyLang(saved);
+</script>
 
-            document.getElementById('tagline').innerHTML = TAGLINES[lang];
-            document.getElementById('footer-text').textContent = FOOTERS[lang];
-            document.documentElement.lang = lang;
-
-            try {
-                localStorage.setItem('datamover-lang', lang);
-            } catch (e) {
-                // localStorage poate fi indisponibil (mod privat etc.) - nu blocam pagina
-            }
-        }
-
-        var savedLang = 'ro';
-        try {
-            savedLang = localStorage.getItem('datamover-lang') || 'ro';
-        } catch (e) {
-            // ignoram, ramanem pe 'ro'
-        }
-        setLanguage(savedLang);
-    </script>
 </body>
 </html>
