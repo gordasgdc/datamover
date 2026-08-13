@@ -32,7 +32,7 @@ jobs:
       - name: Instaleaza dependintele
         run: |
           python -m pip install --upgrade pip
-          pip install pyinstaller reportlab tkinterdnd2 plyer pystray pillow
+          pip install pyinstaller reportlab tkinterdnd2 plyer pystray pillow cryptography
 
       - name: Compileaza .exe cu PyInstaller
         run: |
@@ -47,8 +47,13 @@ jobs:
             --hidden-import=update_config `
             --hidden-import=updater `
             --hidden-import=translations `
+            --hidden-import=license_core `
+            --hidden-import=license_validator `
+            --hidden-import=machine_id `
+            --hidden-import=activation `
             --collect-all reportlab `
             --collect-all tkinterdnd2 `
+            --collect-all cryptography `
             main.py
 
       - name: Compileaza modulul de Monitorizare (executabil insotitor)
@@ -90,7 +95,7 @@ jobs:
       - name: Instaleaza dependintele
         run: |
           python -m pip install --upgrade pip
-          pip install py2app pyinstaller reportlab tkinterdnd2 plyer pystray pillow
+          pip install py2app pyinstaller reportlab tkinterdnd2 plyer pystray pillow cryptography
 
       - name: Compileaza .app cu py2app
         run: python setup.py py2app
@@ -149,6 +154,9 @@ jobs:
     needs: [build-windows, build-mac]
     runs-on: ubuntu-latest
     steps:
+      - name: Descarca codul din repo (pentru ghidurile PDF din docs/guides)
+        uses: actions/checkout@v4
+
       - name: Descarca fisierul Windows compilat
         uses: actions/download-artifact@v4
         with:
@@ -171,7 +179,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event.inputs.tag || github.ref_name }}
-          files: release-files/*
+          files: |
+            release-files/*
+            docs/guides/*.pdf
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

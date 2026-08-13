@@ -64,6 +64,7 @@ from tooltip import add_help_icon
 import checkpoint as ckpt
 import update_config
 import updater
+import activation
 from translations import get_text
 
 
@@ -1080,5 +1081,6 @@ class DataMoverApp(_BASE_CLASS):
 
 
 if __name__ == "__main__":
+    activation.require_license()
     app = DataMoverApp()
     app.mainloop()

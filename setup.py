@@ -26,14 +26,16 @@ DATA_FILES = [
     "offload_engine.py", "pdf_report.py", "config.py",
     "theme.py", "tooltip.py", "checkpoint.py",
     "update_config.py", "updater.py", "translations.py",
+    "license_core.py", "license_validator.py", "machine_id.py", "activation.py",
 ]
 OPTIONS = {
     "argv_emulation": False,
-    "packages": ["reportlab", "tkinterdnd2", "plyer"],
+    "packages": ["reportlab", "tkinterdnd2", "plyer", "cryptography"],
     "includes": [
         "offload_engine", "pdf_report", "config",
         "theme", "tooltip", "checkpoint",
         "update_config", "updater", "translations",
+        "license_core", "license_validator", "machine_id", "activation",
     ],
     "iconfile": "DataMover.icns",
     "plist": {
