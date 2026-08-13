@@ -23,7 +23,7 @@ jobs:
       - name: Instaleaza dependintele
         run: |
           python -m pip install --upgrade pip
-          pip install py2app pyinstaller reportlab tkinterdnd2 plyer pystray pillow
+          pip install py2app pyinstaller reportlab tkinterdnd2 plyer pystray pillow cryptography
 
       - name: Compileaza .app cu py2app
         run: python setup.py py2app
