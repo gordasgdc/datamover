@@ -1,11 +1,11 @@
 {
-  "version": "2.1.3",
+  "version": "2.2.0",
   "release_date": "2026-08-15",
-  "changes": "Repara pornirea aplicatiei pe Mac: lipsea modulul _cffi_backend din pachet (py2app), aplicatia se inchidea instant la lansare.",
+  "changes": "Proba gratuita de 7 zile (fara cont, fara card) + buton WhatsApp direct in fereastra de activare + interfata reimprospatata (carduri per destinatie, jurnal colorat, sunet la final).",
   "download_url": {
     "windows": "https://github.com/gordasgdc/datamover/releases/latest/download/DataMover-Windows.zip",
     "mac": "https://github.com/gordasgdc/datamover/releases/latest/download/DataMover-Mac-Installer.pkg"
   },
-  "mandatory": true,
+  "mandatory": false,
   "min_version": "1.0.0"
 }
