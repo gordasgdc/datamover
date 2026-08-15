@@ -39,22 +39,16 @@ Descarga la última versión desde [Releases](https://github.com/gordasgdc/datam
 
 | Plataforma | Archivo | Descripción |
 |------------|---------|-------------|
-| **Mac** | `DataMover-Mac-Installer.pkg` | Instalador recomendado (limpia la cuarentena automáticamente) |
-| | `DataMover-Mac.zip` | `.app` portátil |
-| **Windows** | `DataMover-Windows.zip` | Contiene `DataMover.exe` |
+| **Mac** | `DataMover-Mac.zip` | Instalador `.pkg` + guías PDF (RO/EN/ES) |
+| **Windows** | `DataMover-Windows.zip` | `DataMover.exe` + guías PDF (RO/EN/ES) |
 
 ## 📖 Instalación rápida
 
-### Mac (con .pkg — recomendado)
-1. Descarga `DataMover-Mac-Installer.pkg`
-2. Haz doble clic y sigue el instalador
+### Mac
+1. Descarga `DataMover-Mac.zip` y extráelo
+2. Haz doble clic en `DataMover-Mac-Installer.pkg` y sigue el instalador
 3. La app se instala en `/Applications`
 4. En la primera ejecución, clic derecho → `Open` → confirma (solo una vez)
-
-### Mac (con .app — portátil)
-1. Descarga `DataMover-Mac.zip` y extráelo
-2. Mueve `DataMover.app` a `/Applications` (recomendado)
-3. Clic derecho → `Open` en la primera ejecución
 
 ### Windows
 1. Descarga `DataMover-Windows.zip` y extrae el contenido

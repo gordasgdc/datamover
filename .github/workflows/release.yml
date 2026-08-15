@@ -66,11 +66,12 @@ jobs:
             --collect-all PIL `
             tray_monitor.py
 
-      - name: Pregateste folderul de distributie (exe + monitor, la un loc)
+      - name: Pregateste folderul de distributie (exe + monitor + ghiduri PDF, la un loc)
         run: |
           mkdir dist_release
           copy "dist\DataMover.exe" dist_release\
           copy "dist\DataMover Monitor.exe" dist_release\
+          copy "docs\guides\*.pdf" dist_release\
 
       - name: Arhiveaza intr-un singur .zip
         run: Compress-Archive -Path "dist_release\*" -DestinationPath "DataMover-Windows.zip"
@@ -103,24 +104,6 @@ jobs:
       - name: Compileaza modulul de Monitorizare (executabil insotitor)
         run: pyinstaller --onefile --name "DataMover Monitor" tray_monitor.py
 
-      - name: Pregateste folderul de distributie (app + monitor, la un loc)
-        run: |
-          mkdir -p dist_release
-          cp -R "dist/DataMover.app" dist_release/
-          cp "dist/DataMover Monitor" dist_release/
-          chmod +x "dist_release/DataMover Monitor"
-
-      - name: Arhiveaza (ditto pastreaza corect permisiunile Mac)
-        run: |
-          cd dist_release
-          ditto -c -k --sequesterRsrc "." "$GITHUB_WORKSPACE/DataMover-Mac.zip"
-
-      - name: Salveaza pentru pasul de release
-        uses: actions/upload-artifact@v4
-        with:
-          name: mac-build
-          path: DataMover-Mac.zip
-
       - name: Creeaza instalatorul .pkg (curata automat carantina la instalare)
         run: |
           TAG="${{ github.event.inputs.tag || github.ref_name }}"
@@ -150,13 +133,24 @@ jobs:
           name: mac-pkg-build
           path: DataMover-Mac-Installer.pkg
 
+      - name: Creeaza arhiva pentru utilizatori (.pkg + ghidurile PDF in 3 limbi, la un loc)
+        run: |
+          mkdir -p mac_bundle
+          cp "DataMover-Mac-Installer.pkg" mac_bundle/
+          cp docs/guides/*.pdf mac_bundle/
+          cd mac_bundle
+          zip -r "$GITHUB_WORKSPACE/DataMover-Mac.zip" .
+
+      - name: Salveaza arhiva pentru pasul de release
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-build
+          path: DataMover-Mac.zip
+
   create-release:
     needs: [build-windows, build-mac]
     runs-on: ubuntu-latest
     steps:
-      - name: Descarca codul din repo (pentru ghidurile PDF din docs/guides)
-        uses: actions/checkout@v4
-
       - name: Descarca fisierul Windows compilat
         uses: actions/download-artifact@v4
         with:
@@ -179,9 +173,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event.inputs.tag || github.ref_name }}
-          files: |
-            release-files/*
-            docs/guides/*.pdf
+          files: release-files/*
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

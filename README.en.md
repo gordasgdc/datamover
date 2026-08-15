@@ -39,22 +39,16 @@ Download the latest version from [Releases](https://github.com/gordasgdc/datamov
 
 | Platform | File | Description |
 |----------|------|-------------|
-| **Mac** | `DataMover-Mac-Installer.pkg` | Recommended installer (automatically clears quarantine) |
-| | `DataMover-Mac.zip` | Portable `.app` |
-| **Windows** | `DataMover-Windows.zip` | Contains `DataMover.exe` |
+| **Mac** | `DataMover-Mac.zip` | `.pkg` installer + PDF guides (RO/EN/ES) |
+| **Windows** | `DataMover-Windows.zip` | `DataMover.exe` + PDF guides (RO/EN/ES) |
 
 ## 📖 Quick install
 
-### Mac (with .pkg — recommended)
-1. Download `DataMover-Mac-Installer.pkg`
-2. Double-click and follow the installer
+### Mac
+1. Download `DataMover-Mac.zip` and extract it
+2. Double-click `DataMover-Mac-Installer.pkg` and follow the installer
 3. The app installs to `/Applications`
 4. On first run, right-click → `Open` → confirm (one-time only)
-
-### Mac (with .app — portable)
-1. Download `DataMover-Mac.zip` and extract it
-2. Move `DataMover.app` to `/Applications` (recommended)
-3. Right-click → `Open` on first run
 
 ### Windows
 1. Download `DataMover-Windows.zip` and extract the contents
