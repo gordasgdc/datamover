@@ -202,6 +202,18 @@
   .btn-ghost { border-color: var(--line); color: var(--ink); }
   .btn-ghost:hover { border-color: var(--ink-faint); }
 
+  .hero-links {
+    margin-top: 16px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--ink-faint);
+    opacity: 0;
+    animation: fadeUp 0.7s ease-out 2.45s forwards;
+  }
+  .hero-links a { color: var(--ink-faint); text-decoration: underline; text-underline-offset: 3px; }
+  .hero-links a:hover { color: var(--ink); }
+  .hero-links span { margin: 0 8px; }
+
   .scroll-cue {
     position: absolute;
     bottom: 30px;
@@ -452,10 +464,12 @@
 
   <div class="hero-actions">
     <a class="btn btn-primary" id="downloadBtn" href="https://github.com/gordasgdc/datamover/releases/latest" data-i18n="hero.download">Descarca ultima versiune</a>
-    <a class="btn btn-ghost" href="https://github.com/gordasgdc/datamover" data-i18n="hero.source">Vezi codul sursa</a>
+    <a class="btn btn-ghost" id="altDownloadLink" href="https://github.com/gordasgdc/datamover/releases/latest" data-i18n="hero.download" style="display:none;">Descarca ultima versiune</a>
   </div>
-  <p class="alt-download" id="altDownload" style="display:none; margin-top:14px; font-family:var(--mono); font-size:12px;">
-    <a href="#" id="altDownloadLink" style="color:var(--ink-faint);"></a>
+  <p class="hero-links">
+    <a href="https://github.com/gordasgdc/datamover" data-i18n="hero.source">Vezi codul sursa</a>
+    <span aria-hidden="true">&middot;</span>
+    <a href="https://github.com/gordasgdc/datamover/releases" data-i18n="footer.releases">Toate versiunile</a>
   </p>
 
   <p class="scroll-cue" data-i18n="hero.scroll">DERULEAZA</p>
@@ -897,9 +911,8 @@
     if (!isMac && !isWin) return; // Linux/necunoscut - ramane linkul generic catre Releases
 
     const btn = document.getElementById('downloadBtn');
-    const altWrap = document.getElementById('altDownload');
     const altLink = document.getElementById('altDownloadLink');
-    if (!btn || !altWrap || !altLink) return;
+    if (!btn || !altLink) return;
 
     const primary = isMac
       ? { key: 'hero.download_mac', url: FILES.mac }
@@ -912,7 +925,7 @@
     btn.setAttribute('data-i18n', primary.key);
     altLink.href = alt.url;
     altLink.setAttribute('data-i18n', alt.key);
-    altWrap.style.display = '';
+    altLink.style.display = '';
 
     const lang = (localStorage.getItem('dm-lang') && translations[localStorage.getItem('dm-lang')]) ? localStorage.getItem('dm-lang') : 'ro';
     const dict = translations[lang];
