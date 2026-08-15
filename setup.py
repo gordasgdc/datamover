@@ -30,12 +30,13 @@ DATA_FILES = [
 ]
 OPTIONS = {
     "argv_emulation": False,
-    "packages": ["reportlab", "tkinterdnd2", "plyer", "cryptography"],
+    "packages": ["reportlab", "tkinterdnd2", "plyer", "cryptography", "cffi"],
     "includes": [
         "offload_engine", "pdf_report", "config",
         "theme", "tooltip", "checkpoint",
         "update_config", "updater", "translations",
         "license_core", "license_validator", "machine_id", "activation",
+        "_cffi_backend",
     ],
     "iconfile": "DataMover.icns",
     "plist": {
