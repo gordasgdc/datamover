@@ -214,6 +214,19 @@
   .hero-links a:hover { color: var(--ink); }
   .hero-links span { margin: 0 8px; }
 
+  .app-shot {
+    margin: -20px 0 40px;
+    opacity: 0;
+    animation: fadeUp 0.8s ease-out 2.55s forwards;
+  }
+  .app-shot img {
+    display: block;
+    width: 100%;
+    border-radius: 12px;
+    border: 1px solid var(--line);
+    box-shadow: 0 40px 100px -30px rgba(0,0,0,0.7), 0 0 0 1px rgba(79,209,139,0.06);
+  }
+
   .scroll-cue {
     position: absolute;
     bottom: 30px;
@@ -475,6 +488,10 @@
 </section>
 
 <div class="wrap">
+
+  <div class="app-shot">
+    <img src="img/app-screenshot.png" alt="Fereastra principala DataMover, tema intunecata" loading="lazy" width="1399" height="895">
+  </div>
 
   <section id="functii">
     <p class="eyebrow" data-i18n="features.eyebrow">Ce face</p>
