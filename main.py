@@ -81,11 +81,12 @@ LANGUAGE_LABELS = {"ro": "RO", "en": "EN", "es": "ES"}
 
 
 class DataMoverApp(_BASE_CLASS):
-    def __init__(self):
+    def __init__(self, trial_days_remaining=None):
         super().__init__()
         self.title("DataMover")
         self.geometry("880x760")
         self.minsize(760, 620)
+        self.trial_days_remaining = trial_days_remaining
 
         self.settings = cfg.load_config()
 
@@ -184,6 +185,14 @@ class DataMoverApp(_BASE_CLASS):
         self._reg(ttk.Button(
             top_row, command=self._check_for_updates
         ), "check_updates").pack(side="left", padx=(12, 0))
+
+        if self.trial_days_remaining is not None:
+            trial_label = ttk.Label(
+                top_row, style="Muted.TLabel",
+                text=self.t("trial_badge", days=self.trial_days_remaining),
+            )
+            trial_label.pack(side="left", padx=(12, 0))
+            self._muted_labels.append(trial_label)
 
         lang_frame = ttk.Frame(top_row)
         lang_frame.pack(side="left", padx=(12, 0))
@@ -339,7 +348,9 @@ class DataMoverApp(_BASE_CLASS):
         # Butoane start/anuleaza
         action_row = ttk.Frame(self)
         action_row.pack(pady=(0, 6))
-        self.start_btn = self._reg(ttk.Button(action_row, command=self._start_offload), "action_start")
+        self.start_btn = self._reg(
+            ttk.Button(action_row, command=self._start_offload, style="Accent.TButton"), "action_start"
+        )
         self.start_btn.pack(side="left", padx=6)
         self.cancel_btn = self._reg(
             ttk.Button(action_row, command=self._cancel_offload, state="disabled"), "action_cancel"
@@ -390,6 +401,18 @@ class DataMoverApp(_BASE_CLASS):
             self, self.style, self.dark_mode_var.get(),
             tk_widgets=self._tk_themed_widgets, muted_labels=self._muted_labels,
         )
+        self._configure_log_tags()
+
+    def _configure_log_tags(self):
+        """Coloreaza vizual liniile din jurnal dupa continut (fara sa
+        schimbe formatul liniilor scrise de offload_engine.py) - verde
+        pentru OK, rosu pentru erori/nepotriviri, galben pentru sarite,
+        bold pentru liniile de rezumat ('>>>' / '===')."""
+        palette = theme.DARK if self.dark_mode_var.get() else theme.LIGHT
+        self.log_text.tag_configure("log_ok", foreground=palette["success"])
+        self.log_text.tag_configure("log_err", foreground=palette["error"])
+        self.log_text.tag_configure("log_warn", foreground=palette["warn"])
+        self.log_text.tag_configure("log_summary", font=("", 10, "bold"))
 
     def _on_toggle_dark_mode(self):
         self._apply_current_theme()
@@ -667,9 +690,28 @@ class DataMoverApp(_BASE_CLASS):
 
     def _append_log(self, text):
         self.log_text.config(state="normal")
+        start = self.log_text.index("end-1c")
         self.log_text.insert("end", text + "\n")
+        tag = self._log_line_tag(text)
+        if tag:
+            self.log_text.tag_add(tag, start, self.log_text.index("end-1c"))
         self.log_text.see("end")
         self.log_text.config(state="disabled")
+
+    @staticmethod
+    def _log_line_tag(text):
+        """Alege tag-ul de culoare pentru o linie de jurnal, doar pe baza
+        continutului deja scris de offload_engine.py (fara sa-i schimbam
+        formatul) - vezi status-urile posibile in offload_engine._log_row."""
+        if text.startswith(">>>") or text.startswith("==="):
+            return "log_summary"
+        if "EROARE" in text or "NEPOTRIVIRE" in text:
+            return "log_err"
+        if "SARIT" in text or "ATENTIE" in text:
+            return "log_warn"
+        if text.endswith("-> OK"):
+            return "log_ok"
+        return None
 
     def _poll_log_queue(self):
         try:
@@ -707,10 +749,30 @@ class DataMoverApp(_BASE_CLASS):
 
         self.after(150, self._poll_log_queue)
 
+    def _play_finish_sound(self):
+        """Sunet scurt la finalul unei sesiuni de offload - fara dependinte
+        externe noi, foloseste doar sunetele native ale sistemului."""
+        try:
+            if sys.platform == "darwin":
+                subprocess.Popen(["afplay", "/System/Library/Sounds/Glass.aiff"],
+                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            elif sys.platform == "win32":
+                import winsound
+                winsound.MessageBeep(winsound.MB_ICONASTERISK)
+            else:
+                self.bell()
+        except Exception:
+            try:
+                self.bell()
+            except Exception:
+                pass
+
     def _finish_session(self):
         self.running = False
         self.start_btn.config(state="normal")
         self.cancel_btn.config(state="disabled")
+        self.progress_label.config(style="TLabel")
+        self._play_finish_sound()
 
         any_cancelled = any(j.cancelled for j in self.jobs)
         total_ok = sum(j.ok_count for j in self.jobs)
@@ -779,35 +841,48 @@ class DataMoverApp(_BASE_CLASS):
     # ---------------- Progres per destinatie ----------------
 
     def _build_dest_progress_rows(self):
+        """Construieste un "card" vizual per destinatie (fundal usor ridicat,
+        bordura, icon de status) - nu doar un rand plat de widget-uri."""
         for child in self.dest_progress_container.winfo_children():
             child.destroy()
         self.dest_progress_rows = {}
 
         for dest in self.destinations:
-            row = ttk.Frame(self.dest_progress_container)
-            row.pack(fill="x", pady=3)
+            card = ttk.Frame(self.dest_progress_container, style="Card.TFrame",
+                              relief="solid", borderwidth=1, padding=(12, 10))
+            card.pack(fill="x", pady=4)
 
-            name_label = ttk.Label(row, text=os.path.basename(dest.rstrip("/\\")) or dest, width=22, anchor="w")
-            name_label.pack(side="left")
+            top_row = ttk.Frame(card, style="Card.TFrame")
+            top_row.pack(fill="x")
 
-            bar = ttk.Progressbar(row, orient="horizontal", mode="determinate", length=260)
-            bar.pack(side="left", padx=8)
+            status_label = ttk.Label(top_row, text="○", style="CardWait.TLabel", width=2)
+            status_label.pack(side="left")
 
-            pct_label = ttk.Label(row, text="0%", width=6)
+            name_label = ttk.Label(top_row, text=os.path.basename(dest.rstrip("/\\")) or dest,
+                                    style="Card.TLabel", font=("", 11, "bold"))
+            name_label.pack(side="left", padx=(2, 0))
+
+            open_btn = ttk.Button(top_row, text="📂", width=2, command=lambda d=dest: self._open_destination(d))
+            open_btn.pack(side="right")
+
+            speed_label = ttk.Label(top_row, text="", style="CardMuted.TLabel", anchor="e")
+            speed_label.pack(side="right", padx=(0, 8))
+
+            bar = ttk.Progressbar(card, orient="horizontal", mode="determinate")
+            bar.pack(fill="x", pady=(8, 4))
+
+            bottom_row = ttk.Frame(card, style="Card.TFrame")
+            bottom_row.pack(fill="x")
+
+            pct_label = ttk.Label(bottom_row, text="0%", style="Card.TLabel", font=("", 11, "bold"))
             pct_label.pack(side="left")
 
-            speed_label = ttk.Label(row, text="", width=14, anchor="e")
-            speed_label.pack(side="left")
-
-            open_btn = ttk.Button(row, text="📂", width=2, command=lambda d=dest: self._open_destination(d))
-            open_btn.pack(side="left", padx=4)
-
-            phase_label = ttk.Label(row, text="In asteptare...", style="Muted.TLabel", anchor="w")
+            phase_label = ttk.Label(bottom_row, text="In asteptare...", style="CardMuted.TLabel", anchor="w")
             phase_label.pack(side="left", fill="x", expand=True, padx=(8, 0))
-            self._muted_labels.append(phase_label)
 
             self.dest_progress_rows[dest] = {
                 "bar": bar, "pct": pct_label, "speed": speed_label, "phase": phase_label,
+                "status": status_label,
             }
 
     def _open_destination(self, dest):
@@ -847,6 +922,18 @@ class DataMoverApp(_BASE_CLASS):
             row["pct"].config(text=f"{pct}%")
             row["speed"].config(text=f"{format_size(job.current_speed_bps)}/s" if job.current_speed_bps else "")
             row["phase"].config(text=job.phase_text)
+
+            if job.cancelled:
+                row["status"].config(text="■", style="CardErr.TLabel")
+            elif job.total_files > 0 and job.files_done >= total:
+                if job.fail_count > 0:
+                    row["status"].config(text="✗", style="CardErr.TLabel")
+                else:
+                    row["status"].config(text="✓", style="CardOk.TLabel")
+            elif job.files_done > 0:
+                row["status"].config(text="●", style="CardRun.TLabel")
+            else:
+                row["status"].config(text="○", style="CardWait.TLabel")
 
     # ---------------- Checkpoint / reluare ----------------
 
@@ -974,7 +1061,7 @@ class DataMoverApp(_BASE_CLASS):
         self.running = True
         self.start_time = datetime.now()
         self.progress["value"] = 0
-        self.progress_label.config(text=self.t("progress_preparing"))
+        self.progress_label.config(text=self.t("progress_preparing"), style="BigPercent.TLabel")
         self.speed_label.config(text="")
         self.phase_label.config(text=self._phase_text(0, 0))
         self.start_btn.config(state="disabled")
@@ -1081,6 +1168,6 @@ class DataMoverApp(_BASE_CLASS):
 
 
 if __name__ == "__main__":
-    activation.require_license()
-    app = DataMoverApp()
+    trial_days_remaining = activation.require_license()
+    app = DataMoverApp(trial_days_remaining=trial_days_remaining)
     app.mainloop()

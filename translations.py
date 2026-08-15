@@ -18,6 +18,7 @@ catre motorul de copiere, daca e nevoie.
 TRANSLATIONS = {
     "ro": {
         "app_title": "DataMover",
+        "trial_badge": "🕐 Proba: {days} zile ramase",
         "dark_mode": "Tema intunecata",
         "about": "Despre...",
         "check_updates": "🔍 Verifica actualizari",
@@ -143,6 +144,7 @@ TRANSLATIONS = {
 
     "en": {
         "app_title": "DataMover",
+        "trial_badge": "🕐 Trial: {days} days left",
         "dark_mode": "Dark theme",
         "about": "About...",
         "check_updates": "🔍 Check for updates",
@@ -268,6 +270,7 @@ TRANSLATIONS = {
 
     "es": {
         "app_title": "DataMover",
+        "trial_badge": "🕐 Prueba: {days} días restantes",
         "dark_mode": "Tema oscuro",
         "about": "Acerca de...",
         "check_updates": "🔍 Buscar actualizaciones",

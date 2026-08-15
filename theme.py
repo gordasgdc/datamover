@@ -31,6 +31,15 @@ LIGHT = {
     "trough": "#d9d9d9",
     "border": "#b5b5b5",
     "muted": "#777777",
+    # Adaugiri pentru "polish" vizual: accent (buton principal, procent mare,
+    # bife de succes), card-uri per destinatie, si culori de status in jurnal.
+    "accent": "#2f8f5c",
+    "accent_hover": "#267a4d",
+    "accent_fg": "#ffffff",
+    "card_bg": "#e6e6e6",
+    "success": "#2f8f5c",
+    "error": "#c0392b",
+    "warn": "#a86a00",
 }
 
 DARK = {
@@ -44,6 +53,13 @@ DARK = {
     "trough": "#333333",
     "border": "#4a4a4a",
     "muted": "#a0a0a0",
+    "accent": "#4fd18b",
+    "accent_hover": "#63dd9c",
+    "accent_fg": "#08120d",
+    "card_bg": "#282828",
+    "success": "#4fd18b",
+    "error": "#e0685e",
+    "warn": "#d9a441",
 }
 
 
@@ -79,6 +95,30 @@ def _configure_ttk_style(style, palette):
                      troughcolor=palette["trough"], bordercolor=palette["border"])
     style.configure("TScrollbar", background=palette["button_bg"], troughcolor=palette["trough"])
     style.configure("Muted.TLabel", background=palette["bg"], foreground=palette["muted"])
+
+    # ── Buton principal (Start offload), scos in evidenta cu accent-ul ──
+    style.configure("Accent.TButton", background=palette["accent"], foreground=palette["accent_fg"],
+                     bordercolor=palette["accent"], font=("", 12, "bold"), padding=(18, 10))
+    style.map("Accent.TButton",
+              background=[("active", palette["accent_hover"]), ("disabled", palette["button_bg"])],
+              foreground=[("disabled", palette["muted"])])
+
+    # ── Procent mare in "Progres global" ──
+    style.configure("BigPercent.TLabel", background=palette["bg"], foreground=palette["accent"],
+                     font=("", 22, "bold"))
+
+    # ── "Carduri" per destinatie (frame cu fundal usor ridicat) ──
+    style.configure("Card.TFrame", background=palette["card_bg"])
+    style.configure("Card.TLabel", background=palette["card_bg"], foreground=palette["fg"])
+    style.configure("CardMuted.TLabel", background=palette["card_bg"], foreground=palette["muted"])
+    style.configure("CardOk.TLabel", background=palette["card_bg"], foreground=palette["success"],
+                     font=("", 12, "bold"))
+    style.configure("CardErr.TLabel", background=palette["card_bg"], foreground=palette["error"],
+                     font=("", 12, "bold"))
+    style.configure("CardWait.TLabel", background=palette["card_bg"], foreground=palette["muted"],
+                     font=("", 12, "bold"))
+    style.configure("CardRun.TLabel", background=palette["card_bg"], foreground=palette["select_bg"],
+                     font=("", 12, "bold"))
 
 
 def apply_theme(root, style, dark, tk_widgets=None, muted_labels=None):

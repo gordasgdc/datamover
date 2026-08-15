@@ -11,7 +11,11 @@ Integrare in main.py:
         app.mainloop()
 """
 
+import os
 import sys
+import time
+import urllib.parse
+import webbrowser
 import tkinter as tk
 from tkinter import ttk, messagebox
 
@@ -19,11 +23,19 @@ import config as cfg
 import license_validator
 import machine_id
 
+# Perioada de proba gratuita, completa functionala, pentru cine nu are inca
+# un cod de activare - porneste automat la prima lansare, local, fara server
+# (vezi _trial_days_remaining mai jos).
+TRIAL_DAYS = 7
+
+WHATSAPP_PHONE = "34643109970"
+
 TEXTS = {
     "ro": {
         "title": "Activare DataMover",
         "heading": "Activează DataMover",
         "sub": "Introdu codul serial primit la achiziție.",
+        "sub_trial_expired": "Perioada ta de probă de {days} zile s-a încheiat. Introdu codul serial ca să continui.",
         "machine_label": "ID mașină (trimite-mi asta dacă nu ai încă un cod):",
         "code_label": "Cod serial:",
         "activate": "Activează",
@@ -31,11 +43,18 @@ TEXTS = {
         "empty_error": "Introdu un cod serial.",
         "success_title": "Activat",
         "success_msg": "DataMover a fost activat cu succes.",
+        "trial_ending_title": "Proba se apropie de final",
+        "trial_ending_msg": "Mai ai {days} {days_word} din perioada de probă gratuită. Scrie-mi pe WhatsApp (+34 643 10 99 70) cand esti gata sa activezi.",
+        "trial_day": "zi",
+        "trial_days": "zile",
+        "whatsapp_btn": "💬 Scrie-mi pe WhatsApp",
+        "whatsapp_prefill": "Salut! Vreau sa activez DataMover. ID masina: {id}",
     },
     "en": {
         "title": "Activate DataMover",
         "heading": "Activate DataMover",
         "sub": "Enter the serial code you received at purchase.",
+        "sub_trial_expired": "Your {days}-day trial has ended. Enter your serial code to continue.",
         "machine_label": "Machine ID (send me this if you don't have a code yet):",
         "code_label": "Serial code:",
         "activate": "Activate",
@@ -43,11 +62,18 @@ TEXTS = {
         "empty_error": "Enter a serial code.",
         "success_title": "Activated",
         "success_msg": "DataMover was activated successfully.",
+        "trial_ending_title": "Trial ending soon",
+        "trial_ending_msg": "You have {days} {days_word} left in your free trial. Message me on WhatsApp (+34 643 10 99 70) when you're ready to activate.",
+        "trial_day": "day",
+        "trial_days": "days",
+        "whatsapp_btn": "💬 Message me on WhatsApp",
+        "whatsapp_prefill": "Hi! I'd like to activate DataMover. Machine ID: {id}",
     },
     "es": {
         "title": "Activar DataMover",
         "heading": "Activar DataMover",
         "sub": "Introduce el código de serie recibido en la compra.",
+        "sub_trial_expired": "Tu prueba de {days} días ha terminado. Introduce tu código de serie para continuar.",
         "machine_label": "ID de máquina (envíamelo si aún no tienes un código):",
         "code_label": "Código de serie:",
         "activate": "Activar",
@@ -55,6 +81,12 @@ TEXTS = {
         "empty_error": "Introduce un código de serie.",
         "success_title": "Activado",
         "success_msg": "DataMover se activó correctamente.",
+        "trial_ending_title": "La prueba casi termina",
+        "trial_ending_msg": "Te quedan {days} {days_word} de prueba gratuita. Escríbeme por WhatsApp (+34 643 10 99 70) cuando quieras activar.",
+        "trial_day": "día",
+        "trial_days": "días",
+        "whatsapp_btn": "💬 Escríbeme por WhatsApp",
+        "whatsapp_prefill": "Hola! Quiero activar DataMover. ID de máquina: {id}",
     },
 }
 
@@ -66,6 +98,34 @@ def _current_language():
         return lang if lang in TEXTS else "ro"
     except Exception:
         return "ro"
+
+
+def _trial_file_path():
+    return os.path.expanduser(f"~/.{license_validator.PRODUCT_ID}_trial")
+
+
+def _trial_days_remaining():
+    """Porneste automat perioada de proba la prima lansare (scrie data
+    curenta intr-un fisier local, separat de fisierul licentei reale) si
+    intoarce cate zile mai raman din ea - un numar <= 0 inseamna ca proba
+    a expirat. Fara server, fara nicio legatura cu codul de activare real."""
+    path = _trial_file_path()
+    if not os.path.isfile(path):
+        try:
+            with open(path, "w") as f:
+                f.write(str(int(time.time())))
+        except OSError:
+            pass  # daca nu putem scrie fisierul, tratam ca proba pornita acum
+        return float(TRIAL_DAYS)
+
+    try:
+        with open(path) as f:
+            started_at = int(f.read().strip())
+    except (ValueError, OSError):
+        started_at = int(time.time())
+
+    elapsed_days = (time.time() - started_at) / 86400
+    return TRIAL_DAYS - elapsed_days
 
 
 def _make_button(parent, text, command, bg, fg, hover_bg):
@@ -83,11 +143,12 @@ def _make_button(parent, text, command, bg, fg, hover_bg):
 
 
 class ActivationDialog(tk.Tk):
-    def __init__(self):
+    def __init__(self, trial_expired=False):
         super().__init__()
         self.t = TEXTS[_current_language()]
+        self.trial_expired = trial_expired
         self.title(self.t["title"])
-        self.geometry("520x420")
+        self.geometry("520x470")
         self.resizable(False, False)
         self.activated = False
 
@@ -104,8 +165,9 @@ class ActivationDialog(tk.Tk):
         body = ttk.Frame(self, padding=24)
         body.pack(fill="both", expand=True)
 
+        sub_text = self.t["sub_trial_expired"].format(days=TRIAL_DAYS) if self.trial_expired else self.t["sub"]
         ttk.Label(body, text=self.t["heading"], font=("", 15, "bold")).pack(anchor="w")
-        ttk.Label(body, text=self.t["sub"], foreground="#666").pack(anchor="w", pady=(2, 16))
+        ttk.Label(body, text=sub_text, foreground="#666", wraplength=460, justify="left").pack(anchor="w", pady=(2, 16))
 
         ttk.Label(body, text=self.t["machine_label"], foreground="#555",
                   wraplength=440, justify="left").pack(anchor="w")
@@ -118,6 +180,9 @@ class ActivationDialog(tk.Tk):
         id_entry.pack(side="left", fill="x", expand=True)
         _make_button(id_row, "Copiaza", lambda: self._copy_to_clipboard(machine_id_value),
                      bg="#555555", fg="white", hover_bg="#444444").pack(side="left", padx=(6, 0))
+
+        _make_button(body, self.t["whatsapp_btn"], lambda: self._open_whatsapp(machine_id_value),
+                     bg="#25D366", fg="white", hover_bg="#1EBE5A").pack(anchor="w", pady=(0, 16))
 
         ttk.Label(body, text=self.t["code_label"]).pack(anchor="w")
         self.entry = tk.Text(body, height=4, wrap="char", font=("Courier", 10))
@@ -164,6 +229,11 @@ class ActivationDialog(tk.Tk):
         self.clipboard_clear()
         self.clipboard_append(text)
 
+    def _open_whatsapp(self, machine_id_value):
+        message = self.t["whatsapp_prefill"].format(id=machine_id_value)
+        url = f"https://wa.me/{WHATSAPP_PHONE}?text={urllib.parse.quote(message)}"
+        webbrowser.open(url)
+
     def _try_activate(self):
         serial = self.entry.get("1.0", "end").strip()
         if not serial:
@@ -184,13 +254,40 @@ class ActivationDialog(tk.Tk):
         self.destroy()
 
 
+def _show_trial_ending_notice(days_remaining):
+    lang = _current_language()
+    t = TEXTS[lang]
+    days_int = max(1, int(days_remaining + 0.999))  # rotunjire in sus - "mai ai 1 zi", nu "0 zile"
+    day_word = t["trial_day"] if days_int == 1 else t["trial_days"]
+    root = tk.Tk()
+    root.withdraw()
+    messagebox.showinfo(
+        t["trial_ending_title"],
+        t["trial_ending_msg"].format(days=days_int, days_word=day_word),
+    )
+    root.destroy()
+
+
 def require_license():
+    """Verifica licenta inaintea pornirii aplicatiei. Intoarce:
+    - None daca aplicatia are un cod de activare valid (nu ruleaza pe proba)
+    - un numar de zile ramase din proba gratuita (>=0), altfel
+
+    Nu returneaza deloc daca utilizatorul iese fara sa activeze - aplicatia
+    se inchide (sys.exit), la fel ca inainte de introducerea probei."""
     saved = license_validator.load_saved_license()
     if saved and saved.valid:
-        return
+        return None
 
-    dialog = ActivationDialog()
+    remaining = _trial_days_remaining()
+    if remaining > 0:
+        if remaining <= 2:
+            _show_trial_ending_notice(remaining)
+        return max(0, int(remaining))
+
+    dialog = ActivationDialog(trial_expired=True)
     dialog.mainloop()
 
     if not dialog.activated:
         sys.exit(0)
+    return None
