@@ -39,22 +39,16 @@ Descarcă ultima versiune de la [Releases](https://github.com/gordasgdc/datamove
 
 | Platformă | Fișier | Descriere |
 |-----------|--------|-----------|
-| **Mac** | `DataMover-Mac-Installer.pkg` | Instalator recomandat (curăță automat carantina) |
-| | `DataMover-Mac.zip` | Aplicație portabilă `.app` |
-| **Windows** | `DataMover-Windows.zip` | Conține `DataMover.exe` |
+| **Mac** | `DataMover-Mac.zip` | Instalator `.pkg` + ghidurile PDF (RO/EN/ES) |
+| **Windows** | `DataMover-Windows.zip` | `DataMover.exe` + ghidurile PDF (RO/EN/ES) |
 
 ## 📖 Instalare rapidă
 
-### Mac (cu .pkg — recomandat)
-1. Descarcă `DataMover-Mac-Installer.pkg`
-2. Dublu-click pe fișier și urmează instrucțiunile instalatorului
+### Mac
+1. Descarcă `DataMover-Mac.zip` și extrage
+2. Dublu-click pe `DataMover-Mac-Installer.pkg` și urmează instrucțiunile instalatorului
 3. Aplicația se instalează în `/Applications`
 4. La prima rulare, click-dreapta → `Open` → confirmă (se face o singură dată)
-
-### Mac (cu .app — portabil)
-1. Descarcă `DataMover-Mac.zip` și extrage
-2. Mută `DataMover.app` în `/Applications` (recomandat)
-3. Click-dreapta → `Open` la prima rulare
 
 ### Windows
 1. Descarcă `DataMover-Windows.zip` și extrage conținutul

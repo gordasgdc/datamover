@@ -229,9 +229,8 @@ git push origin v1.0.0
 Declanșează automat build-ul pentru ambele platforme, apoi creează o
 pagină de Release la `https://github.com/gordasgdc/datamover/releases`, cu:
 
-- `DataMover-Mac.zip` — `DataMover.app` + `DataMover Monitor`
-- `DataMover-Mac-Installer.pkg` — instalator recomandat
-- `DataMover-Windows.zip` — `DataMover.exe` + `DataMover Monitor.exe`
+- `DataMover-Mac.zip` — instalatorul `.pkg` + ghidurile PDF (RO/EN/ES), la un loc
+- `DataMover-Windows.zip` — `DataMover.exe` + `DataMover Monitor.exe` + ghidurile PDF (RO/EN/ES)
 - **Source code (zip / tar.gz)** — generate automat de GitHub
 
 Pentru o versiune nouă, repeți doar cu alt număr de tag:
