@@ -11,7 +11,7 @@ import machine_id
 # ─────────────────────────────────────────────────────────────────────
 # INLOCUIESTE cu cheia TA publica, generata de keygen.py
 # (din gdc-license-system).
-PUBLIC_KEY_B64 = "I1h23MNMRbOhc0ObKJrfa3oFHKA9w+SzbNrroAIy8hs=%"
+PUBLIC_KEY_B64 = "I1h23MNMRbOhc0ObKJrfa3oFHKA9w+SzbNrroAIy8hs="
 
 PRODUCT_ID = "gdc-datamover"
 # ─────────────────────────────────────────────────────────────────────
