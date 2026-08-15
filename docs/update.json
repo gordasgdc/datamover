@@ -1,11 +1,11 @@
 {
-  "version": "1.2.0",
-  "release_date": "2026-08-02",
-  "changes": "Self-update, buton deschide folder, ejectare card, log centralizat, pagina web si branding.",
+  "version": "2.1.1",
+  "release_date": "2026-08-15",
+  "changes": "Repara activarea licentei: un caracter in plus in cheia publica facea ca orice cod serial valid sa fie respins.",
   "download_url": {
     "windows": "https://github.com/gordasgdc/datamover/releases/latest/download/DataMover-Windows.zip",
     "mac": "https://github.com/gordasgdc/datamover/releases/latest/download/DataMover-Mac-Installer.pkg"
   },
-  "mandatory": false,
+  "mandatory": true,
   "min_version": "1.0.0"
 }
