@@ -589,7 +589,7 @@
   <section id="activare">
     <p class="eyebrow" data-i18n="act.eyebrow">Activare</p>
     <h2 data-i18n="act.title">Licență personală — 9,80 €.</h2>
-    <p class="req-value" style="margin-bottom:24px;" data-i18n="act.p1">Codul sursă e disponibil pe GitHub sub licență MIT, dar aplicația compilată are nevoie de un cod de activare, legat de calculatorul tău, ca să poată porni.</p>
+    <p class="req-value" style="margin-bottom:24px;" data-i18n="act.p1">Codul sursă e disponibil pe GitHub sub licență MIT, dar aplicația compilată are nevoie de un cod de activare, legat de calculatorul tău, ca să poată porni. Cei 9,80 € sunt mai degrabă un sprijin pentru dezvoltare (abonamente, unelte) decât un preț de listă.</p>
 
     <div class="reqs">
       <div class="req">
@@ -598,13 +598,17 @@
       </div>
       <div class="req">
         <p class="req-label" data-i18n="act.step2_label">Pas 2</p>
-        <p class="req-value" data-i18n="act.step2">Îmi trimiți acel ID (Facebook sau YouTube, mai jos), împreună cu plata de 9,80 €.</p>
+        <p class="req-value" data-i18n="act.step2">Îmi scrii pe WhatsApp (buton mai jos) — îți trimit un link de plată pe Revolut.</p>
       </div>
       <div class="req">
         <p class="req-label" data-i18n="act.step3_label">Pas 3</p>
-        <p class="req-value" data-i18n="act.step3">Îți trimit codul personal de activare, legat exact de acel calculator.</p>
+        <p class="req-value" data-i18n="act.step3">După plată, îmi trimiți ID-ul de mașină și primești codul personal de activare.</p>
       </div>
     </div>
+
+    <a class="btn btn-primary" id="waBtn" style="margin-top:24px;"
+       href="https://wa.me/34643109970?text=Salut!%20Vreau%20sa%20activez%20DataMover."
+       target="_blank" rel="noopener" data-i18n="act.wa_btn">&#128172; Scrie-mi pe WhatsApp</a>
   </section>
 
   <section id="cerinte">
@@ -640,6 +644,7 @@
     </div>
 
     <div class="footer-links">
+      <a href="https://wa.me/34643109970?text=Salut!%20Vreau%20sa%20activez%20DataMover." target="_blank" rel="noopener" data-i18n="footer.whatsapp">WhatsApp</a>
       <a href="https://web.facebook.com/cristiGDC" target="_blank" rel="noopener">Facebook</a>
       <a href="https://youtube.com/@cristigordas" target="_blank" rel="noopener">YouTube — @cristigordas</a>
       <a href="https://resolvemaster.training" target="_blank" rel="noopener">resolvemaster.training</a>
@@ -725,13 +730,15 @@
       'steps.s5.desc': 'La final primesti un raport CSV/PDF cu statusul fiecarui fisier si poti ejecta cardul direct din aplicatie.',
       'act.eyebrow': 'Activare',
       'act.title': 'Licență personală — 9,80 €.',
-      'act.p1': 'Codul sursă e disponibil pe GitHub sub licență MIT, dar aplicația compilată are nevoie de un cod de activare, legat de calculatorul tău, ca să poată porni.',
+      'act.p1': 'Codul sursă e disponibil pe GitHub sub licență MIT, dar aplicația compilată are nevoie de un cod de activare, legat de calculatorul tău, ca să poată porni. Cei 9,80 € sunt mai degrabă un sprijin pentru dezvoltare (abonamente, unelte) decât un preț de listă.',
       'act.step1_label': 'Pas 1',
       'act.step1': 'Deschizi aplicația — vezi un ID de mașină direct în fereastra de activare.',
       'act.step2_label': 'Pas 2',
-      'act.step2': 'Îmi trimiți acel ID (Facebook sau YouTube, mai jos), împreună cu plata de 9,80 €.',
+      'act.step2': 'Îmi scrii pe WhatsApp (buton mai jos) — îți trimit un link de plată pe Revolut.',
       'act.step3_label': 'Pas 3',
-      'act.step3': 'Îți trimit codul personal de activare, legat exact de acel calculator.',
+      'act.step3': 'După plată, îmi trimiți ID-ul de mașină și primești codul personal de activare.',
+      'act.wa_btn': '&#128172; Scrie-mi pe WhatsApp',
+      'footer.whatsapp': 'WhatsApp',
       'reqs.eyebrow': 'Cerinte',
       'reqs.title': 'Ce iti trebuie pe masina.',
       'reqs.os.label': 'Sistem',
@@ -791,13 +798,15 @@
       'steps.s5.desc': 'You get a CSV/PDF report with each file\'s status, and can eject the card straight from the app.',
       'act.eyebrow': 'Activation',
       'act.title': 'Personal license — €9.80.',
-      'act.p1': 'The source code is available on GitHub under the MIT license, but the compiled app needs an activation code, tied to your computer, to be able to start.',
+      'act.p1': 'The source code is available on GitHub under the MIT license, but the compiled app needs an activation code, tied to your computer, to be able to start. The €9.80 is more of a contribution towards development (subscriptions, tools) than a list price.',
       'act.step1_label': 'Step 1',
       'act.step1': 'Open the app — you\'ll see a Machine ID right in the activation window.',
       'act.step2_label': 'Step 2',
-      'act.step2': 'Send me that ID (Facebook or YouTube, below), along with the €9.80 payment.',
+      'act.step2': 'Message me on WhatsApp (button below) — I\'ll send you a Revolut payment link.',
       'act.step3_label': 'Step 3',
-      'act.step3': 'I send you your personal activation code, tied to exactly that computer.',
+      'act.step3': 'After payment, send me the Machine ID and get your personal activation code.',
+      'act.wa_btn': '&#128172; Message me on WhatsApp',
+      'footer.whatsapp': 'WhatsApp',
       'reqs.eyebrow': 'Requirements',
       'reqs.title': 'What you\'ll need.',
       'reqs.os.label': 'System',
@@ -857,13 +866,15 @@
       'steps.s5.desc': 'Al final recibes un informe CSV/PDF con el estado de cada archivo y puedes expulsar la tarjeta desde la app.',
       'act.eyebrow': 'Activación',
       'act.title': 'Licencia personal — 9,80 €.',
-      'act.p1': 'El código fuente está disponible en GitHub bajo licencia MIT, pero la aplicación compilada necesita un código de activación, vinculado a tu ordenador, para poder iniciarse.',
+      'act.p1': 'El código fuente está disponible en GitHub bajo licencia MIT, pero la aplicación compilada necesita un código de activación, vinculado a tu ordenador, para poder iniciarse. Los 9,80 € son más bien una contribución para el desarrollo (suscripciones, herramientas) que un precio de lista.',
       'act.step1_label': 'Paso 1',
       'act.step1': 'Abres la aplicación — verás un ID de máquina directamente en la ventana de activación.',
       'act.step2_label': 'Paso 2',
-      'act.step2': 'Me envías ese ID (Facebook o YouTube, abajo), junto con el pago de 9,80 €.',
+      'act.step2': 'Me escribes por WhatsApp (botón abajo) — te envío un enlace de pago por Revolut.',
       'act.step3_label': 'Paso 3',
-      'act.step3': 'Te envío tu código de activación personal, vinculado exactamente a ese ordenador.',
+      'act.step3': 'Después del pago, me envías el ID de máquina y recibes tu código de activación personal.',
+      'act.wa_btn': '&#128172; Escríbeme por WhatsApp',
+      'footer.whatsapp': 'WhatsApp',
       'reqs.eyebrow': 'Requisitos',
       'reqs.title': 'Que necesitas en tu equipo.',
       'reqs.os.label': 'Sistema',
@@ -878,11 +889,21 @@
     }
   };
 
+  const WA_PREFILL = {
+    ro: 'Salut! Vreau sa activez DataMover.',
+    en: "Hi! I'd like to activate DataMover.",
+    es: 'Hola! Quiero activar DataMover.',
+  };
+
   function applyLang(lang) {
     const dict = translations[lang];
     document.querySelectorAll('[data-i18n]').forEach(el => {
       const key = el.getAttribute('data-i18n');
       if (dict[key]) el.innerHTML = dict[key];
+    });
+    const waText = encodeURIComponent(WA_PREFILL[lang] || WA_PREFILL.ro);
+    document.querySelectorAll('a[href*="wa.me/34643109970"]').forEach(a => {
+      a.href = 'https://wa.me/34643109970?text=' + waText;
     });
     document.documentElement.lang = lang;
     document.querySelectorAll('.lang-btn').forEach(btn => {
