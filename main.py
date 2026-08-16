@@ -42,7 +42,7 @@ AUTHOR_LINKS = [
 ]
 
 import tkinter as tk
-from tkinter import ttk, filedialog, messagebox
+from tkinter import ttk, filedialog, messagebox, simpledialog
 
 try:
     from tkinterdnd2 import TkinterDnD, DND_FILES
@@ -105,6 +105,7 @@ class DataMoverApp(_BASE_CLASS):
         )
 
         self.destinations = list(self.settings.get("destinations", []))
+        self.presets = dict(self.settings.get("presets", {}))
 
         self.log_queue = queue.Queue()
         self.progress_counter = [0]
@@ -234,6 +235,9 @@ class DataMoverApp(_BASE_CLASS):
         self._reg(ttk.Button(
             top_row, command=self._check_for_updates
         ), "check_updates").pack(side="left", padx=(12, 0))
+        self._reg(ttk.Button(
+            top_row, command=self._show_history_dialog
+        ), "history").pack(side="left", padx=(12, 0))
 
         if self.trial_days_remaining is not None:
             trial_label = ttk.Label(
@@ -298,6 +302,9 @@ class DataMoverApp(_BASE_CLASS):
         ttk.Entry(self.frame_meta, textvariable=self.project_var, width=25).grid(row=0, column=1, padx=8, pady=6, sticky="w")
         self._reg(ttk.Label(self.frame_meta), "meta_card").grid(row=0, column=2, padx=8, pady=6, sticky="e")
         ttk.Entry(self.frame_meta, textvariable=self.card_var, width=20).grid(row=0, column=3, padx=8, pady=6, sticky="w")
+        self._reg(
+            ttk.Button(self.frame_meta, command=self._clear_project_card), "meta_clear"
+        ).grid(row=0, column=4, padx=8, pady=6, sticky="w")
 
         # Excluderi + optiuni
         self.frame_opts = self._reg(ttk.LabelFrame(content), "opts_label")
@@ -352,6 +359,19 @@ class DataMoverApp(_BASE_CLASS):
         btn_frame.pack(fill="x", padx=8, pady=(0, 4))
         self._reg(ttk.Button(btn_frame, command=self._add_destination), "dest_add").pack(side="left")
         self._reg(ttk.Button(btn_frame, command=self._remove_destination), "dest_remove").pack(side="left", padx=8)
+
+        # Presetari: combinatii salvate de Destinatii + Model de verificare +
+        # Excluderi, reutilizabile fara sa retastezi de fiecare data.
+        preset_row = ttk.Frame(self.frame_dest)
+        preset_row.pack(fill="x", padx=8, pady=(0, 8))
+        self._reg(ttk.Label(preset_row), "preset_label").pack(side="left")
+        self.preset_var = tk.StringVar()
+        self.preset_combo = ttk.Combobox(preset_row, textvariable=self.preset_var, state="readonly", width=22)
+        self.preset_combo.pack(side="left", padx=(6, 8))
+        self.preset_combo.bind("<<ComboboxSelected>>", self._on_preset_selected)
+        self._reg(ttk.Button(preset_row, command=self._save_preset), "preset_save").pack(side="left")
+        self._reg(ttk.Button(preset_row, command=self._delete_preset), "preset_delete").pack(side="left", padx=(6, 0))
+        self._refresh_preset_combo()
 
         self.hint_dest_label = ttk.Label(self.frame_dest, style="Muted.TLabel")
         self._reg(self.hint_dest_label, "dest_dnd" if _DND_AVAILABLE else "dest_dnd_unavailable")
@@ -606,6 +626,64 @@ class DataMoverApp(_BASE_CLASS):
         win.geometry(f"+{max(x, 0)}+{max(y, 0)}")
         win.grab_set()
 
+    def _show_history_dialog(self):
+        """Fereastra cu istoricul sesiunilor de offload trecute - data,
+        proiect, card, destinatii, model de verificare, rezultat. Citit din
+        ~/.datamover_history.json (vezi config.py)."""
+        palette = theme.DARK if self.dark_mode_var.get() else theme.LIGHT
+        history = cfg.load_history()
+
+        win = tk.Toplevel(self)
+        win.title(self.t("history_title"))
+        win.geometry("820x440")
+        win.configure(background=palette["bg"])
+        win.transient(self)
+
+        if not history:
+            tk.Label(win, text=self.t("history_empty"), background=palette["bg"],
+                     foreground=palette["muted"], padx=24, pady=24).pack()
+        else:
+            list_frame = ttk.Frame(win)
+            list_frame.pack(fill="both", expand=True, padx=12, pady=12)
+
+            columns = ("date", "project", "card", "destinations", "model", "result")
+            tree = ttk.Treeview(list_frame, columns=columns, show="headings")
+            headings = {
+                "date": self.t("history_col_date"), "project": self.t("history_col_project"),
+                "card": self.t("history_col_card"), "destinations": self.t("history_col_dest"),
+                "model": self.t("history_col_model"), "result": self.t("history_col_result"),
+            }
+            widths = {"date": 120, "project": 110, "card": 90, "destinations": 190, "model": 130, "result": 160}
+            for col in columns:
+                tree.heading(col, text=headings[col])
+                tree.column(col, width=widths[col], anchor="w")
+
+            for entry in history:
+                dest_summary = ", ".join(
+                    os.path.basename(d.rstrip("/\\")) or d for d in entry.get("destinations", [])
+                ) or "-"
+                if entry.get("cancelled"):
+                    result = self.t("history_result_cancelled", ok=entry.get("ok", 0))
+                else:
+                    result = self.t("history_result", ok=entry.get("ok", 0), fail=entry.get("fail", 0))
+                tree.insert("", "end", values=(
+                    entry.get("date", ""), entry.get("project", ""), entry.get("card", ""),
+                    dest_summary, entry.get("verification_model", ""), result,
+                ))
+
+            scrollbar = ttk.Scrollbar(list_frame, orient="vertical", command=tree.yview)
+            tree.configure(yscrollcommand=scrollbar.set)
+            tree.pack(side="left", fill="both", expand=True)
+            scrollbar.pack(side="left", fill="y")
+
+        ttk.Button(win, text=self.t("about_close"), command=win.destroy).pack(pady=(0, 12))
+
+        win.update_idletasks()
+        x = self.winfo_rootx() + (self.winfo_width() - win.winfo_width()) // 2
+        y = self.winfo_rooty() + (self.winfo_height() - win.winfo_height()) // 2
+        win.geometry(f"+{max(x, 0)}+{max(y, 0)}")
+        win.grab_set()
+
     # ---------------- Actualizari automate (self-update) ----------------
 
     def _check_for_updates(self):
@@ -765,6 +843,14 @@ class DataMoverApp(_BASE_CLASS):
 
     # ---------------- Destinatii ----------------
 
+    def _clear_project_card(self):
+        """Goleste Nume proiect + Eticheta card - cerut explicit: valorile
+        de la sesiunea anterioara raman altfel completate, usor de uitat
+        neschimbate la un card nou (risc real de folder numit gresit)."""
+        self.project_var.set("")
+        self.card_var.set("")
+        self._save_settings()
+
     def _add_destination(self):
         path = filedialog.askdirectory(title=self.t("dest_add"))
         if path and path not in self.destinations:
@@ -776,6 +862,68 @@ class DataMoverApp(_BASE_CLASS):
         for idx in reversed(sel):
             self.dest_listbox.delete(idx)
             del self.destinations[idx]
+
+    # ---------------- Presetari (Destinatii + verificare + excluderi) ----------------
+
+    def _refresh_preset_combo(self):
+        names = sorted(self.presets.keys())
+        self.preset_combo["values"] = names
+        if self.preset_var.get() not in names:
+            self.preset_var.set("")
+
+    def _on_preset_selected(self, _event=None):
+        name = self.preset_var.get()
+        preset = self.presets.get(name)
+        if not preset:
+            return
+
+        self.destinations = list(preset.get("destinations", []))
+        self.dest_listbox.delete(0, "end")
+        for d in self.destinations:
+            self.dest_listbox.insert("end", d)
+
+        self.exclusions_var.set(preset.get("exclusions", self.exclusions_var.get()))
+
+        model_key = preset.get("verification_model")
+        if model_key in VERIFICATION_MODELS:
+            self.verification_model_var.set(model_key)
+            self._refresh_verification_combo()
+
+        self._append_log(self.t("preset_applied", name=name))
+        self._save_settings()
+
+    def _save_preset(self):
+        default_name = self.preset_var.get() or ""
+        name = simpledialog.askstring(
+            self.t("preset_save"), self.t("preset_name_prompt"),
+            initialvalue=default_name, parent=self,
+        )
+        if not name:
+            return
+        name = name.strip()
+        if not name:
+            return
+        self.presets[name] = {
+            "destinations": list(self.destinations),
+            "verification_model": self.verification_model_var.get(),
+            "exclusions": self.exclusions_var.get(),
+        }
+        self.preset_var.set(name)
+        self._refresh_preset_combo()
+        self._save_settings()
+        self._append_log(self.t("preset_saved", name=name))
+
+    def _delete_preset(self):
+        name = self.preset_var.get()
+        if not name or name not in self.presets:
+            messagebox.showwarning(self.t("msg_warning_title"), self.t("preset_none_selected"))
+            return
+        if not messagebox.askyesno(self.t("preset_delete"), self.t("preset_delete_confirm", name=name)):
+            return
+        del self.presets[name]
+        self.preset_var.set("")
+        self._refresh_preset_combo()
+        self._save_settings()
 
     # ---------------- Log / progres ----------------
 
@@ -865,6 +1013,22 @@ class DataMoverApp(_BASE_CLASS):
             except Exception:
                 pass
 
+    def _record_history_entry(self, cancelled, ok_count, skip_count, fail_count):
+        """Salveaza aceasta sesiune in istoricul persistent (~/.datamover_history.json)
+        - vezi tab-ul Istoric. Best-effort, ca orice salvare de config."""
+        current_label = VERIFICATION_MODELS.get(
+            self.verification_model_var.get(), VERIFICATION_MODELS[DEFAULT_VERIFICATION_MODEL]
+        )["label"]
+        cfg.append_history_entry({
+            "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
+            "project": self.project_var.get().strip(),
+            "card": self.card_var.get().strip(),
+            "destinations": list(self.destinations),
+            "verification_model": current_label,
+            "cancelled": cancelled,
+            "ok": ok_count, "skip": skip_count, "fail": fail_count,
+        })
+
     def _finish_session(self):
         self.running = False
         self.start_btn.config(state="normal")
@@ -876,6 +1040,8 @@ class DataMoverApp(_BASE_CLASS):
         total_ok = sum(j.ok_count for j in self.jobs)
         total_fail = sum(j.fail_count for j in self.jobs)
         total_skip = sum(j.skip_count for j in self.jobs)
+
+        self._record_history_entry(any_cancelled, total_ok, total_skip, total_fail)
 
         log_master(
             f"Sesiune offload {'ANULATA' if any_cancelled else 'finalizata'} -> "
@@ -1094,6 +1260,7 @@ class DataMoverApp(_BASE_CLASS):
             "verification_model": self.verification_model_var.get(),
             "dark_mode": self.dark_mode_var.get(),
             "eject_after": self.eject_after_var.get(),
+            "presets": self.presets,
         })
 
     def _start_offload(self, resume=False):

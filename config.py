@@ -18,6 +18,8 @@ import shutil
 
 CONFIG_PATH = os.path.expanduser("~/.datamover_config.json")
 _OLD_CONFIG_PATH = os.path.expanduser("~/.shotputlite_config.json")
+HISTORY_PATH = os.path.expanduser("~/.datamover_history.json")
+HISTORY_MAX_ENTRIES = 200  # nu lasam fisierul de istoric sa creasca la nesfarsit
 
 DEFAULTS = {
     "project": "",
@@ -29,6 +31,12 @@ DEFAULTS = {
     "dark_mode": False,
     "eject_after": False,
     "language": "ro",
+    # Presetari: nume -> {"destinations": [...], "verification_model": "md5",
+    # "exclusions": "..."} - combinatii salvate de destinatii + optiuni de
+    # copiere, reutilizabile fara sa retastezi de fiecare data. NU includ
+    # proiect/card (astea se schimba la fiecare card filmat, nu au ce cauta
+    # intr-o presetare reutilizabila).
+    "presets": {},
 }
 
 
@@ -60,3 +68,30 @@ def save_config(data):
             json.dump(data, f, ensure_ascii=False, indent=2)
     except Exception:
         pass  # salvarea setarilor este un bonus, nu trebuie sa opreasca aplicatia
+
+
+def load_history():
+    """Intoarce lista de sesiuni de offload trecute (cele mai recente
+    primele), sau [] daca nu exista inca istoric / e corupt."""
+    if not os.path.isfile(HISTORY_PATH):
+        return []
+    try:
+        with open(HISTORY_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, list) else []
+    except Exception:
+        return []
+
+
+def append_history_entry(entry):
+    """Adauga o sesiune noua in istoric (la inceput - cele mai recente
+    primele), pastrand cel mult HISTORY_MAX_ENTRIES. Best-effort, ca si
+    save_config - nu trebuie sa opreasca aplicatia daca esueaza."""
+    history = load_history()
+    history.insert(0, entry)
+    history = history[:HISTORY_MAX_ENTRIES]
+    try:
+        with open(HISTORY_PATH, "w", encoding="utf-8") as f:
+            json.dump(history, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
