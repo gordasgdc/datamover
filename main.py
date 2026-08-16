@@ -84,8 +84,8 @@ class DataMoverApp(_BASE_CLASS):
     def __init__(self, trial_days_remaining=None):
         super().__init__()
         self.title("DataMover")
-        self.geometry("880x760")
-        self.minsize(760, 620)
+        self.geometry("960x840")
+        self.minsize(820, 680)
         self.trial_days_remaining = trial_days_remaining
 
         self.settings = cfg.load_config()
@@ -171,7 +171,7 @@ class DataMoverApp(_BASE_CLASS):
     # ---------------- UI ----------------
 
     def _build_ui(self):
-        pad = {"padx": 10, "pady": 6}
+        pad = {"padx": 12, "pady": 8}
 
         # Bara de sus: tema + limba + Despre + actualizari + monitorizare
         top_row = ttk.Frame(self)
@@ -1167,7 +1167,28 @@ class DataMoverApp(_BASE_CLASS):
         self.destroy()
 
 
+def _fix_windows_dpi_scaling():
+    """Pe Windows, o aplicatie care nu se declara "DPI-aware" e scalata de
+    Windows insusi ca un bitmap (presupunand 96 DPI) - pe monitoare cu
+    scalare non-100% (foarte comun pe laptopuri Full HD, ex. 125%/150%),
+    asta produce text neclar si dimensiuni gresite fata de restul
+    ecranului. Declararea explicita, INAINTE sa se creeze orice fereastra
+    Tk, lasa Windows sa randeze aplicatia la rezolutia nativa corecta."""
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+        ctypes.windll.shcore.SetProcessDpiAwareness(1)  # PROCESS_SYSTEM_DPI_AWARE
+    except Exception:
+        try:
+            import ctypes
+            ctypes.windll.user32.SetProcessDPIAware()  # fallback, Windows mai vechi
+        except Exception:
+            pass
+
+
 if __name__ == "__main__":
+    _fix_windows_dpi_scaling()
     trial_days_remaining = activation.require_license()
     app = DataMoverApp(trial_days_remaining=trial_days_remaining)
     app.mainloop()
