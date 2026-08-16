@@ -29,6 +29,41 @@ import checkpoint as ckpt
 CHUNK_SIZE = 1024 * 1024  # 1 MB
 
 
+class _OffloadCancelled(Exception):
+    """Ridicata intern cand cancel_event e setat in timpul copierii sau
+    hash-uirii unui singur fisier - permite intreruperea in mijlocul unui
+    fisier urias (clip video de zeci de GB), nu doar intre fisiere."""
+    pass
+
+
+def _copy_file_cancelable(src, dst, cancel_event):
+    """Copiaza src -> dst in bucati de CHUNK_SIZE, verificand cancel_event
+    intre bucati - spre deosebire de un singur shutil.copy2() blocant,
+    asta face ca butonul Anuleaza sa opreasca efectiv copierea unui
+    fisier urias in cateva secunde, nu abia dupa ce acel fisier termina
+    (care, pentru un clip video de zeci de GB pe un drive lent, poate
+    insemna minute intregi in care Anuleaza pare sa nu faca nimic)."""
+    try:
+        with open(src, "rb") as fsrc, open(dst, "wb") as fdst:
+            while True:
+                if cancel_event is not None and cancel_event.is_set():
+                    raise _OffloadCancelled()
+                chunk = fsrc.read(CHUNK_SIZE)
+                if not chunk:
+                    break
+                fdst.write(chunk)
+    except _OffloadCancelled:
+        # nu lasam un fisier partial, pe jumatate copiat, care ar putea fi
+        # confundat mai tarziu cu unul complet
+        try:
+            if os.path.exists(dst):
+                os.remove(dst)
+        except OSError:
+            pass
+        raise
+    shutil.copystat(src, dst)  # pastreaza data modificarii etc., ca shutil.copy2
+
+
 def format_size(num_bytes):
     for unit in ["B", "KB", "MB", "GB", "TB"]:
         if num_bytes < 1024.0:
@@ -71,12 +106,16 @@ VERIFICATION_MODELS = {
 DEFAULT_VERIFICATION_MODEL = "md5"
 
 
-def hash_of_file(path, hashlib_name):
+def hash_of_file(path, hashlib_name, cancel_event=None):
     """Calculeaza hash-ul unui fisier folosind algoritmul specificat (md5, sha1,
-    sha256, sha512...). Returneaza hexdigest-ul."""
+    sha256, sha512...). Returneaza hexdigest-ul. Daca se da un cancel_event
+    si e setat in timpul hash-uirii (poate dura la fel de mult ca si
+    copierea, pe fisiere mari), ridica _OffloadCancelled."""
     h = hashlib.new(hashlib_name)
     with open(path, "rb") as f:
         while True:
+            if cancel_event is not None and cancel_event.is_set():
+                raise _OffloadCancelled()
             chunk = f.read(CHUNK_SIZE)
             if not chunk:
                 break
@@ -312,8 +351,8 @@ class DestinationJob:
             dst_size = os.path.getsize(dest_path) if os.path.isfile(dest_path) else -1
             same = (dst_size == size)
             return same, f"marime={size}", f"marime={dst_size}"
-        src_hash = hash_of_file(full_src, self.hashlib_name)
-        dst_hash = hash_of_file(dest_path, self.hashlib_name)
+        src_hash = hash_of_file(full_src, self.hashlib_name, self.cancel_event)
+        dst_hash = hash_of_file(dest_path, self.hashlib_name, self.cancel_event)
         return src_hash == dst_hash, src_hash, dst_hash
 
     # ---------------- checkpoint ----------------
@@ -404,7 +443,7 @@ class DestinationJob:
 
                 # faza 1: copiere
                 self.phase_text = f"Copiere: {rel_path}"
-                shutil.copy2(full_src, dest_path)
+                _copy_file_cancelable(full_src, dest_path, self.cancel_event)
                 self._bump_copy_counter()
 
                 # faza 2: verificare (separata vizual de copiere)
@@ -413,6 +452,9 @@ class DestinationJob:
                 self._bump_verify_counter()
                 if not same:
                     status = "NEPOTRIVIRE"
+            except _OffloadCancelled:
+                self.cancelled = True
+                break
             except Exception as e:
                 status = "EROARE"
                 error_msg = str(e)

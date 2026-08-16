@@ -63,6 +63,24 @@ DARK = {
 }
 
 
+DEFAULT_FONT_SIZE = 11  # marit de la implicitul Tk (~9pt) - cerut explicit,
+                         # text/butoane greu de citit pe ecrane Full HD
+
+
+def _bump_default_fonts(size=DEFAULT_FONT_SIZE):
+    """Mareste fonturile "numite" ale Tk (TkDefaultFont, TkTextFont, etc.) -
+    astea sunt folosite automat de ORICE widget care nu-si seteaza propriul
+    font, atat ttk (Button, Label, Entry...) cat si tk clasic (Text,
+    Listbox, Menu) - un singur loc care mareste tot textul din aplicatie,
+    nu doar widget-urile ttk."""
+    import tkinter.font as tkfont
+    for name in ("TkDefaultFont", "TkTextFont", "TkMenuFont", "TkHeadingFont", "TkCaptionFont"):
+        try:
+            tkfont.nametofont(name).configure(size=size)
+        except Exception:
+            pass
+
+
 def _configure_ttk_style(style, palette):
     """Configureaza un ttk.Style cu tema 'clam', singura care permite
     control suficient asupra culorilor de fundal pe majoritatea platformelor
@@ -72,8 +90,10 @@ def _configure_ttk_style(style, palette):
     except Exception:
         pass
 
+    _bump_default_fonts()
+
     style.configure(".", background=palette["bg"], foreground=palette["fg"],
-                     fieldbackground=palette["entry_bg"])
+                     fieldbackground=palette["entry_bg"], font=("", DEFAULT_FONT_SIZE))
     style.configure("TFrame", background=palette["bg"])
     style.configure("TLabelframe", background=palette["bg"], foreground=palette["fg"])
     style.configure("TLabelframe.Label", background=palette["bg"], foreground=palette["fg"])
@@ -81,12 +101,12 @@ def _configure_ttk_style(style, palette):
     style.configure("TCheckbutton", background=palette["bg"], foreground=palette["fg"])
     style.map("TCheckbutton", background=[("active", palette["bg"])])
     style.configure("TButton", background=palette["button_bg"], foreground=palette["fg"],
-                     bordercolor=palette["border"])
+                     bordercolor=palette["border"], padding=(10, 6))
     style.map("TButton",
               background=[("active", palette["select_bg"]), ("disabled", palette["bg"])],
               foreground=[("disabled", palette["muted"])])
     style.configure("TEntry", fieldbackground=palette["entry_bg"], foreground=palette["entry_fg"],
-                     insertcolor=palette["fg"])
+                     insertcolor=palette["fg"], padding=(4, 4))
     style.configure("TCombobox", fieldbackground=palette["entry_bg"], foreground=palette["entry_fg"],
                      background=palette["button_bg"])
     style.map("TCombobox", fieldbackground=[("readonly", palette["entry_bg"])],
