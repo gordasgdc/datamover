@@ -46,10 +46,15 @@ def load_checkpoint(target_root):
 
 
 def save_checkpoint(target_root, source, folder_name, verification_model,
-                     files_status, completed=False):
+                     files_status, completed=False, total_files=None):
     """Scrie checkpoint-ul pe disc. files_status: dict rel_path -> status str
     ('ok', 'sarit', 'fail'). Scrierea e best-effort: daca esueaza (disc plin,
-    destinatie deconectata brusc etc.) nu opreste copierea."""
+    destinatie deconectata brusc etc.) nu opreste copierea.
+
+    total_files: numarul TOTAL de fisiere din sesiune (nu doar cate au fost
+    deja incercate) - necesar ca resumable_status() sa poata calcula corect
+    cate raman de facut, inclusiv cele la care nu s-a ajuns inca (ex. dupa
+    o anulare timpurie, inainte sa fi fost incercate)."""
     path = checkpoint_path_for(target_root)
     payload = {
         "source": source,
@@ -57,6 +62,7 @@ def save_checkpoint(target_root, source, folder_name, verification_model,
         "verification_model": verification_model,
         "completed": completed,
         "files": files_status,
+        "total_files": total_files,
     }
     try:
         tmp_path = path + ".tmp"
@@ -70,14 +76,27 @@ def save_checkpoint(target_root, source, folder_name, verification_model,
 
 def resumable_status(target_root):
     """Verifica rapid daca exista un checkpoint neterminat intr-un target_root.
-    Returneaza (exista_checkpoint_neterminat: bool, cate_ramase: int)."""
+    Returneaza (exista_checkpoint_neterminat: bool, cate_ramase: int).
+
+    "Ramase" = total_files - (cate au status ok/sarit) - include deci si
+    fisierele la care nu s-a ajuns inca (anulare timpurie), nu doar cele
+    incercate si esuate. Pentru checkpoint-uri vechi, scrise inainte sa
+    existe campul total_files, cadem inapoi pe vechea logica (doar cele
+    esuate explicit) - mai putin precisa, dar tot mai buna decat nimic."""
     data = load_checkpoint(target_root)
     if not data or data.get("completed"):
         return False, 0
     files = data.get("files", {})
-    remaining = sum(1 for status in files.values() if status not in ("ok", "sarit"))
-    # daca dictionarul e gol sau toate sunt ok, nu mai e nimic de reluat
-    return (not data.get("completed")) and (remaining > 0 or True), remaining
+    total_files = data.get("total_files")
+    done_count = sum(1 for status in files.values() if status in ("ok", "sarit"))
+    if total_files is not None:
+        remaining = max(0, total_files - done_count)
+    else:
+        remaining = sum(1 for status in files.values() if status not in ("ok", "sarit"))
+    # un checkpoint necompletat inseamna intotdeauna ceva de reluat - chiar
+    # daca "remaining" (doar diagnostic/afisaj) ar iesi 0 dintr-un motiv
+    # neprevazut, tot lasam butonul de reluare disponibil
+    return True, remaining
 
 
 def delete_checkpoint(target_root):

@@ -384,6 +384,7 @@ class DestinationJob:
         ckpt.save_checkpoint(
             target_root, self.source_root, self.folder_name,
             self.verification_model, self._files_status, completed=force,
+            total_files=self.total_files,
         )
         self._files_since_checkpoint = 0
         self._last_checkpoint_time = now
