@@ -1,11 +1,11 @@
 {
-  "version": "2.2.0",
-  "release_date": "2026-08-15",
-  "changes": "Proba gratuita de 7 zile (fara cont, fara card) + buton WhatsApp direct in fereastra de activare + interfata reimprospatata (carduri per destinatie, jurnal colorat, sunet la final).",
+  "version": "2.2.1",
+  "release_date": "2026-08-16",
+  "changes": "Anuleaza opreste acum instant copierea, chiar si pe fisiere mari (inainte putea parea blocat minute intregi). Text si butoane mai mari, scalare corecta pe Windows (Full HD).",
   "download_url": {
     "windows": "https://github.com/gordasgdc/datamover/releases/latest/download/DataMover-Windows.zip",
     "mac": "https://github.com/gordasgdc/datamover/releases/latest/download/DataMover-Mac-Installer.pkg"
   },
-  "mandatory": false,
+  "mandatory": true,
   "min_version": "1.0.0"
 }
