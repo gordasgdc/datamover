@@ -1054,7 +1054,7 @@ class DataMoverApp(_BASE_CLASS):
         found = []
         for dest, folder_name, target_root in self._expected_target_roots():
             resumable, remaining = ckpt.resumable_status(target_root)
-            if resumable and remaining > 0:
+            if resumable:
                 found.append((dest, folder_name, target_root, remaining))
         if found:
             self.resume_btn.config(state="normal")
