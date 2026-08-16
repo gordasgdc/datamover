@@ -13,7 +13,7 @@ APP_VERSION de mai jos - se propaga automat si in setup.py (fereastra
 nativa "About DataMover") si in verificarea de actualizari.
 """
 
-APP_VERSION = "2.2.1"  # actualizeaza aici la fiecare "git tag vX.Y.Z"
+APP_VERSION = "2.2.2"  # actualizeaza aici la fiecare "git tag vX.Y.Z"
 
 # URL-ul fisierului JSON care anunta cea mai noua versiune disponibila.
 # Trebuie sa fie gazduit static (ex: GitHub Pages) si actualizat manual
