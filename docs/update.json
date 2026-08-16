@@ -1,7 +1,7 @@
 {
-  "version": "2.2.2",
+  "version": "2.2.3",
   "release_date": "2026-08-16",
-  "changes": "Repara doua bug-uri din 2.2.1: butoanele Start/Anuleaza puteau disparea din fereastra cu mai multe destinatii, si aplicatia ramanea blocata dupa o Anulare. Fereastra e acum complet scrollabila.",
+  "changes": "Repara butonul \"Reia ultima copiere neterminata\" - ramanea dezactivat dupa o Anulare timpurie, desi mai erau fisiere de copiat.",
   "download_url": {
     "windows": "https://github.com/gordasgdc/datamover/releases/latest/download/DataMover-Windows.zip",
     "mac": "https://github.com/gordasgdc/datamover/releases/latest/download/DataMover-Mac-Installer.pkg"
