@@ -1,7 +1,7 @@
 {
-  "version": "2.2.1",
+  "version": "2.2.2",
   "release_date": "2026-08-16",
-  "changes": "Anuleaza opreste acum instant copierea, chiar si pe fisiere mari (inainte putea parea blocat minute intregi). Text si butoane mai mari, scalare corecta pe Windows (Full HD).",
+  "changes": "Repara doua bug-uri din 2.2.1: butoanele Start/Anuleaza puteau disparea din fereastra cu mai multe destinatii, si aplicatia ramanea blocata dupa o Anulare. Fereastra e acum complet scrollabila.",
   "download_url": {
     "windows": "https://github.com/gordasgdc/datamover/releases/latest/download/DataMover-Windows.zip",
     "mac": "https://github.com/gordasgdc/datamover/releases/latest/download/DataMover-Mac-Installer.pkg"
