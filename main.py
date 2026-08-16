@@ -116,6 +116,7 @@ class DataMoverApp(_BASE_CLASS):
         self.total_bytes = 0
         self.running = False
         self.cancel_event = threading.Event()
+        self._job_threads = []  # thread-urile de offload curente - vezi _poll_log_queue
         self.jobs = []
         self.start_time = None
         self.dest_progress_rows = {}  # dest_path -> dict cu widget-uri (bar/labels)
@@ -173,8 +174,56 @@ class DataMoverApp(_BASE_CLASS):
     def _build_ui(self):
         pad = {"padx": 12, "pady": 8}
 
+        # Container scrollabil pentru TOT continutul ferestrei. Fara asta,
+        # daca inaltimea naturala a continutului depaseste inaltimea
+        # ferestrei (usor de atins cu fonturi marite + mai multe destinatii,
+        # fiecare cu propriul card) - Tk pur si simplu nu mai deseneaza
+        # widget-urile care nu incap, in loc sa le comprima sau sa dea
+        # scroll - butoanele Start/Anuleaza si Jurnalul pot disparea complet,
+        # fara nicio eroare vizibila. Raportat direct de un utilizator.
+        outer_canvas = tk.Canvas(self, highlightthickness=0)
+        outer_scrollbar = ttk.Scrollbar(self, orient="vertical", command=outer_canvas.yview)
+        content = ttk.Frame(outer_canvas)
+
+        content.bind(
+            "<Configure>",
+            lambda e: outer_canvas.configure(scrollregion=outer_canvas.bbox("all")),
+        )
+        content_window = outer_canvas.create_window((0, 0), window=content, anchor="nw")
+        outer_canvas.bind(
+            "<Configure>",
+            lambda e: outer_canvas.itemconfig(content_window, width=e.width),
+        )
+        outer_canvas.configure(yscrollcommand=outer_scrollbar.set)
+
+        def _on_outer_mousewheel(event):
+            # daca mouse-ul e deasupra zonei scrollabile proprii a
+            # destinatiilor, o lasam pe ea sa raspunda, nu pe fereastra
+            # intreaga (altfel s-ar derula amandoua deodata)
+            widget = self.winfo_containing(event.x_root, event.y_root)
+            w = widget
+            while w is not None:
+                if w is getattr(self, "dest_progress_canvas", None):
+                    return
+                w = w.master
+            if getattr(event, "num", None) == 4:
+                delta = -1
+            elif getattr(event, "num", None) == 5:
+                delta = 1
+            else:
+                delta = -1 if event.delta > 0 else 1
+            outer_canvas.yview_scroll(delta, "units")
+
+        self.bind_all("<MouseWheel>", _on_outer_mousewheel)
+        self.bind_all("<Button-4>", _on_outer_mousewheel)
+        self.bind_all("<Button-5>", _on_outer_mousewheel)
+
+        outer_canvas.pack(side="left", fill="both", expand=True)
+        outer_scrollbar.pack(side="left", fill="y")
+        self._tk_themed_widgets.append(outer_canvas)
+
         # Bara de sus: tema + limba + Despre + actualizari + monitorizare
-        top_row = ttk.Frame(self)
+        top_row = ttk.Frame(content)
         top_row.pack(fill="x", padx=10, pady=(8, 0))
         self._reg(ttk.Checkbutton(
             top_row, variable=self.dark_mode_var, command=self._on_toggle_dark_mode,
@@ -214,7 +263,7 @@ class DataMoverApp(_BASE_CLASS):
         self.resume_btn.pack(side="right", padx=(0, 8))
 
         # Sursa
-        self.frame_src = self._reg(ttk.LabelFrame(self), "source_label")
+        self.frame_src = self._reg(ttk.LabelFrame(content), "source_label")
         self.frame_src.pack(fill="x", **pad)
 
         row1 = ttk.Frame(self.frame_src)
@@ -243,7 +292,7 @@ class DataMoverApp(_BASE_CLASS):
             self.frame_src.dnd_bind("<<Drop>>", self._on_source_drop)
 
         # Proiect / Card
-        self.frame_meta = self._reg(ttk.LabelFrame(self), "meta_label")
+        self.frame_meta = self._reg(ttk.LabelFrame(content), "meta_label")
         self.frame_meta.pack(fill="x", **pad)
         self._reg(ttk.Label(self.frame_meta), "meta_project").grid(row=0, column=0, padx=8, pady=6, sticky="e")
         ttk.Entry(self.frame_meta, textvariable=self.project_var, width=25).grid(row=0, column=1, padx=8, pady=6, sticky="w")
@@ -251,7 +300,7 @@ class DataMoverApp(_BASE_CLASS):
         ttk.Entry(self.frame_meta, textvariable=self.card_var, width=20).grid(row=0, column=3, padx=8, pady=6, sticky="w")
 
         # Excluderi + optiuni
-        self.frame_opts = self._reg(ttk.LabelFrame(self), "opts_label")
+        self.frame_opts = self._reg(ttk.LabelFrame(content), "opts_label")
         self.frame_opts.pack(fill="x", **pad)
 
         self._reg(ttk.Label(self.frame_opts), "opts_security").grid(
@@ -287,7 +336,7 @@ class DataMoverApp(_BASE_CLASS):
             ), "opts_eject").pack(side="left")
 
         # Destinatii
-        self.frame_dest = self._reg(ttk.LabelFrame(self), "dest_label")
+        self.frame_dest = self._reg(ttk.LabelFrame(content), "dest_label")
         self.frame_dest.pack(fill="both", expand=False, **pad)
 
         list_frame = ttk.Frame(self.frame_dest)
@@ -316,7 +365,7 @@ class DataMoverApp(_BASE_CLASS):
             self.frame_dest.dnd_bind("<<Drop>>", self._on_dest_drop)
 
         # Progres global + separat copiere/verificare
-        self.frame_progress = self._reg(ttk.LabelFrame(self), "progress_global")
+        self.frame_progress = self._reg(ttk.LabelFrame(content), "progress_global")
         self.frame_progress.pack(fill="x", **pad)
 
         self.progress = ttk.Progressbar(self.frame_progress, orient="horizontal", mode="determinate")
@@ -334,11 +383,53 @@ class DataMoverApp(_BASE_CLASS):
         self.phase_label = ttk.Label(phase_row, text=self._phase_text(0, 0))
         self.phase_label.pack(side="left")
 
-        # Progres per destinatie (randurile se creeaza dinamic la start)
-        self.frame_dest_progress = self._reg(ttk.LabelFrame(self), "progress_per_dest")
-        self.frame_dest_progress.pack(fill="both", expand=False, **pad)
-        self.dest_progress_container = ttk.Frame(self.frame_dest_progress)
-        self.dest_progress_container.pack(fill="both", expand=True, padx=8, pady=8)
+        # Progres per destinatie (randurile/cardurile se creeaza dinamic la
+        # start). Inaltime LIMITATA, cu scroll intern - cu multe destinatii
+        # (functia e gandita sa suporte oricate simultan), cardurile ar
+        # putea altfel impinge butoanele Start/Anuleaza si Jurnalul in afara
+        # ferestrei, facandu-le imposibil de gasit fara sa redimensionezi
+        # manual fereastra (raportat direct de un utilizator, cu 3 destinatii).
+        self.frame_dest_progress = self._reg(ttk.LabelFrame(content), "progress_per_dest")
+        self.frame_dest_progress.pack(fill="x", **pad)
+
+        dest_progress_outer = ttk.Frame(self.frame_dest_progress)
+        dest_progress_outer.pack(fill="both", expand=True, padx=8, pady=8)
+
+        self.dest_progress_canvas = tk.Canvas(dest_progress_outer, height=230, highlightthickness=0)
+        dest_scrollbar = ttk.Scrollbar(dest_progress_outer, orient="vertical",
+                                        command=self.dest_progress_canvas.yview)
+        self.dest_progress_container = ttk.Frame(self.dest_progress_canvas)
+
+        self.dest_progress_container.bind(
+            "<Configure>",
+            lambda e: self.dest_progress_canvas.configure(scrollregion=self.dest_progress_canvas.bbox("all")),
+        )
+        self._dest_progress_window = self.dest_progress_canvas.create_window(
+            (0, 0), window=self.dest_progress_container, anchor="nw"
+        )
+        self.dest_progress_canvas.bind(
+            "<Configure>",
+            lambda e: self.dest_progress_canvas.itemconfig(self._dest_progress_window, width=e.width),
+        )
+        self.dest_progress_canvas.configure(yscrollcommand=dest_scrollbar.set)
+
+        def _on_dest_mousewheel(event):
+            if getattr(event, "num", None) == 4:
+                delta = -1
+            elif getattr(event, "num", None) == 5:
+                delta = 1
+            else:
+                delta = -1 if event.delta > 0 else 1
+            self.dest_progress_canvas.yview_scroll(delta, "units")
+
+        self.dest_progress_canvas.bind("<MouseWheel>", _on_dest_mousewheel)
+        self.dest_progress_canvas.bind("<Button-4>", _on_dest_mousewheel)
+        self.dest_progress_canvas.bind("<Button-5>", _on_dest_mousewheel)
+
+        self.dest_progress_canvas.pack(side="left", fill="both", expand=True)
+        dest_scrollbar.pack(side="left", fill="y")
+        self._tk_themed_widgets.append(self.dest_progress_canvas)
+
         self.dest_progress_placeholder = self._reg(
             ttk.Label(self.dest_progress_container, style="Muted.TLabel"), "progress_placeholder"
         )
@@ -346,7 +437,7 @@ class DataMoverApp(_BASE_CLASS):
         self._muted_labels.append(self.dest_progress_placeholder)
 
         # Butoane start/anuleaza
-        action_row = ttk.Frame(self)
+        action_row = ttk.Frame(content)
         action_row.pack(pady=(0, 6))
         self.start_btn = self._reg(
             ttk.Button(action_row, command=self._start_offload, style="Accent.TButton"), "action_start"
@@ -358,7 +449,7 @@ class DataMoverApp(_BASE_CLASS):
         self.cancel_btn.pack(side="left", padx=6)
 
         # Log
-        self.frame_log = self._reg(ttk.LabelFrame(self), "log_label")
+        self.frame_log = self._reg(ttk.LabelFrame(content), "log_label")
         self.frame_log.pack(fill="both", expand=True, **pad)
         self.log_text = tk.Text(self.frame_log, height=10, state="disabled", wrap="word")
         self.log_text.pack(fill="both", expand=True, padx=8, pady=8)
@@ -744,7 +835,14 @@ class DataMoverApp(_BASE_CLASS):
 
             self._update_dest_progress_rows()
 
-            if done >= self.total_units:
+            # sesiunea s-a incheiat fie cand s-au procesat toate fisierele
+            # (calea normala), fie cand toate thread-urile de job s-au oprit
+            # din alt motiv (anulare - un job anulat se opreste cu MAI PUTINE
+            # fisiere procesate decat total_units, deci "done >= total_units"
+            # singur nu ar deveni NICIODATA adevarat dupa o anulare, lasand
+            # aplicatia blocata cu butonul Start dezactivat la nesfarsit)
+            all_threads_stopped = bool(self._job_threads) and not any(t.is_alive() for t in self._job_threads)
+            if done >= self.total_units or all_threads_stopped:
                 self._finish_session()
 
         self.after(150, self._poll_log_queue)
@@ -1082,16 +1180,18 @@ class DataMoverApp(_BASE_CLASS):
             )
             for dest in self.destinations
         ]
+        self._job_threads = []
         for job in self.jobs:
             t = threading.Thread(target=job.run, daemon=True)
             t.start()
+            self._job_threads.append(t)
 
     def _cancel_offload(self):
         if self.running:
             confirmed = messagebox.askyesno(self.t("action_cancel"), self.t("msg_confirm_cancel"))
             if confirmed:
                 self.cancel_event.set()
-                self._append_log(">>> Se anuleaza... (fisierul curent se termina de copiat, apoi se opreste)")
+                self._append_log(">>> Se anuleaza...")
                 self.cancel_btn.config(state="disabled")
 
     # ---------------- Modul Monitorizare ----------------
