@@ -240,12 +240,20 @@ class DataMoverApp(_BASE_CLASS):
         ), "history").pack(side="left", padx=(12, 0))
 
         if self.trial_days_remaining is not None:
-            trial_label = ttk.Label(
+            self.trial_label = ttk.Label(
                 top_row, style="Muted.TLabel",
                 text=self.t("trial_badge", days=self.trial_days_remaining),
             )
-            trial_label.pack(side="left", padx=(12, 0))
-            self._muted_labels.append(trial_label)
+            self.trial_label.pack(side="left", padx=(12, 0))
+            self._muted_labels.append(self.trial_label)
+
+            # Buton explicit sa poata activa oricand vrea, nu doar dupa ce
+            # expira proba — inainte, singurul mod de a activa era sa
+            # astepti expirarea, ceea ce nu era deloc evident.
+            self.activate_btn = self._reg(ttk.Button(
+                top_row, command=self._open_activation_dialog
+            ), "activate_now")
+            self.activate_btn.pack(side="left", padx=(6, 0))
 
         lang_frame = ttk.Frame(top_row)
         lang_frame.pack(side="left", padx=(12, 0))
@@ -576,6 +584,17 @@ class DataMoverApp(_BASE_CLASS):
 
     def _open_help_guide(self):
         webbrowser.open("https://github.com/gordasgdc/datamover/blob/main/CITESTE-MA.md")
+
+    def _open_activation_dialog(self):
+        """Deschide dialogul de activare la cerere — utilizatorul poate
+        activa oricand vrea in timpul probei, nu doar dupa ce expira."""
+        activated = activation.open_activation_dialog(self)
+        if activated:
+            self.trial_days_remaining = None
+            self.trial_label.pack_forget()
+            self.activate_btn.pack_forget()
+            if self.trial_label in self._muted_labels:
+                self._muted_labels.remove(self.trial_label)
 
     def _show_about_dialog(self):
         palette = theme.DARK if self.dark_mode_var.get() else theme.LIGHT
