@@ -142,9 +142,18 @@ def _make_button(parent, text, command, bg, fg, hover_bg):
     return lbl
 
 
-class ActivationDialog(tk.Tk):
-    def __init__(self, trial_expired=False):
-        super().__init__()
+class ActivationDialog(tk.Toplevel):
+    """Fereastra propriu-zisa de activare — mereu un Toplevel (niciodata
+    o a doua radacina tk.Tk()), ca sa poata fi deschisa in siguranta atat
+    inainte sa existe fereastra principala (vezi require_license(), care
+    ii da o radacina ascunsa, creata special) cat si din interiorul
+    aplicatiei deja pornite (vezi open_activation_dialog(), care ii da
+    fereastra principala reala ca parinte) — doua bucle tk.Tk().mainloop()
+    simultane ar putea bloca aplicatia sau ar da erori Tcl greu de
+    diagnosticat."""
+
+    def __init__(self, master, trial_expired=False):
+        super().__init__(master)
         self.t = TEXTS[_current_language()]
         self.trial_expired = trial_expired
         self.title(self.t["title"])
@@ -268,8 +277,34 @@ def _show_trial_ending_notice(days_remaining):
     root.destroy()
 
 
+def _run_modal(dialog, parent):
+    """Blocheaza pana se inchide dialogul, fara sa porneasca o a doua
+    bucla tk.Tk().mainloop() — grab_set() + wait_window() e modul corect
+    Tkinter de a face un Toplevel modal peste o fereastra parinte deja
+    existenta si activa."""
+    dialog.grab_set()
+    dialog.transient(parent)
+    parent.wait_window(dialog)
+
+
+def open_activation_dialog(parent):
+    """Deschide dialogul de activare la cerere, oricand in timpul probei
+    gratuite (nu doar dupa ce expira) - apelata dintr-un buton din
+    fereastra principala, cu fereastra principala insasi ca `parent`.
+    Spre deosebire de require_license(), NU inchide aplicatia daca
+    utilizatorul renunta fara sa activeze - doar inchide dialogul si lasa
+    proba sa continue normal.
+
+    Intoarce True daca activarea a reusit, altfel False."""
+    dialog = ActivationDialog(parent, trial_expired=False)
+    _run_modal(dialog, parent)
+    return dialog.activated
+
+
 def require_license():
-    """Verifica licenta inaintea pornirii aplicatiei. Intoarce:
+    """Verifica licenta inaintea pornirii aplicatiei, INAINTE sa existe
+    fereastra principala — de-aia isi creeaza singura o radacina Tk
+    proprie, ascunsa, doar cat timp e nevoie de ea. Intoarce:
     - None daca aplicatia are un cod de activare valid (nu ruleaza pe proba)
     - un numar de zile ramase din proba gratuita (>=0), altfel
 
@@ -285,9 +320,13 @@ def require_license():
             _show_trial_ending_notice(remaining)
         return max(0, int(remaining))
 
-    dialog = ActivationDialog(trial_expired=True)
-    dialog.mainloop()
+    root = tk.Tk()
+    root.withdraw()
+    dialog = ActivationDialog(root, trial_expired=True)
+    _run_modal(dialog, root)
+    activated = dialog.activated
+    root.destroy()
 
-    if not dialog.activated:
+    if not activated:
         sys.exit(0)
     return None
