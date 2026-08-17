@@ -1,7 +1,7 @@
 {
-  "version": "2.3.0",
-  "release_date": "2026-08-16",
-  "changes": "Presetari (destinatii + model de verificare, salvate cu un nume), tab Istoric cu sesiunile anterioare, si buton Proiect nou ca sa golesti rapid campurile Proiect/Card.",
+  "version": "2.3.1",
+  "release_date": "2026-08-17",
+  "changes": "Iconita noua a aplicatiei (card de memorie verde, consecventa cu interfata) si buton 'Activeaza licenta' disponibil oricand in timpul probei de 7 zile, nu doar dupa ce expira.",
   "download_url": {
     "windows": "https://github.com/gordasgdc/datamover/releases/latest/download/DataMover-Windows.zip",
     "mac": "https://github.com/gordasgdc/datamover/releases/latest/download/DataMover-Mac-Installer.pkg"
