@@ -3,6 +3,14 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script>
+  // gordasgdc.github.io e domeniul vechi — pagina "oficiala" e acum
+  // gordas.dev. Redirect doar de pe github.io, ca sa nu se bucleze
+  // cand pagina e servita chiar de pe gordas.dev.
+  if (location.hostname === "gordasgdc.github.io") {
+    location.replace("https://gordas.dev/datamover/" + location.search + location.hash);
+  }
+</script>
 <title>DataMover — Offload verificat pentru echipe video</title>
 <meta name="description" content="Aplicatie Mac si Windows pentru offload de media cu verificare de integritate, copiere simultana catre mai multe destinatii si rapoarte profesionale. De Cristi Gordas.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
