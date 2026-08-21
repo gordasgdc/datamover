@@ -30,8 +30,8 @@ import time
 import threading
 import queue
 
-import config as cfg
-from offload_engine import (
+from core import config as cfg
+from core.offload_engine import (
     list_all_files, list_mounted_volumes, get_free_space_bytes,
     send_notification, DestinationJob, VERIFICATION_MODELS,
     DEFAULT_VERIFICATION_MODEL,
