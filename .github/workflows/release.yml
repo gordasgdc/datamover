@@ -95,15 +95,13 @@ jobs:
 
       - name: Creeaza arhiva pentru utilizatori (.app + ghidurile PDF in 3 limbi, la un loc)
         run: |
-          mkdir -p mac_bundle
-          cp -R "mac-native/dist/DataMover.app" mac_bundle/
+          mkdir -p mac_bundle/Aplicatie
+          cp -R "mac-native/dist/DataMover.app" mac_bundle/Aplicatie/
+          cp docs/guides/*.pdf mac_bundle/Aplicatie/
           cp "mac-native/dist/Lanseaza_DataMover.command" mac_bundle/
           chmod +x "mac_bundle/Lanseaza_DataMover.command"
-          cp docs/guides/*.pdf mac_bundle/
           cd mac_bundle
-          ditto -c -k --sequesterRsrc --keepParent "DataMover.app" "$GITHUB_WORKSPACE/DataMover-Mac.zip"
-          zip -j "$GITHUB_WORKSPACE/DataMover-Mac.zip" Lanseaza_DataMover.command
-          zip -j "$GITHUB_WORKSPACE/DataMover-Mac.zip" ../docs/guides/*.pdf
+          zip -r -y "$GITHUB_WORKSPACE/DataMover-Mac.zip" .
 
       - name: Salveaza arhiva pentru pasul de release
         uses: actions/upload-artifact@v4
