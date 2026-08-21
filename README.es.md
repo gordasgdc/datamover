@@ -9,28 +9,33 @@
 
 ## 📸 Capturas de pantalla
 
-*(Agrega capturas de pantalla después de actualizar la app)*
+UI nativa de macOS (SwiftUI) — orígenes, discos y destinos en un único diseño de 3 columnas:
 
-| Interfaz principal | Tema oscuro |
-|---------------------|-------------|
-| *(enlace a captura)* | *(enlace a captura)* |
+| Ventana principal | Ajustes de copia |
+|--------------------|-------------------|
+| ![Ventana principal](docs/img/mac-ui-main.png) | ![Ajustes de copia](docs/img/mac-ui-settings.png) |
+
+| Historial de copias | Guía de uso integrada |
+|----------------------|-------------------------|
+| ![Historial](docs/img/mac-ui-history.png) | ![Guia](docs/img/mac-ui-help.png) |
 
 ## ✅ Características
 
 - 📂 Copia simultánea a **cualquier número de destinos** (unidades externas, NAS, carpetas locales)
 - 🔒 **Verificación de integridad**, a elegir: MD5, SHA-1, SHA-256, SHA-512, o solo tamaño
 - 🌙 **Tema oscuro** — perfecto para trabajar de noche
-- 📊 **Informes profesionales** CSV + PDF, con estado codificado por colores (OK / Discrepancia / Error) y marca de tiempo exacta
+- 📊 **Informes profesionales** CSV + PDF (en tabla), con estado codificado por colores (OK / Discrepancia / Error) y marca de tiempo exacta
 - 🔄 **Reanudación automática** en caso de errores (checkpoint) — continúa desde donde quedó
-- 🖥️ **Modo Monitor** en la bandeja del sistema — detecta automáticamente las tarjetas insertadas
+- 🕐 **Historial de copias** — ver y eliminar entradas individuales o todas (Mac)
+- 🖥️ **Modo Monitor** en la bandeja del sistema — detecta automáticamente las tarjetas insertadas (Windows)
 - 📈 **Barras de progreso por destino** con velocidad actual (MB/s) y botón de acceso rápido a la carpeta
-- 💡 **Tooltips explicativos** para todos los ajustes avanzados
+- 💡 **Tooltips/guía integrada** para todos los ajustes avanzados
 - ⌨️ **Atajos de teclado** para las acciones principales
-- 📝 **Registro centralizado** (`offload_master.log`) para auditoría a largo plazo
-- 💿 **Expulsión automática de la tarjeta** al finalizar (Mac)
+- 📝 **Registro centralizado** para auditoría a largo plazo
 - 🚀 **Copia paralela** — todos los destinos se completan simultáneamente
 - 🏷️ **Nombramiento automático** de carpetas: `Fecha_Proyecto_Tarjeta`
-- 🔌 **Compatible** con macOS (Intel + Apple Silicon) y Windows 10/11
+- 🌍 **Localización completa** RO/EN/ES
+- 🔌 **Compatible** con macOS (UI nativa SwiftUI, Apple Silicon + Intel) y Windows 10/11
 - 🗑️ **Exclusiones personalizables** — puedes excluir archivos o extensiones
 
 ## 🚀 Descarga
@@ -39,25 +44,20 @@ Descarga la última versión desde [Releases](https://github.com/gordasgdc/datam
 
 | Plataforma | Archivo | Descripción |
 |------------|---------|-------------|
-| **Mac** | `DataMover-Mac.zip` | Instalador `.pkg` + guías PDF (RO/EN/ES) |
+| **Mac** | `DataMover-Mac.zip` | `DataMover.app` nativa (SwiftUI) + guías PDF (RO/EN/ES) |
 | **Windows** | `DataMover-Windows.zip` | `DataMover.exe` + guías PDF (RO/EN/ES) |
 
 ## 📖 Instalación rápida
 
 ### Mac
 1. Descarga `DataMover-Mac.zip` y extráelo
-2. Haz doble clic en `DataMover-Mac-Installer.pkg` y sigue el instalador
-3. La app se instala en `/Applications`
-4. En la primera ejecución, clic derecho → `Open` → confirma (solo una vez)
+2. Arrastra `DataMover.app` a `/Applications`
+3. En la primera ejecución, clic derecho sobre la app → `Open` → confirma (solo una vez, esta firmada ad-hoc sin cuenta de Apple Developer de pago)
 
 ### Windows
 1. Descarga `DataMover-Windows.zip` y extrae el contenido
 2. Ejecuta `DataMover.exe`
 3. Si SmartScreen advierte, haz clic en "More info" → "Run anyway"
-
-## 🎬 Tutorial en video
-
-*(Enlace disponible próximamente)*
 
 ## 📝 Documentación completa
 

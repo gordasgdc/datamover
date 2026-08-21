@@ -2,6 +2,9 @@ name: Build DataMover (Mac .app)
 
 # Se ruleaza automat cand faci "git push" pe branch-ul main,
 # sau manual din tab-ul "Actions" al repo-ului (butonul "Run workflow").
+# Doar un build de verificare (smoke test) al UI-ului nativ macOS (SwiftUI) —
+# pentru versiunea publicata cu binar atasat, vezi release.yml (declansat de
+# un tag v*.*.*).
 on:
   push:
     branches: [ main ]
@@ -15,36 +18,13 @@ jobs:
       - name: Descarca codul din repo
         uses: actions/checkout@v4
 
-      - name: Instaleaza Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Instaleaza dependintele
+      - name: Compileaza .app nativ (SwiftUI) si semneaza ad-hoc
         run: |
-          python -m pip install --upgrade pip
-          pip install py2app pyinstaller reportlab tkinterdnd2 plyer pystray pillow cryptography
+          cd mac-native
+          ./build_app.sh
 
-      - name: Compileaza .app cu py2app
-        run: python setup.py py2app
-
-      - name: Compileaza modulul de Monitorizare (executabil insotitor)
-        run: pyinstaller --onefile --name "DataMover Monitor" tray_monitor.py
-
-      - name: Pregateste folderul de distributie (app + monitor, la un loc)
-        run: |
-          mkdir -p dist_release
-          cp -R "dist/DataMover.app" dist_release/
-          cp "dist/DataMover Monitor" dist_release/
-          chmod +x "dist_release/DataMover Monitor"
-
-      - name: Arhiveaza (ditto pastreaza corect permisiunile Mac)
-        run: |
-          cd dist_release
-          ditto -c -k --sequesterRsrc "." "../dist/DataMover-Mac.zip"
-
-      - name: Incarca .zip ca artefact descarcabil
+      - name: Incarca .app ca artefact descarcabil (verificare CI)
         uses: actions/upload-artifact@v4
         with:
           name: DataMover-Mac
-          path: dist/DataMover-Mac.zip
+          path: mac-native/dist/DataMover.app
