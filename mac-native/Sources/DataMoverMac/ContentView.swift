@@ -17,6 +17,7 @@ struct ContentView: View {
     @State private var exclusionsText: String = ""
     @State private var resumeEnabled: Bool = true
     @State private var showSettings = false
+    @State private var showHistory = false
     @State private var projectName: String = ""
     @State private var cardName: String = ""
 
@@ -160,7 +161,9 @@ struct ContentView: View {
             List {
                 ForEach(sourcePaths, id: \.self) { path in
                     HStack {
-                        Image(systemName: isDirectory(path) ? "folder" : "doc")
+                        Image(nsImage: NSWorkspace.shared.icon(forFile: path))
+                            .resizable()
+                            .frame(width: 18, height: 18)
                         Text((path as NSString).lastPathComponent)
                             .lineLimit(1)
                         Spacer()
@@ -208,7 +211,7 @@ struct ContentView: View {
 
     // MARK: - Coloana centrala: Disks
 
-    private let gridColumns = [GridItem(.adaptive(minimum: 130, maximum: 150), spacing: 14)]
+    private let gridColumns = [GridItem(.adaptive(minimum: 150, maximum: 170), spacing: 14)]
 
     private var disksColumn: some View {
         VStack(spacing: 10) {
@@ -334,12 +337,25 @@ struct ContentView: View {
                 }
                 Spacer()
                 Button {
-                    showSettings = true
+                    showHistory = true
                 } label: {
-                    Image(systemName: "gearshape")
+                    Image(systemName: "clock.arrow.circlepath")
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
+                .padding(.trailing, 8)
+                .popover(isPresented: $showHistory, arrowEdge: .top) {
+                    historyPopover
+                }
+                Button {
+                    showSettings = true
+                } label: {
+                    Image(systemName: "gearshape.fill")
+                        .font(.system(size: 15))
+                        .frame(width: 30, height: 30)
+                }
+                .buttonStyle(.bordered)
+                .clipShape(Circle())
                 .padding(.trailing, 12)
                 .disabled(runner.isRunning)
                 .popover(isPresented: $showSettings, arrowEdge: .top) {
@@ -401,6 +417,37 @@ struct ContentView: View {
         .frame(width: 340)
     }
 
+    /// Istoricul copierilor anterioare (data, proiect/card, sursa->destinatie,
+    /// cate fisiere OK/sarite/esuate) — persistat pe disc intre lansari.
+    private var historyPopover: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Istoric copieri").font(.headline)
+            if HistoryStore.shared.entries.isEmpty {
+                Text("Nicio copiere efectuata inca.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 10) {
+                        ForEach(HistoryStore.shared.entries.reversed()) { entry in
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(entry.folderName).font(.system(size: 12, weight: .semibold))
+                                Text("\(entry.dateText) · \(entry.sourcesSummary) -> \(entry.destSummary)")
+                                    .font(.system(size: 10)).foregroundStyle(.secondary)
+                                Text("OK: \(entry.okCount)  Sarite: \(entry.skipCount)  Esuate: \(entry.failCount)")
+                                    .font(.system(size: 10)).foregroundStyle(.secondary)
+                            }
+                            Divider()
+                        }
+                    }
+                }
+                .frame(maxHeight: 260)
+            }
+        }
+        .padding(16)
+        .frame(width: 340)
+    }
+
     private var footerStatusText: String {
         if runner.isRunning || runner.statusText != "Gata de pornire" {
             return runner.statusText
@@ -418,25 +465,28 @@ private struct DiskTileView: View {
     let volume: VolumeInfo
 
     var body: some View {
-        VStack(spacing: 4) {
+        VStack(spacing: 6) {
             ZStack(alignment: .topTrailing) {
-                Image(systemName: "externaldrive.fill")
-                    .font(.system(size: 30))
-                    .foregroundStyle(.primary)
+                // iconita nativa macOS a discului (extern portocaliu/argintiu,
+                // intern etc.) — aceeasi cu cea din Finder, nu un simbol generic.
+                Image(nsImage: volume.icon)
+                    .resizable()
+                    .frame(width: 52, height: 52)
                 Circle()
                     .fill(.green)
-                    .frame(width: 8, height: 8)
+                    .frame(width: 10, height: 10)
+                    .offset(x: 2, y: -2)
             }
-            .padding(.top, 6)
+            .padding(.top, 8)
             Text(volume.name)
-                .font(.system(size: 11, weight: .semibold))
+                .font(.system(size: 12, weight: .semibold))
                 .lineLimit(1)
             Text(formatBytes(volume.freeBytes))
                 .font(.system(size: 10))
                 .foregroundStyle(.secondary)
         }
-        .padding(.vertical, 10)
-        .frame(width: 130, height: 110)
+        .padding(.vertical, 12)
+        .frame(width: 150, height: 130)
         .background(Color(nsColor: .controlBackgroundColor))
         .clipShape(RoundedRectangle(cornerRadius: 10))
     }
