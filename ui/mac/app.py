@@ -1,20 +1,28 @@
 """
-ui/mac/app.py — schelet UI nativ macOS, 3 coloane (Sources / Disks /
-Destinations), inspirat ShotPut Pro / Silverstack.
+ui/mac/app.py — UI nativ macOS, 3 coloane (Sources / Disks / Destinations),
+inspirat ShotPut Pro / Silverstack.
 
-NEFINALIZAT: doar layout + enumerare reala de volume montate (prin
-core.offload_engine.list_mounted_volumes) si drag&drop de fisiere in
-Sources (tkinterdnd2). Butoanele de start/verificare/rapoarte NU sunt
-inca legate de core.offload_engine — de facut cand se decide fluxul
-exact (copiere imediata la drop pe destinatie, sau selectie + buton
-"Start", ca in Windows).
+Foloseste ACELASI core.offload_engine.DestinationJob ca ui/windows/app.py —
+threading + coada de log + counters partajate, identic la nivel de
+motor de copiere/verificare. Simplificat fata de Windows pentru v1:
+fara nume proiect/card, fara excluderi editabile din UI, fara reluare
+din checkpoint (resume=False) — de adaugat cand se decide UX-ul exact.
 
 Ruleaza standalone pentru preview: python3 -m ui.mac.app
 """
 import os
+import sys
+import threading
+import queue
+import subprocess
 import tkinter as tk
+from datetime import datetime
 
 from core import offload_engine
+from core.offload_engine import (
+    list_all_files, get_free_space_bytes, format_size,
+    DestinationJob, DEFAULT_VERIFICATION_MODEL, log_master,
+)
 from core import activation
 
 try:
@@ -101,9 +109,25 @@ class MacApp(_BASE_CLASS):
 
         self.trial_days_remaining = trial_days_remaining
 
+        # stare sesiune de offload (identica ca rol cu ui/windows/app.py)
+        self.running = False
+        self.log_queue = queue.Queue()
+        self.progress_counter = [0]
+        self.bytes_counter = [0]
+        self.copy_counter = [0]
+        self.verify_counter = [0]
+        self.progress_lock = threading.Lock()
+        self.total_units = 0
+        self.start_time = None
+        self.cancel_event = None
+        self.jobs = []
+        self._job_threads = []
+
         self._build_header()
+        self._build_footer()   # packat inainte de root, ca sa-si rezerve spatiul jos
         self._build_layout()
         self._refresh_volumes()
+        self.after(150, self._poll_log_queue)
 
     # ------------------------------------------------------------------
     def _build_header(self):
@@ -133,6 +157,50 @@ class MacApp(_BASE_CLASS):
         if activated:
             self.trial_days_remaining = None
             self.trial_label.master.destroy()  # ascunde toata bara de proba
+
+    # ------------------------------------------------------------------
+    def _build_footer(self):
+        """Bara de jos — progres global + Start/Anuleaza, vizibila permanent."""
+        footer = tk.Frame(self, bg=BG_PANEL, height=64)
+        footer.pack(fill="x", side="bottom")
+        footer.pack_propagate(False)
+
+        left = tk.Frame(footer, bg=BG_PANEL)
+        left.pack(side="left", fill="both", expand=True, padx=14, pady=10)
+
+        self.progress_label = tk.Label(left, text="Gata de pornire", bg=BG_PANEL,
+                                        fg=FG, font=("SF Pro Text", 10))
+        self.progress_label.pack(anchor="w")
+
+        bar_row = tk.Frame(left, bg=BG_PANEL)
+        bar_row.pack(fill="x", pady=(4, 0))
+        self.progress_canvas = tk.Canvas(bar_row, bg=BG_CARD, height=6,
+                                          highlightthickness=0)
+        self.progress_canvas.pack(fill="x", expand=True, side="left")
+        self.speed_label = tk.Label(bar_row, text="", bg=BG_PANEL, fg=FG_MUTED,
+                                     font=("SF Pro Text", 9))
+        self.speed_label.pack(side="left", padx=(10, 0))
+
+        btn_frame = tk.Frame(footer, bg=BG_PANEL)
+        btn_frame.pack(side="right", padx=14)
+
+        self.cancel_btn = tk.Label(btn_frame, text="Anuleaza", bg=BG_PANEL,
+                                    fg=FG_MUTED, font=("SF Pro Text", 10),
+                                    cursor="pointinghand")
+        self.cancel_btn.pack(side="left", padx=(0, 16))
+        self.cancel_btn.bind("<Button-1>", lambda e: self._cancel_offload())
+
+        self.start_btn = tk.Label(btn_frame, text="  Start  ", bg=ACCENT_GREEN,
+                                   fg="#0a0a0a", font=("SF Pro Text", 10, "bold"),
+                                   cursor="pointinghand")
+        self.start_btn.pack(side="left")
+        self.start_btn.bind("<Button-1>", lambda e: self._start_offload())
+
+    def _set_progress_pct(self, pct):
+        self.progress_canvas.delete("bar")
+        width = self.progress_canvas.winfo_width() or 1
+        self.progress_canvas.create_rectangle(
+            0, 0, width * pct / 100, 6, fill=ACCENT_GREEN, width=0, tags="bar")
 
     # ------------------------------------------------------------------
     def _build_layout(self):
@@ -319,6 +387,115 @@ class MacApp(_BASE_CLASS):
                                font=("SF Pro Text", 9), cursor="pointinghand")
             remove.pack(side="right", padx=6)
             remove.bind("<Button-1>", lambda e, p=path: self._remove_source(p))
+
+    # ---- Start / Anuleaza / progres (acelasi motor ca ui/windows/app.py) --
+    def _start_offload(self):
+        if self.running:
+            return
+        if not self.source_paths:
+            self._show_error("Adauga cel putin o sursa (drag&drop in coloana Sources).")
+            return
+        if not self.destination_paths:
+            self._show_error("Adauga cel putin o destinatie (trage un disc peste DESTINATIONS).")
+            return
+
+        files = []
+        for src in self.source_paths:
+            if os.path.isdir(src):
+                files.extend(list_all_files(src))
+            elif os.path.isfile(src):
+                size = os.path.getsize(src)
+                files.append((src, os.path.basename(src), size))
+        if not files:
+            self._show_error("Nu am gasit niciun fisier de copiat in sursele adaugate.")
+            return
+
+        total_size = sum(size for _f, _r, size in files)
+        folder_name = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+
+        log_master(
+            f"Sesiune offload (mac UI) pornita -> {len(self.source_paths)} surse, "
+            f"{len(files)} fisiere, {len(self.destination_paths)} destinatie(i)"
+        )
+
+        self.progress_counter = [0]
+        self.bytes_counter = [0]
+        self.copy_counter = [0]
+        self.verify_counter = [0]
+        self.total_units = len(files) * len(self.destination_paths)
+        self.running = True
+        self.start_time = datetime.now()
+        self.progress_label.config(text="Se pregateste...")
+        self.speed_label.config(text="")
+        self.start_btn.config(state="disabled")
+        self.cancel_event = threading.Event()
+
+        self.jobs = [
+            DestinationJob(
+                dest, folder_name, files, self.log_queue,
+                self.progress_counter, self.bytes_counter, self.progress_lock,
+                cancel_event=self.cancel_event,
+                verification_model=DEFAULT_VERIFICATION_MODEL,
+                copy_counter=self.copy_counter, verify_counter=self.verify_counter,
+                resume=False, source_root=None,
+            )
+            for dest in self.destination_paths
+        ]
+        self._job_threads = []
+        for job in self.jobs:
+            t = threading.Thread(target=job.run, daemon=True)
+            t.start()
+            self._job_threads.append(t)
+
+    def _cancel_offload(self):
+        if self.running and self.cancel_event is not None:
+            self.cancel_event.set()
+            self.progress_label.config(text="Se anuleaza...")
+
+    def _show_error(self, message):
+        # tk.messagebox ar cere un import suplimentar la nivel de modul —
+        # pentru schelet, un dialog minimal e suficient.
+        from tkinter import messagebox
+        messagebox.showerror("DataMover", message)
+
+    def _poll_log_queue(self):
+        try:
+            while True:
+                self.log_queue.get_nowait()  # log-ul detaliat nu are inca panou in mac UI
+        except queue.Empty:
+            pass
+
+        if self.running and self.total_units > 0:
+            with self.progress_lock:
+                done = self.progress_counter[0]
+                bytes_done = self.bytes_counter[0]
+
+            pct = int(done * 100 / self.total_units)
+            self._set_progress_pct(pct)
+            self.progress_label.config(text=f"{pct}% ({done}/{self.total_units} fisiere)")
+
+            if self.start_time:
+                elapsed = (datetime.now() - self.start_time).total_seconds()
+                if elapsed > 0:
+                    self.speed_label.config(text=f"{format_size(bytes_done / elapsed)}/s")
+
+            all_threads_stopped = bool(self._job_threads) and not any(
+                t.is_alive() for t in self._job_threads)
+            if done >= self.total_units or all_threads_stopped:
+                self._finish_session()
+
+        self.after(150, self._poll_log_queue)
+
+    def _finish_session(self):
+        self.running = False
+        self.start_btn.config(state="normal")
+        self.progress_label.config(text="Finalizat.")
+        try:
+            if sys.platform == "darwin":
+                subprocess.Popen(["afplay", "/System/Library/Sounds/Glass.aiff"],
+                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception:
+            pass
 
 
 def run():
