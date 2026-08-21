@@ -9,28 +9,33 @@
 
 ## 📸 Capturi de ecran
 
-*(Adaugă capturi de ecran după ce actualizezi aplicația)*
+UI nativ macOS (SwiftUI) — surse, discuri și destinații într-un singur layout pe 3 coloane:
 
-| Interfață principală | Dark Mode |
-|----------------------|-----------|
-| *(link către screenshot)* | *(link către screenshot)* |
+| Fereastra principală | Setări de copiere |
+|-----------------------|--------------------|
+| ![Fereastra principala](docs/img/mac-ui-main.png) | ![Setari copiere](docs/img/mac-ui-settings.png) |
+
+| Istoric copieri | Ghid de utilizare integrat |
+|------------------|------------------------------|
+| ![Istoric](docs/img/mac-ui-history.png) | ![Ghid](docs/img/mac-ui-help.png) |
 
 ## ✅ Funcționalități
 
 - 📂 Copiere simultană către **oricâte destinații** (drive-uri externe, NAS, foldere locale)
 - 🔒 **Verificare integritate** la alegere: MD5, SHA-1, SHA-256, SHA-512 sau doar dimensiune
 - 🌙 **Temă întunecată** — perfectă pentru lucru noaptea
-- 📊 **Rapoarte profesionale** CSV + PDF, cu status colorat (OK / Nepotrivire / Eroare) și timestamp exact
+- 📊 **Rapoarte profesionale** CSV + PDF (tabel), cu status colorat (OK / Nepotrivire / Eroare) și timestamp exact
 - 🔄 **Reluare automată** la erori (checkpoint) — continuă de unde a rămas
-- 🖥️ **Mod Monitorizare** în system tray — detectează automat cardurile introduse
+- 🕐 **Istoric copieri** — vizualizare și ștergere individuală/completă (Mac)
+- 🖥️ **Mod Monitorizare** în system tray — detectează automat cardurile introduse (Windows)
 - 📈 **Bare de progres per destinație** cu viteză curentă (MB/s) și buton de deschidere rapidă a folderului
-- 💡 **Tooltip-uri explicative** pentru toate setările complexe
+- 💡 **Tooltip-uri/ghid explicativ** pentru toate setările complexe
 - ⌨️ **Scurtături de tastatură** pentru acțiunile principale
-- 📝 **Log centralizat** (`offload_master.log`) pentru audit pe termen lung
-- 💿 **Ejectare automată a cardului** după finalizare (Mac)
+- 📝 **Log centralizat** pentru audit pe termen lung
 - 🚀 **Copiere paralelă** — toate destinațiile se completează simultan
 - 🏷️ **Denumire automată** a folderelor: `Data_Proiect_Card`
-- 🔌 **Suport** pentru macOS (Intel + Apple Silicon) și Windows 10/11
+- 🌍 **Localizare completă** RO/EN/ES
+- 🔌 **Suport** pentru macOS (UI nativ SwiftUI, Apple Silicon + Intel) și Windows 10/11
 - 🗑️ **Excluderi personalizabile** — poți exclude fișiere sau extensii
 
 ## 🚀 Download
@@ -39,25 +44,20 @@ Descarcă ultima versiune de la [Releases](https://github.com/gordasgdc/datamove
 
 | Platformă | Fișier | Descriere |
 |-----------|--------|-----------|
-| **Mac** | `DataMover-Mac.zip` | Instalator `.pkg` + ghidurile PDF (RO/EN/ES) |
+| **Mac** | `DataMover-Mac.zip` | `DataMover.app` nativ (SwiftUI) + ghidurile PDF (RO/EN/ES) |
 | **Windows** | `DataMover-Windows.zip` | `DataMover.exe` + ghidurile PDF (RO/EN/ES) |
 
 ## 📖 Instalare rapidă
 
 ### Mac
 1. Descarcă `DataMover-Mac.zip` și extrage
-2. Dublu-click pe `DataMover-Mac-Installer.pkg` și urmează instrucțiunile instalatorului
-3. Aplicația se instalează în `/Applications`
-4. La prima rulare, click-dreapta → `Open` → confirmă (se face o singură dată)
+2. Mută `DataMover.app` în `/Applications` (drag & drop)
+3. La prima rulare, click-dreapta pe aplicație → `Open` → confirmă (se face o singură dată, e semnată ad-hoc, fără cont Apple Developer plătit)
 
 ### Windows
 1. Descarcă `DataMover-Windows.zip` și extrage conținutul
 2. Rulează `DataMover.exe`
 3. Dacă SmartScreen avertizează, apasă "More info" → "Run anyway"
-
-## 🎬 Tutorial video
-
-*(Linkul va fi adăugat în curând)*
 
 ## 📝 Documentație completă
 

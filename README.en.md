@@ -9,28 +9,33 @@
 
 ## 📸 Screenshots
 
-*(Add screenshots after updating the app)*
+Native macOS UI (SwiftUI) — sources, disks and destinations in a single 3-column layout:
 
-| Main interface | Dark Mode |
-|-----------------|-----------|
-| *(screenshot link)* | *(screenshot link)* |
+| Main window | Copy settings |
+|-------------|---------------|
+| ![Main window](docs/img/mac-ui-main.png) | ![Copy settings](docs/img/mac-ui-settings.png) |
+
+| Copy history | Built-in user guide |
+|--------------|----------------------|
+| ![History](docs/img/mac-ui-history.png) | ![Guide](docs/img/mac-ui-help.png) |
 
 ## ✅ Features
 
 - 📂 Simultaneous copy to **any number of destinations** (external drives, NAS, local folders)
 - 🔒 **Integrity verification**, your choice: MD5, SHA-1, SHA-256, SHA-512, or size-only
 - 🌙 **Dark theme** — perfect for night work
-- 📊 **Professional reports** CSV + PDF, with color-coded status (OK / Mismatch / Error) and exact timestamp
+- 📊 **Professional reports** CSV + PDF (table layout), with color-coded status (OK / Mismatch / Error) and exact timestamp
 - 🔄 **Automatic resume** on errors (checkpoint) — continues from where it left off
-- 🖥️ **Monitor Mode** in the system tray — automatically detects inserted cards
+- 🕐 **Copy history** — view and delete individual or all entries (Mac)
+- 🖥️ **Monitor Mode** in the system tray — automatically detects inserted cards (Windows)
 - 📈 **Per-destination progress bars** with current speed (MB/s) and a quick "open folder" button
-- 💡 **Help tooltips** for all advanced settings
+- 💡 **Help tooltips/built-in guide** for all advanced settings
 - ⌨️ **Keyboard shortcuts** for the main actions
-- 📝 **Centralized log** (`offload_master.log`) for long-term auditing
-- 💿 **Automatic card ejection** after completion (Mac)
+- 📝 **Centralized log** for long-term auditing
 - 🚀 **Parallel copy** — all destinations complete simultaneously
 - 🏷️ **Automatic naming** of folders: `Date_Project_Card`
-- 🔌 **Support** for macOS (Intel + Apple Silicon) and Windows 10/11
+- 🌍 **Full localization** RO/EN/ES
+- 🔌 **Support** for macOS (native SwiftUI UI, Apple Silicon + Intel) and Windows 10/11
 - 🗑️ **Customizable exclusions** — exclude files or extensions
 
 ## 🚀 Download
@@ -39,25 +44,20 @@ Download the latest version from [Releases](https://github.com/gordasgdc/datamov
 
 | Platform | File | Description |
 |----------|------|-------------|
-| **Mac** | `DataMover-Mac.zip` | `.pkg` installer + PDF guides (RO/EN/ES) |
+| **Mac** | `DataMover-Mac.zip` | Native `DataMover.app` (SwiftUI) + PDF guides (RO/EN/ES) |
 | **Windows** | `DataMover-Windows.zip` | `DataMover.exe` + PDF guides (RO/EN/ES) |
 
 ## 📖 Quick install
 
 ### Mac
 1. Download `DataMover-Mac.zip` and extract it
-2. Double-click `DataMover-Mac-Installer.pkg` and follow the installer
-3. The app installs to `/Applications`
-4. On first run, right-click → `Open` → confirm (one-time only)
+2. Drag `DataMover.app` into `/Applications`
+3. On first run, right-click the app → `Open` → confirm (one-time only, it's ad-hoc signed without a paid Apple Developer account)
 
 ### Windows
 1. Download `DataMover-Windows.zip` and extract the contents
 2. Run `DataMover.exe`
 3. If SmartScreen warns you, click "More info" → "Run anyway"
-
-## 🎬 Video tutorial
-
-*(Link coming soon)*
 
 ## 📝 Full documentation
 

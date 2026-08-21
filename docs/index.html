@@ -235,6 +235,33 @@
     box-shadow: 0 40px 100px -30px rgba(0,0,0,0.7), 0 0 0 1px rgba(79,209,139,0.06);
   }
 
+  .shot-gallery {
+    margin: -20px 0 40px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    opacity: 0;
+    animation: fadeUp 0.8s ease-out 2.55s forwards;
+  }
+  .shot-gallery figure { margin: 0; }
+  .shot-gallery img {
+    display: block;
+    width: 100%;
+    border-radius: 12px;
+    border: 1px solid var(--line);
+    box-shadow: 0 30px 70px -25px rgba(0,0,0,0.7), 0 0 0 1px rgba(79,209,139,0.06);
+  }
+  .shot-gallery figcaption {
+    margin-top: 10px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--ink-faint);
+    text-align: center;
+  }
+  @media (max-width: 720px) {
+    .shot-gallery { grid-template-columns: 1fr; }
+  }
+
   .scroll-cue {
     position: absolute;
     bottom: 30px;
@@ -497,8 +524,23 @@
 
 <div class="wrap">
 
-  <div class="app-shot">
-    <img src="img/app-screenshot.png" alt="Fereastra principala DataMover, tema intunecata" loading="lazy" width="1399" height="895">
+  <div class="shot-gallery">
+    <figure>
+      <img src="img/mac-ui-main.png" alt="Fereastra principala DataMover pe macOS — surse, discuri si destinatii" loading="lazy" width="1408" height="1079">
+      <figcaption data-i18n="shots.main">Layout pe 3 coloane — surse, discuri, destinatii</figcaption>
+    </figure>
+    <figure>
+      <img src="img/mac-ui-settings.png" alt="Setari de copiere DataMover — model de verificare, excluderi" loading="lazy" width="1408" height="1079">
+      <figcaption data-i18n="shots.settings">Model de verificare, excluderi si limba</figcaption>
+    </figure>
+    <figure>
+      <img src="img/mac-ui-history.png" alt="Istoricul copierilor DataMover" loading="lazy" width="1408" height="1079">
+      <figcaption data-i18n="shots.history">Istoric complet, cu stergere</figcaption>
+    </figure>
+    <figure>
+      <img src="img/mac-ui-help.png" alt="Ghidul de utilizare integrat DataMover" loading="lazy" width="1288" height="959">
+      <figcaption data-i18n="shots.help">Ghid de utilizare integrat</figcaption>
+    </figure>
   </div>
 
   <section id="functii">
@@ -776,7 +818,11 @@
       'footer.source': 'Cod sursa pe GitHub',
       'footer.releases': 'Toate versiunile',
       'footer.terms': 'Termeni &amp; Confidențialitate',
-      'footer.fine': 'DataMover &middot; Licenta MIT &middot; proiect open-source pentru comunitatea video'
+      'footer.fine': 'DataMover &middot; Licenta MIT &middot; proiect open-source pentru comunitatea video',
+      'shots.main': 'Layout pe 3 coloane — surse, discuri, destinatii',
+      'shots.settings': 'Model de verificare, excluderi si limba',
+      'shots.history': 'Istoric complet, cu stergere',
+      'shots.help': 'Ghid de utilizare integrat'
     },
     en: {
       'hero.eyebrow': 'macOS &amp; Windows',
@@ -846,7 +892,11 @@
       'footer.source': 'Source code on GitHub',
       'footer.releases': 'All releases',
       'footer.terms': 'Terms &amp; Privacy',
-      'footer.fine': 'DataMover &middot; MIT License &middot; open-source project for the video community'
+      'footer.fine': 'DataMover &middot; MIT License &middot; open-source project for the video community',
+      'shots.main': '3-column layout — sources, disks, destinations',
+      'shots.settings': 'Verification model, exclusions and language',
+      'shots.history': 'Full history, with delete',
+      'shots.help': 'Built-in user guide'
     },
     es: {
       'hero.eyebrow': 'macOS y Windows',
@@ -916,7 +966,11 @@
       'footer.source': 'Codigo fuente en GitHub',
       'footer.releases': 'Todas las versiones',
       'footer.terms': 'Terminos y Privacidad',
-      'footer.fine': 'DataMover &middot; Licencia MIT &middot; proyecto de codigo abierto para la comunidad de video'
+      'footer.fine': 'DataMover &middot; Licencia MIT &middot; proyecto de codigo abierto para la comunidad de video',
+      'shots.main': 'Diseno de 3 columnas — origenes, discos, destinos',
+      'shots.settings': 'Modelo de verificacion, exclusiones e idioma',
+      'shots.history': 'Historial completo, con eliminacion',
+      'shots.help': 'Guia de uso integrada'
     }
   };
 
