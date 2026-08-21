@@ -63,8 +63,16 @@ jobs:
           copy "dist\DataMover.exe" dist_release\
           copy "dist\DataMover Monitor.exe" dist_release\
 
-      - name: Arhiveaza intr-un singur .zip
-        run: Compress-Archive -Path "dist_release\*" -DestinationPath "dist\DataMover-Windows.zip"
+      - name: Compileaza instalatorul (Inno Setup - preinstalat pe runner-ul windows-latest)
+        run: |
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss
+
+      - name: Arhiveaza instalatorul + ghidurile PDF intr-un singur .zip
+        run: |
+          mkdir dist_final
+          copy "Output\DataMoverSetup.exe" dist_final\
+          copy "docs\guides\*.pdf" dist_final\
+          Compress-Archive -Path "dist_final\*" -DestinationPath "dist\DataMover-Windows.zip"
 
       - name: Incarca .zip ca artefact descarcabil
         uses: actions/upload-artifact@v4
