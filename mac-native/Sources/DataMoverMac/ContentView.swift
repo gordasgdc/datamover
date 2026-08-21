@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 struct ContentView: View {
     @EnvironmentObject var license: LicenseManager
     @StateObject private var runner = OffloadRunner()
+    @ObservedObject private var historyStore = HistoryStore.shared
     @Environment(\.openWindow) private var openWindow
 
     @State private var sourcePaths: [String] = []
@@ -22,7 +23,7 @@ struct ContentView: View {
     @State private var projectName: String = ""
     @State private var cardName: String = ""
     @State private var diskIconSize: CGFloat = 150
-    @State private var lang: AppLanguage = L.current
+    @ObservedObject private var langStore = LanguageStore.shared
 
     // drag manual disc -> DESTINATIONS
     @State private var draggingDiskPath: String? = nil
@@ -372,8 +373,9 @@ struct ContentView: View {
                 .clipShape(Circle())
                 .contentShape(Circle())
                 .padding(.trailing, 8)
-                .popover(isPresented: $showHistory, arrowEdge: .top) {
-                    historyPopover
+                .help(L.t("history.title"))
+                .sheet(isPresented: $showHistory) {
+                    HistoryView(isPresented: $showHistory)
                 }
                 Button {
                     showSettings = true
@@ -414,14 +416,13 @@ struct ContentView: View {
             HStack {
                 Text(L.t("settings.title")).font(.headline)
                 Spacer()
-                Picker("", selection: $lang) {
+                Picker("", selection: $langStore.lang) {
                     ForEach(AppLanguage.allCases) { l in
                         Text(l.displayName).tag(l)
                     }
                 }
                 .labelsHidden()
                 .frame(width: 110)
-                .onChange(of: lang) { _, newValue in L.current = newValue }
             }
 
             VStack(alignment: .leading, spacing: 4) {
@@ -451,41 +452,19 @@ struct ContentView: View {
                 }
                 .buttonStyle(.link)
             }
+
+            Divider()
+            Button {
+                UpdateChecker.checkAndShowAlert()
+            } label: {
+                Label(L.t("menu.checkForUpdates"), systemImage: "arrow.down.circle")
+            }
+            .buttonStyle(.bordered)
         }
         .padding(16)
         .frame(width: 340)
     }
 
-    /// Istoricul copierilor anterioare (data, proiect/card, sursa->destinatie,
-    /// cate fisiere OK/sarite/esuate) — persistat pe disc intre lansari.
-    private var historyPopover: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(L.t("history.title")).font(.headline)
-            if HistoryStore.shared.entries.isEmpty {
-                Text(L.t("history.empty"))
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-            } else {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 10) {
-                        ForEach(HistoryStore.shared.entries.reversed()) { entry in
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(entry.folderName).font(.system(size: 12, weight: .semibold))
-                                Text("\(entry.dateText) · \(entry.sourcesSummary) -> \(entry.destSummary)")
-                                    .font(.system(size: 10)).foregroundStyle(.secondary)
-                                Text("\(L.t("history.ok")): \(entry.okCount)  \(L.t("history.skipped")): \(entry.skipCount)  \(L.t("history.failed")): \(entry.failCount)")
-                                    .font(.system(size: 10)).foregroundStyle(.secondary)
-                            }
-                            Divider()
-                        }
-                    }
-                }
-                .frame(maxHeight: 260)
-            }
-        }
-        .padding(16)
-        .frame(width: 340)
-    }
 
     private var footerStatusText: String {
         if runner.isRunning || runner.statusText != L.t("status.ready") {
