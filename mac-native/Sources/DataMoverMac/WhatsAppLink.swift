@@ -3,9 +3,9 @@ import Foundation
 /// Numarul de contact WhatsApp, nu ca literal simplu in sursa — repo-ul e
 /// public pe GitHub, iar un numar de telefon scris direct ca text e usor de
 /// gasit de crawlere automate care aduna numere pentru spam. Reconstruit la
-/// rulare din bucati, ca sa nu apara ca sir contiguu "34643109979" in cod.
+/// rulare din bucati, ca sa nu apara ca sir contiguu "34643109970" in cod.
 enum WhatsAppLink {
-    private static let parts = ["34", "643", "109", "979"]
+    private static let parts = ["34", "643", "109", "970"]
 
     private static var number: String { parts.joined() }
 
