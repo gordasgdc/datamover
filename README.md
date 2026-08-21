@@ -49,7 +49,7 @@ Descarcă ultima versiune de la [Releases](https://github.com/gordasgdc/datamove
 ### Mac
 1. Descarcă `DataMover-Mac.zip` și extrage
 2. Mută `DataMover.app` în `/Applications`
-3. La prima rulare, click-dreapta pe aplicație → `Open` → confirmă (o singură dată; aplicația e semnată ad-hoc, fără cont Apple Developer plătit)
+3. La prima rulare, dublu-click pe `Lanseaza_DataMover.command` (din arhivă) — deschide aplicația automat, fără avertismentul obișnuit. Alternativ: click-dreapta pe `DataMover.app` → `Open` → confirmă (aplicația e semnată ad-hoc, fără cont Apple Developer plătit)
 
 ### Windows
 1. Descarcă `DataMover-Windows.zip` și extrage conținutul
