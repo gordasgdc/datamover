@@ -3,6 +3,7 @@ import UniformTypeIdentifiers
 
 struct ContentView: View {
     @EnvironmentObject var license: LicenseManager
+    @StateObject private var runner = OffloadRunner()
 
     @State private var sourcePaths: [String] = []
     @State private var destinationPaths: [String] = []
@@ -10,7 +11,6 @@ struct ContentView: View {
     @State private var isDropTargetedSources = false
     @State private var isDropTargetedDest = false
     @State private var showActivation = false
-    @State private var showEngineStub = false
 
     private let refreshTimer = Timer.publish(every: 4, on: .main, in: .common).autoconnect()
 
@@ -41,11 +41,6 @@ struct ContentView: View {
         .sheet(isPresented: $showActivation) {
             ActivationSheet(isPresented: $showActivation)
                 .environmentObject(license)
-        }
-        .alert("Motor de copiere", isPresented: $showEngineStub) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text("Motorul real de copiere/verificare in Swift nu e inca implementat — vine in pasul urmator. Layout-ul si drag&drop-ul sunt deja functionale.")
         }
     }
 
@@ -229,25 +224,44 @@ struct ContentView: View {
     // MARK: - Footer (Start / Anuleaza)
 
     private var footer: some View {
-        HStack {
-            Text(footerStatusText)
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-            Spacer()
-            Button("Anuleaza") {}
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
-                .padding(.trailing, 12)
-            Button("Start") { showEngineStub = true }
+        VStack(spacing: 6) {
+            if runner.isRunning {
+                ProgressView(value: Double(runner.progressPercent), total: 100)
+                    .tint(.green)
+            }
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(footerStatusText)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                    if !runner.speedText.isEmpty {
+                        Text(runner.speedText)
+                            .font(.system(size: 10))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Spacer()
+                Button("Anuleaza") { runner.cancel() }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .padding(.trailing, 12)
+                    .disabled(!runner.isRunning)
+                Button(runner.isRunning ? "Se copiaza..." : "Start") {
+                    runner.start(sources: sourcePaths, destinations: destinationPaths)
+                }
                 .buttonStyle(.borderedProminent)
                 .tint(.green)
-                .disabled(sourcePaths.isEmpty || destinationPaths.isEmpty)
+                .disabled(runner.isRunning || sourcePaths.isEmpty || destinationPaths.isEmpty)
+            }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
     }
 
     private var footerStatusText: String {
+        if runner.isRunning || runner.statusText != "Gata de pornire" {
+            return runner.statusText
+        }
         if sourcePaths.isEmpty || destinationPaths.isEmpty {
             return "Adauga surse si destinatii ca sa pornesti"
         }
