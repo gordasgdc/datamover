@@ -5,8 +5,8 @@ sigur de distribuit, nu compromite nimic.
 """
 
 import os
-import license_core
-import machine_id
+from . import license_core
+from . import machine_id
 
 # ─────────────────────────────────────────────────────────────────────
 # INLOCUIESTE cu cheia TA publica, generata de keygen.py

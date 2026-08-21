@@ -19,25 +19,14 @@ proiectul. Actualizeaz-o DOAR acolo, la fiecare "git tag" nou; setup.py o
 citeste automat de aici, nu mai trebuie schimbata si aici separat.
 """
 from setuptools import setup
-from update_config import APP_VERSION
+from core.update_config import APP_VERSION
 
 APP = ["main.py"]
-DATA_FILES = [
-    "offload_engine.py", "pdf_report.py", "config.py",
-    "theme.py", "tooltip.py", "checkpoint.py",
-    "update_config.py", "updater.py", "translations.py",
-    "license_core.py", "license_validator.py", "machine_id.py", "activation.py",
-]
 OPTIONS = {
     "argv_emulation": False,
-    "packages": ["reportlab", "tkinterdnd2", "plyer", "cryptography", "cffi"],
-    "includes": [
-        "offload_engine", "pdf_report", "config",
-        "theme", "tooltip", "checkpoint",
-        "update_config", "updater", "translations",
-        "license_core", "license_validator", "machine_id", "activation",
-        "_cffi_backend",
-    ],
+    "packages": ["reportlab", "tkinterdnd2", "plyer", "cryptography", "cffi",
+                 "core", "ui"],
+    "includes": ["_cffi_backend"],
     "iconfile": "DataMover.icns",
     "plist": {
         "CFBundleName": "DataMover",

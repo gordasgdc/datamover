@@ -19,9 +19,9 @@ import webbrowser
 import tkinter as tk
 from tkinter import ttk, messagebox
 
-import config as cfg
-import license_validator
-import machine_id
+from . import config as cfg
+from . import license_validator
+from . import machine_id
 
 # Perioada de proba gratuita, completa functionala, pentru cine nu are inca
 # un cod de activare - porneste automat la prima lansare, local, fara server
