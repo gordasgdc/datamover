@@ -74,12 +74,21 @@ struct ContentView: View {
             RoundedRectangle(cornerRadius: 8)
                 .strokeBorder(style: StrokeStyle(lineWidth: 2, dash: [5, 3]))
                 .foregroundStyle(isDropTargetedSources ? .green : .secondary.opacity(0.4))
+                .background(
+                    // strokeBorder deseneaza DOAR conturul — fara un fundal
+                    // "plin" (chiar si transparent), doar linia subtire e
+                    // hit-testabila, nu tot interiorul cutiei. RoundedRectangle
+                    // umplut cu .clear rezolva asta, fara sa schimbe vizual nimic.
+                    RoundedRectangle(cornerRadius: 8).fill(Color.clear)
+                )
+                .contentShape(Rectangle())
                 .frame(height: 90)
                 .overlay(
                     Text("Trage fisiere\nsau foldere aici")
                         .multilineTextAlignment(.center)
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
+                        .allowsHitTesting(false)
                 )
                 .padding(.horizontal, 10)
                 .onDrop(of: [.fileURL], isTargeted: $isDropTargetedSources) { providers in
@@ -150,6 +159,7 @@ struct ContentView: View {
                 LazyVGrid(columns: gridColumns, spacing: 14) {
                     ForEach(volumes) { volume in
                         DiskTileView(volume: volume)
+                            .contentShape(Rectangle())
                             .onDrag { NSItemProvider(object: volume.path as NSString) }
                     }
                 }
@@ -200,6 +210,7 @@ struct ContentView: View {
                 RoundedRectangle(cornerRadius: 8)
                     .fill(isDropTargetedDest ? Color.green.opacity(0.12) : Color.clear)
             )
+            .contentShape(Rectangle())
             .padding(.horizontal, 10)
             .onDrop(of: [.text], isTargeted: $isDropTargetedDest) { providers in
                 handleDestinationDrop(providers)
