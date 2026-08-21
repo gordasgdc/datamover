@@ -49,7 +49,7 @@ Download the latest version from [Releases](https://github.com/gordasgdc/datamov
 ### Mac
 1. Download `DataMover-Mac.zip` and extract it
 2. Drag `DataMover.app` into `/Applications`
-3. On first run, right-click the app → `Open` → confirm (one-time only; the app is ad-hoc signed, without a paid Apple Developer account)
+3. On first run, double-click `Lanseaza_DataMover.command` (included in the archive) — opens the app automatically, without the usual warning. Alternatively: right-click `DataMover.app` → `Open` → confirm (the app is ad-hoc signed, without a paid Apple Developer account)
 
 ### Windows
 1. Download `DataMover-Windows.zip` and extract the contents
