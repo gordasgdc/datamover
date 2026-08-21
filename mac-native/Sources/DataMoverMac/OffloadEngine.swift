@@ -511,7 +511,7 @@ final class OffloadRunner: ObservableObject {
         }
 
         group.notify(queue: .main) { [weak self] in
-            self?.finish(results: results)
+            self?.finish(results: results, folderName: folderName, sources: sources, destinations: destinations)
         }
     }
 
@@ -534,15 +534,19 @@ final class OffloadRunner: ObservableObject {
         }
     }
 
-    private func finish(results: [DestinationResult]) {
+    private func finish(results: [DestinationResult], folderName: String, sources: [String], destinations: [String]) {
         isRunning = false
         lastResults = results
         let anyCancelled = results.contains { $0.cancelled }
         let totalOK = results.reduce(0) { $0 + $1.okCount }
+        let totalSkip = results.reduce(0) { $0 + $1.skipCount }
         let totalFail = results.reduce(0) { $0 + $1.failCount }
         statusText = anyCancelled
             ? "Anulat."
             : "Finalizat — \(totalOK) OK\(totalFail > 0 ? ", \(totalFail) probleme" : "")."
         NSSound(named: "Glass")?.play()
+
+        HistoryStore.shared.record(folderName: folderName, sources: sources, destinations: destinations,
+                                    okCount: totalOK, skipCount: totalSkip, failCount: totalFail)
     }
 }

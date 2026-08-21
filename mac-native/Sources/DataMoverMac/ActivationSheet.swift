@@ -37,6 +37,15 @@ struct ActivationSheet: View {
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
 
+            Button {
+                NSWorkspace.shared.open(URL(string: "https://wa.me/40712345678?text=Buna%2C%20vreau%20sa%20cumpar%20licenta%20DataMover")!)
+            } label: {
+                Label("Contacteaza-ma pe WhatsApp pentru cumparare/suport", systemImage: "message.fill")
+                    .font(.system(size: 12))
+            }
+            .buttonStyle(.bordered)
+            .tint(.green)
+
             HStack {
                 Button("Anuleaza") { isPresented = false }
                 Spacer()

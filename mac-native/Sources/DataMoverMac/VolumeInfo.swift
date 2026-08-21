@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 
 /// Un volum montat sub /Volumes — echivalentul Swift al lui
 /// core.offload_engine.list_mounted_volumes() (doar ramura macOS a
@@ -8,6 +9,15 @@ struct VolumeInfo: Identifiable, Hashable {
     let name: String
     let path: String
     let freeBytes: Int64?
+
+    /// Iconita nativa macOS a volumului (extern portocaliu/argintiu, intern
+    /// etc.) — exact cea afisata de Finder pentru acel disc.
+    var icon: NSImage {
+        NSWorkspace.shared.icon(forFile: path)
+    }
+
+    static func == (lhs: VolumeInfo, rhs: VolumeInfo) -> Bool { lhs.id == rhs.id }
+    func hash(into hasher: inout Hasher) { hasher.combine(id) }
 
     static func detectAll() -> [VolumeInfo] {
         let fm = FileManager.default
