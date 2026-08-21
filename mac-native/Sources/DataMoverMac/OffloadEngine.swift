@@ -390,34 +390,73 @@ private func writePDFReport(path: String, destination: String, folderName: Strin
     var y: CGFloat = pageHeight - margin
 
     func newPage() { ctx.beginPDFPage(nil); y = pageHeight - margin }
-    func draw(_ text: String, size: CGFloat = 10, bold: Bool = false, color: NSColor = .black) {
+    func draw(_ text: String, size: CGFloat = 10, bold: Bool = false, color: NSColor = .black, x: CGFloat = margin) {
         if y < margin + size { ctx.endPDFPage(); newPage() }
         let font = bold ? NSFont.boldSystemFont(ofSize: size) : NSFont.systemFont(ofSize: size)
         let attr = NSAttributedString(string: text, attributes: [.font: font, .foregroundColor: color])
         let line = CTLineCreateWithAttributedString(attr)
         ctx.saveGState()
-        ctx.textPosition = CGPoint(x: margin, y: y)
+        ctx.textPosition = CGPoint(x: x, y: y)
         CTLineDraw(line, ctx)
         ctx.restoreGState()
-        y -= size + 6
+    }
+    /// Trunchiaza un text la un numar aproximativ de caractere care incap
+    /// intr-o coloana, adaugand "..." — simplu, fara masurare exacta de
+    /// glife (suficient pentru un raport monospace-friendly).
+    func truncate(_ s: String, maxChars: Int) -> String {
+        guard s.count > maxChars else { return s }
+        return String(s.prefix(maxChars - 1)) + "…"
+    }
+
+    // Coloanele tabelului: Status | Fisier | Marime | Eroare
+    let colStatusX = margin
+    let colFileX = margin + 46
+    let colSizeX = pageWidth - margin - 150
+    let colErrorX = pageWidth - margin - 90
+    let rowHeight: CGFloat = 13
+
+    func drawTableHeader() {
+        let headerY = y
+        ctx.saveGState()
+        ctx.setFillColor(NSColor(white: 0.9, alpha: 1).cgColor)
+        ctx.fill(CGRect(x: margin - 4, y: headerY - 3, width: pageWidth - 2 * margin + 8, height: rowHeight))
+        ctx.restoreGState()
+        draw("Status", size: 8, bold: true, x: colStatusX)
+        draw("Fisier", size: 8, bold: true, x: colFileX)
+        draw("Marime", size: 8, bold: true, x: colSizeX)
+        draw("Eroare", size: 8, bold: true, x: colErrorX)
+        y -= rowHeight
     }
 
     let df = DateFormatter(); df.dateFormat = "yyyy-MM-dd HH:mm:ss"
 
     newPage()
-    draw("Raport offload — \(folderName)", size: 16, bold: true)
-    draw("Destinatie: \(destination)")
-    draw("Inceput: \(df.string(from: startedAt))   Finalizat: \(df.string(from: finishedAt))")
-    draw("Model verificare: \(verificationLabel)")
+    draw("Raport offload — \(folderName)", size: 16, bold: true); y -= 20
+    draw("Destinatie: \(destination)", size: 10); y -= 16
+    draw("Inceput: \(df.string(from: startedAt))   Finalizat: \(df.string(from: finishedAt))", size: 10); y -= 16
+    draw("Model verificare: \(verificationLabel)", size: 10); y -= 16
     draw("OK: \(okCount)   Sarite: \(skipCount)   Probleme: \(failCount)" + (cancelled ? "   (ANULAT)" : ""),
-         bold: true, color: failCount > 0 || cancelled ? .systemRed : .systemGreen)
-    y -= 10
-    draw("Fisiere:", bold: true)
-    for row in rows {
-        let sizeTxt = formatBytes(row.sizeBytes)
-        var line = "[\(row.status)] \(row.file) (\(sizeTxt))"
-        if !row.error.isEmpty { line += " — \(row.error)" }
-        draw(line, size: 8, color: row.status == "OK" ? .black : .systemRed)
+         size: 10, bold: true, color: failCount > 0 || cancelled ? .systemRed : .systemGreen)
+    y -= 26
+
+    drawTableHeader()
+    for (index, row) in rows.enumerated() {
+        if y < margin + rowHeight {
+            ctx.endPDFPage(); newPage()
+            drawTableHeader()
+        }
+        if index % 2 == 0 {
+            ctx.saveGState()
+            ctx.setFillColor(NSColor(white: 0.96, alpha: 1).cgColor)
+            ctx.fill(CGRect(x: margin - 4, y: y - 3, width: pageWidth - 2 * margin + 8, height: rowHeight))
+            ctx.restoreGState()
+        }
+        let color: NSColor = row.status == "OK" ? .black : .systemRed
+        draw(row.status, size: 8, color: color, x: colStatusX)
+        draw(truncate(row.file, maxChars: 42), size: 8, color: color, x: colFileX)
+        draw(formatBytes(row.sizeBytes), size: 8, color: color, x: colSizeX)
+        draw(truncate(row.error, maxChars: 22), size: 8, color: .systemRed, x: colErrorX)
+        y -= rowHeight
     }
     ctx.endPDFPage()
     ctx.closePDF()

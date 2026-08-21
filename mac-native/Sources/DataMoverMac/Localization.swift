@@ -31,7 +31,7 @@ enum L {
         table[key]?[current] ?? table[key]?[.ro] ?? key
     }
 
-    private static let table: [String: [AppLanguage: String]] = [
+    fileprivate static let table: [String: [AppLanguage: String]] = [
         "prefs.language": [.ro: "Limba", .en: "Language", .es: "Idioma"],
 
         // MARK: - Trial bar
@@ -157,5 +157,21 @@ enum L {
         "help.step7.body": [.ro: "Ai 7 zile de proba gratuita. Apasa \"Activeaza licenta\" din bara de sus oricand in perioada de proba (sau dupa) ca sa introduci codul primit dupa achizitie — sau ca sa ma contactezi direct pe WhatsApp pentru cumparare/suport.",
                              .en: "You get a 7-day free trial. Tap \"Activate license\" in the top bar anytime during (or after) the trial to enter the code you received after purchase — or to contact me directly on WhatsApp to buy or get support.",
                              .es: "Tienes 7 días de prueba gratuita. Pulsa \"Activar licencia\" en la barra superior en cualquier momento durante (o después de) la prueba para introducir el código recibido tras la compra — o para contactarme directamente por WhatsApp para comprar o soporte."],
+
+        "history.clearAll": [.ro: "Sterge tot", .en: "Clear all", .es: "Borrar todo"],
+        "history.clearAllConfirm": [.ro: "Stergi tot istoricul copierilor? Nu se poate anula.", .en: "Delete the whole copy history? This can't be undone.", .es: "¿Borrar todo el historial de copias? No se puede deshacer."],
     ]
+}
+
+/// Wrapper observabil peste L.current — orice view care il tine ca
+/// @ObservedObject se re-randeaza automat cand limba se schimba, indiferent
+/// din ce fereastra (activare, setari) a fost schimbata. Fara asta, doua
+/// @State locale separate (unul in ContentView, unul in ActivationSheet)
+/// nu se sincronizau vizual intre ele.
+final class LanguageStore: ObservableObject {
+    static let shared = LanguageStore()
+    @Published var lang: AppLanguage = L.current {
+        didSet { L.current = lang }
+    }
+    private init() {}
 }

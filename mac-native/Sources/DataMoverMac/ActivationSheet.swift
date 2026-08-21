@@ -5,21 +5,20 @@ struct ActivationSheet: View {
     @Binding var isPresented: Bool
     @State private var code: String = ""
     @State private var justCopied = false
-    @State private var lang: AppLanguage = L.current
+    @ObservedObject private var langStore = LanguageStore.shared
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
                 Text(L.t("activation.title")).font(.title2).bold()
                 Spacer()
-                Picker("", selection: $lang) {
+                Picker("", selection: $langStore.lang) {
                     ForEach(AppLanguage.allCases) { l in
                         Text(l.displayName).tag(l)
                     }
                 }
                 .labelsHidden()
                 .frame(width: 110)
-                .onChange(of: lang) { _, newValue in L.current = newValue }
             }
 
             VStack(alignment: .leading, spacing: 4) {

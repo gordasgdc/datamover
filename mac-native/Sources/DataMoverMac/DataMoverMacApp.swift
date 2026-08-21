@@ -3,6 +3,7 @@ import SwiftUI
 @main
 struct DataMoverMacApp: App {
     @StateObject private var license = LicenseManager.shared
+    @ObservedObject private var langStore = LanguageStore.shared
     @Environment(\.openWindow) private var openWindow
 
     var body: some Scene {

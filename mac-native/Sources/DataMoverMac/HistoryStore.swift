@@ -15,12 +15,12 @@ struct HistoryEntry: Codable, Identifiable {
     let failCount: Int
 }
 
-final class HistoryStore {
+final class HistoryStore: ObservableObject {
     static let shared = HistoryStore()
 
     private let fileURL: URL
 
-    private(set) var entries: [HistoryEntry] = []
+    @Published private(set) var entries: [HistoryEntry] = []
 
     private init() {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
@@ -54,6 +54,16 @@ final class HistoryStore {
         )
         entries.append(entry)
         if entries.count > 200 { entries.removeFirst(entries.count - 200) }
+        save()
+    }
+
+    func delete(_ entry: HistoryEntry) {
+        entries.removeAll { $0.id == entry.id }
+        save()
+    }
+
+    func clearAll() {
+        entries.removeAll()
         save()
     }
 }
