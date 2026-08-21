@@ -1,18 +1,13 @@
 import Foundation
 import CryptoKit
 import AppKit
+import CoreText
 
-/// Port Swift al partii esentiale din core/offload_engine.py: listare
-/// fisiere, copiere in bucati (anulabila), verificare MD5, progres,
-/// raport CSV. Simplificat fata de Python pentru v1:
-///   - NU are inca: checkpoint/reluare, raport PDF, model de verificare
-///     configurabil (fix pe MD5, ca DEFAULT_VERIFICATION_MODEL), lista
-///     de excluderi editabila (doar fisierele ascunse "." sunt sarite,
-///     ca in Python), "skip existing identical".
-///   - Foloseste acelasi format de folder de destinatie
-///     (<destinatie>/<timestamp>/<cale relativa>) si acelasi nume de
-///     fisier CSV (offload_report_<timestamp>.csv), ca sa fie
-///     recognoscibil langa rapoartele generate de Windows.
+/// Port Swift complet al core/offload_engine.py: listare fisiere (cu
+/// excluderi), copiere in bucati (anulabila), verificare (MD5/SHA1/
+/// SHA256/SHA512/doar-dimensiune), progres, checkpoint/reluare, raport
+/// CSV + PDF. Format de folder si nume de fisiere identice cu Python,
+/// ca rapoartele sa fie recognoscibile langa cele generate de Windows.
 
 let offloadChunkSize = 1024 * 1024 // 1 MB, ca in Python
 
@@ -41,16 +36,52 @@ final class CancelToken: @unchecked Sendable {
 
 struct OffloadCancelled: Error {}
 
-/// Enumera recursiv un folder, sarind fisierele ascunse (nume care incep
-/// cu ".") — exact regula implicita din Python (_is_excluded, fara alte
-/// excluderi custom in v1).
-func listAllFiles(root: String) -> [FileEntry] {
+// MARK: - Model de verificare
+
+enum VerificationModel: String, CaseIterable, Identifiable, Codable {
+    case md5, sha1, sha256, sha512, sizeOnly = "marime"
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .md5: return "MD5 (rapid)"
+        case .sha1: return "SHA-1 (echilibrat)"
+        case .sha256: return "SHA-256 (recomandat pentru arhivare)"
+        case .sha512: return "SHA-512 (maxim de siguranta)"
+        case .sizeOnly: return "Doar dimensiune (rapid, mai putin sigur)"
+        }
+    }
+}
+
+// MARK: - Excluderi
+
+/// Sare fisierele ascunse (nume care incep cu ".") plus orice tipar din
+/// exclusions — nume exact sau extensie (tipar care incepe cu ".").
+/// Identic cu _is_excluded din Python.
+func isExcluded(filename: String, exclusions: [String]) -> Bool {
+    if filename.hasPrefix(".") { return true }
+    let lower = filename.lowercased()
+    for raw in exclusions {
+        let pattern = raw.trimmingCharacters(in: .whitespaces).lowercased()
+        if pattern.isEmpty { continue }
+        if pattern.hasPrefix(".") {
+            if lower.hasSuffix(pattern) { return true }
+        } else if lower == pattern {
+            return true
+        }
+    }
+    return false
+}
+
+/// Enumera recursiv un folder, aplicand excluderile de mai sus.
+func listAllFiles(root: String, exclusions: [String] = []) -> [FileEntry] {
     let fm = FileManager.default
     var results: [FileEntry] = []
     guard let enumerator = fm.enumerator(atPath: root) else { return results }
     for case let relPath as String in enumerator {
         let name = (relPath as NSString).lastPathComponent
-        if name.hasPrefix(".") { continue }
+        if isExcluded(filename: name, exclusions: exclusions) { continue }
         let full = (root as NSString).appendingPathComponent(relPath)
         var isDir: ObjCBool = false
         guard fm.fileExists(atPath: full, isDirectory: &isDir), !isDir.boolValue else { continue }
@@ -91,15 +122,15 @@ func copyFileCancelable(src: String, dst: String, cancel: CancelToken) throws {
     }
 }
 
-/// MD5 al unui fisier, calculat pe bucati (fisiere mari nu incap intreg
-/// in memorie) — CryptoKit.Insecure.MD5 accepta actualizari incrementale.
-func md5Hash(path: String, cancel: CancelToken) throws -> String {
+/// Hash generic pe bucati, pentru orice algoritm CryptoKit conform
+/// HashFunction (MD5/SHA1/SHA256/SHA512 partajate acelasi cod).
+private func genericHash<H: HashFunction>(path: String, using: H.Type, cancel: CancelToken) throws -> String {
     guard let handle = FileHandle(forReadingAtPath: path) else {
         throw NSError(domain: "DataMover", code: 2, userInfo: [NSLocalizedDescriptionKey: "Nu pot citi \(path)"])
     }
     defer { try? handle.close() }
 
-    var hasher = Insecure.MD5()
+    var hasher = H()
     while true {
         if cancel.isCancelled { throw OffloadCancelled() }
         let chunk = handle.readData(ofLength: offloadChunkSize)
@@ -107,6 +138,16 @@ func md5Hash(path: String, cancel: CancelToken) throws -> String {
         hasher.update(data: chunk)
     }
     return hasher.finalize().map { String(format: "%02x", $0) }.joined()
+}
+
+func hashOfFile(path: String, model: VerificationModel, cancel: CancelToken) throws -> String {
+    switch model {
+    case .md5: return try genericHash(path: path, using: Insecure.MD5.self, cancel: cancel)
+    case .sha1: return try genericHash(path: path, using: Insecure.SHA1.self, cancel: cancel)
+    case .sha256: return try genericHash(path: path, using: SHA256.self, cancel: cancel)
+    case .sha512: return try genericHash(path: path, using: SHA512.self, cancel: cancel)
+    case .sizeOnly: return ""
+    }
 }
 
 struct ReportRow {
@@ -127,7 +168,59 @@ struct DestinationResult {
     let failCount: Int
     let cancelled: Bool
     let csvPath: String?
+    let pdfPath: String?
 }
+
+// MARK: - Checkpoint (identic ca format cu core/checkpoint.py)
+
+private struct CheckpointData: Codable {
+    var source: String?
+    var folderName: String
+    var verificationModel: String
+    var completed: Bool
+    var files: [String: String]
+    var totalFiles: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case source, completed, files
+        case folderName = "folder_name"
+        case verificationModel = "verification_model"
+        case totalFiles = "total_files"
+    }
+}
+
+private enum CheckpointStore {
+    static let filename = "offload_checkpoint.json"
+
+    static func path(targetRoot: String) -> String {
+        (targetRoot as NSString).appendingPathComponent(filename)
+    }
+
+    static func load(targetRoot: String) -> [String: String]? {
+        let p = path(targetRoot: targetRoot)
+        guard let data = FileManager.default.contents(atPath: p),
+              let decoded = try? JSONDecoder().decode(CheckpointData.self, from: data) else { return nil }
+        return decoded.files
+    }
+
+    static func save(targetRoot: String, source: String?, folderName: String,
+                      verificationModel: String, files: [String: String],
+                      completed: Bool, totalFiles: Int) {
+        let payload = CheckpointData(source: source, folderName: folderName,
+                                      verificationModel: verificationModel, completed: completed,
+                                      files: files, totalFiles: totalFiles)
+        guard let data = try? JSONEncoder().encode(payload) else { return }
+        let p = path(targetRoot: targetRoot)
+        let tmp = p + ".tmp"
+        do {
+            try data.write(to: URL(fileURLWithPath: tmp))
+            _ = try? FileManager.default.removeItem(atPath: p)
+            try FileManager.default.moveItem(atPath: tmp, toPath: p)
+        } catch { /* best-effort, ca in Python */ }
+    }
+}
+
+// MARK: - DestinationJob
 
 /// Copiaza+verifica lista de fisiere data catre O SINGURA destinatie —
 /// echivalentul Swift al lui DestinationJob din Python. Ruleaza pe un
@@ -137,6 +230,9 @@ final class DestinationJob {
     let folderName: String
     let files: [FileEntry]
     let cancel: CancelToken
+    let verificationModel: VerificationModel
+    let resume: Bool
+    let sourceRoot: String?
     /// apelat dupa fiecare fisier procesat (pe thread-ul de fundal —
     /// OffloadRunner e cel care sare pe main thread inainte sa atinga UI)
     let onFileDone: (_ size: Int64) -> Void
@@ -144,35 +240,57 @@ final class DestinationJob {
     private var reportRows: [ReportRow] = []
     private var okCount = 0, skipCount = 0, failCount = 0
     private var cancelled = false
+    private var filesStatus: [String: String] = [:]
+    private var filesSinceCheckpoint = 0
+    private var lastCheckpointTime = Date.distantPast
+    private var startedAt = Date()
 
     init(destRoot: String, folderName: String, files: [FileEntry], cancel: CancelToken,
+         verificationModel: VerificationModel = .md5, resume: Bool = false, sourceRoot: String? = nil,
          onFileDone: @escaping (_ size: Int64) -> Void) {
         self.destRoot = destRoot
         self.folderName = folderName
         self.files = files
         self.cancel = cancel
+        self.verificationModel = verificationModel
+        self.resume = resume
+        self.sourceRoot = sourceRoot
         self.onFileDone = onFileDone
     }
 
     func run() -> DestinationResult {
+        startedAt = Date()
         let targetRoot = (destRoot as NSString).appendingPathComponent(folderName)
         try? FileManager.default.createDirectory(atPath: targetRoot, withIntermediateDirectories: true)
 
+        var alreadyDone: Set<String> = []
+        if resume, let saved = CheckpointStore.load(targetRoot: targetRoot) {
+            filesStatus = saved
+            alreadyDone = Set(saved.filter { $0.value == "ok" || $0.value == "sarit" }.keys)
+        }
+
         for entry in files {
             if cancel.isCancelled { cancelled = true; break }
+
+            if alreadyDone.contains(entry.relPath) {
+                skipCount += 1
+                onFileDone(entry.size)
+                maybeWriteCheckpoint(targetRoot: targetRoot)
+                continue
+            }
 
             let destPath = (targetRoot as NSString).appendingPathComponent(entry.relPath)
             let destDir = (destPath as NSString).deletingLastPathComponent
             try? FileManager.default.createDirectory(atPath: destDir, withIntermediateDirectories: true)
 
             var status = "OK"
-            var srcHash = "", dstHash = "", errorMsg = ""
+            var srcRepr = "", dstRepr = "", errorMsg = ""
 
             do {
                 try copyFileCancelable(src: entry.fullPath, dst: destPath, cancel: cancel)
-                srcHash = try md5Hash(path: entry.fullPath, cancel: cancel)
-                dstHash = try md5Hash(path: destPath, cancel: cancel)
-                if srcHash != dstHash { status = "NEPOTRIVIRE" }
+                let (same, s, d) = try verifyPair(entry: entry, destPath: destPath)
+                srcRepr = s; dstRepr = d
+                if !same { status = "NEPOTRIVIRE" }
             } catch is OffloadCancelled {
                 cancelled = true
                 break
@@ -182,38 +300,70 @@ final class DestinationJob {
             }
 
             switch status {
-            case "OK": okCount += 1
-            case "SARIT": skipCount += 1
-            default: failCount += 1
+            case "OK": okCount += 1; filesStatus[entry.relPath] = "ok"
+            case "SARIT": skipCount += 1; filesStatus[entry.relPath] = "sarit"
+            default: failCount += 1; filesStatus[entry.relPath] = "fail"
             }
             reportRows.append(ReportRow(file: entry.relPath, sizeBytes: entry.size,
-                                          srcHash: srcHash, dstHash: dstHash,
+                                          srcHash: srcRepr, dstHash: dstRepr,
                                           status: status, error: errorMsg))
             onFileDone(entry.size)
+            maybeWriteCheckpoint(targetRoot: targetRoot)
         }
 
-        let csvPath = writeReport(targetRoot: targetRoot)
+        maybeWriteCheckpoint(targetRoot: targetRoot, force: true)
+        let (csvPath, pdfPath) = writeReports(targetRoot: targetRoot)
         return DestinationResult(destRoot: destRoot, okCount: okCount, skipCount: skipCount,
-                                  failCount: failCount, cancelled: cancelled, csvPath: csvPath)
+                                  failCount: failCount, cancelled: cancelled,
+                                  csvPath: csvPath, pdfPath: pdfPath)
     }
 
-    private func writeReport(targetRoot: String) -> String? {
+    private func verifyPair(entry: FileEntry, destPath: String) throws -> (same: Bool, srcRepr: String, dstRepr: String) {
+        if verificationModel == .sizeOnly {
+            let dstSize = (try? FileManager.default.attributesOfItem(atPath: destPath)[.size] as? Int64) ?? nil
+            let d = dstSize ?? -1
+            return (d == entry.size, "marime=\(entry.size)", "marime=\(d)")
+        }
+        let srcHash = try hashOfFile(path: entry.fullPath, model: verificationModel, cancel: cancel)
+        let dstHash = try hashOfFile(path: destPath, model: verificationModel, cancel: cancel)
+        return (srcHash == dstHash, srcHash, dstHash)
+    }
+
+    private func maybeWriteCheckpoint(targetRoot: String, force: Bool = false) {
+        filesSinceCheckpoint += 1
+        let now = Date()
+        let dueByCount = filesSinceCheckpoint >= 10
+        let dueByTime = now.timeIntervalSince(lastCheckpointTime) >= 5.0
+        guard force || dueByCount || dueByTime else { return }
+        CheckpointStore.save(targetRoot: targetRoot, source: sourceRoot, folderName: folderName,
+                              verificationModel: verificationModel.rawValue, files: filesStatus,
+                              completed: force && !cancelled, totalFiles: files.count)
+        filesSinceCheckpoint = 0
+        lastCheckpointTime = now
+    }
+
+    private func writeReports(targetRoot: String) -> (csv: String?, pdf: String?) {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd_HH-mm-ss"
         let timestamp = formatter.string(from: Date())
-        let csvPath = (targetRoot as NSString).appendingPathComponent("offload_report_\(timestamp).csv")
 
+        let csvPath = (targetRoot as NSString).appendingPathComponent("offload_report_\(timestamp).csv")
         var csv = "fisier,marime_bytes,verificare_sursa,verificare_destinatie,status,eroare\n"
         for row in reportRows {
             let fields = [row.file, String(row.sizeBytes), row.srcHash, row.dstHash, row.status, row.error]
             csv += fields.map { csvEscape($0) }.joined(separator: ",") + "\n"
         }
-        do {
-            try csv.write(toFile: csvPath, atomically: true, encoding: .utf8)
-            return csvPath
-        } catch {
-            return nil
-        }
+        var savedCSV: String? = nil
+        do { try csv.write(toFile: csvPath, atomically: true, encoding: .utf8); savedCSV = csvPath } catch {}
+
+        let pdfPath = (targetRoot as NSString).appendingPathComponent("offload_report_\(timestamp).pdf")
+        let savedPDF = writePDFReport(
+            path: pdfPath, destination: destRoot, folderName: folderName, rows: reportRows,
+            startedAt: startedAt, finishedAt: Date(), okCount: okCount, skipCount: skipCount,
+            failCount: failCount, cancelled: cancelled, verificationLabel: verificationModel.label
+        ) ? pdfPath : nil
+
+        return (savedCSV, savedPDF)
     }
 
     private func csvEscape(_ field: String) -> String {
@@ -223,6 +373,58 @@ final class DestinationJob {
         return field
     }
 }
+
+// MARK: - Raport PDF (CoreGraphics, fara dependinte externe)
+
+private func writePDFReport(path: String, destination: String, folderName: String, rows: [ReportRow],
+                             startedAt: Date, finishedAt: Date, okCount: Int, skipCount: Int,
+                             failCount: Int, cancelled: Bool, verificationLabel: String) -> Bool {
+    let pageWidth: CGFloat = 595 // A4 @ 72dpi
+    let pageHeight: CGFloat = 842
+    let margin: CGFloat = 40
+    var mediaBox = CGRect(x: 0, y: 0, width: pageWidth, height: pageHeight)
+
+    guard let consumer = CGDataConsumer(url: URL(fileURLWithPath: path) as CFURL),
+          let ctx = CGContext(consumer: consumer, mediaBox: &mediaBox, nil) else { return false }
+
+    var y: CGFloat = pageHeight - margin
+
+    func newPage() { ctx.beginPDFPage(nil); y = pageHeight - margin }
+    func draw(_ text: String, size: CGFloat = 10, bold: Bool = false, color: NSColor = .black) {
+        if y < margin + size { ctx.endPDFPage(); newPage() }
+        let font = bold ? NSFont.boldSystemFont(ofSize: size) : NSFont.systemFont(ofSize: size)
+        let attr = NSAttributedString(string: text, attributes: [.font: font, .foregroundColor: color])
+        let line = CTLineCreateWithAttributedString(attr)
+        ctx.saveGState()
+        ctx.textPosition = CGPoint(x: margin, y: y)
+        CTLineDraw(line, ctx)
+        ctx.restoreGState()
+        y -= size + 6
+    }
+
+    let df = DateFormatter(); df.dateFormat = "yyyy-MM-dd HH:mm:ss"
+
+    newPage()
+    draw("Raport offload — \(folderName)", size: 16, bold: true)
+    draw("Destinatie: \(destination)")
+    draw("Inceput: \(df.string(from: startedAt))   Finalizat: \(df.string(from: finishedAt))")
+    draw("Model verificare: \(verificationLabel)")
+    draw("OK: \(okCount)   Sarite: \(skipCount)   Probleme: \(failCount)" + (cancelled ? "   (ANULAT)" : ""),
+         bold: true, color: failCount > 0 || cancelled ? .systemRed : .systemGreen)
+    y -= 10
+    draw("Fisiere:", bold: true)
+    for row in rows {
+        let sizeTxt = formatBytes(row.sizeBytes)
+        var line = "[\(row.status)] \(row.file) (\(sizeTxt))"
+        if !row.error.isEmpty { line += " — \(row.error)" }
+        draw(line, size: 8, color: row.status == "OK" ? .black : .systemRed)
+    }
+    ctx.endPDFPage()
+    ctx.closePDF()
+    return true
+}
+
+// MARK: - OffloadRunner (orchestrare, expus catre SwiftUI)
 
 /// Orchestreaza cate un DestinationJob per destinatie, in paralel (ca
 /// thread-urile din Python), si expune progresul global catre SwiftUI
@@ -240,9 +442,11 @@ final class OffloadRunner: ObservableObject {
     private var cancelToken = CancelToken()
     private var startTime: Date?
     private var bytesDone: Int64 = 0
-    private let progressLock = NSLock()
 
-    func start(sources: [String], destinations: [String]) {
+    func start(sources: [String], destinations: [String],
+               verificationModel: VerificationModel = .md5,
+               exclusions: [String] = [], resume: Bool = true,
+               project: String = "", card: String = "") {
         guard !isRunning else { return }
 
         var files: [FileEntry] = []
@@ -250,10 +454,12 @@ final class OffloadRunner: ObservableObject {
             var isDir: ObjCBool = false
             guard FileManager.default.fileExists(atPath: src, isDirectory: &isDir) else { continue }
             if isDir.boolValue {
-                files.append(contentsOf: listAllFiles(root: src))
+                files.append(contentsOf: listAllFiles(root: src, exclusions: exclusions))
             } else {
+                let name = (src as NSString).lastPathComponent
+                if isExcluded(filename: name, exclusions: exclusions) { continue }
                 let size = (try? FileManager.default.attributesOfItem(atPath: src)[.size] as? Int64) ?? nil
-                files.append(FileEntry(fullPath: src, relPath: (src as NSString).lastPathComponent, size: size ?? 0))
+                files.append(FileEntry(fullPath: src, relPath: name, size: size ?? 0))
             }
         }
         guard !files.isEmpty else {
@@ -261,9 +467,17 @@ final class OffloadRunner: ObservableObject {
             return
         }
 
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd_HH-mm-ss"
-        let folderName = formatter.string(from: Date())
+        // Numele folderului de destinatie: <data>_<Proiect>_<Card>, exact ca
+        // in aplicatia Windows — implicit "Proiect"/"Card" daca lasi campurile
+        // goale. Diferit de timestamp-ul cu ora folosit pentru rapoarte
+        // (writeReports isi calculeaza propriul sau, mai jos).
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "yyyy-MM-dd"
+        let dateStr = dateFormatter.string(from: Date())
+        let proj = project.trimmingCharacters(in: .whitespaces).isEmpty ? "Proiect" : project.trimmingCharacters(in: .whitespaces)
+        let crd = card.trimmingCharacters(in: .whitespaces).isEmpty ? "Card" : card.trimmingCharacters(in: .whitespaces)
+        let folderName = "\(dateStr)_\(proj)_\(crd)".replacingOccurrences(of: " ", with: "_")
+        let sourceRoot = sources.first
 
         cancelToken = CancelToken()
         isRunning = true
@@ -284,7 +498,8 @@ final class OffloadRunner: ObservableObject {
         for dest in destinations {
             group.enter()
             DispatchQueue.global(qos: .utility).async { [weak self] in
-                let job = DestinationJob(destRoot: dest, folderName: folderName, files: files, cancel: token) { size in
+                let job = DestinationJob(destRoot: dest, folderName: folderName, files: files, cancel: token,
+                                          verificationModel: verificationModel, resume: resume, sourceRoot: sourceRoot) { size in
                     Task { @MainActor [weak self] in
                         self?.advance(size: size)
                     }

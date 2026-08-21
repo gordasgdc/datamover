@@ -9,7 +9,16 @@ struct ContentView: View {
     @State private var destinationPaths: [String] = []
     @State private var volumes: [VolumeInfo] = []
     @State private var isDropTargetedSources = false
+    @State private var isDropTargetedDestFromFinder = false
     @State private var showActivation = false
+
+    // setari de copiere/verificare
+    @State private var verificationModel: VerificationModel = .md5
+    @State private var exclusionsText: String = ""
+    @State private var resumeEnabled: Bool = true
+    @State private var showSettings = false
+    @State private var projectName: String = ""
+    @State private var cardName: String = ""
 
     // drag manual disc -> DESTINATIONS
     @State private var draggingDiskPath: String? = nil
@@ -28,6 +37,8 @@ struct ContentView: View {
                 if license.isTrialActive && !license.isLicensed {
                     trialBar
                 }
+                metaBar
+                Divider()
 
                 HStack(spacing: 0) {
                     sourcesColumn
@@ -89,6 +100,28 @@ struct ContentView: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
         .background(Color(nsColor: .underPageBackgroundColor))
+    }
+
+    /// Numele folderului de destinatie (<data>_Proiect_Card), la fel ca in
+    /// aplicatia Windows — implicit "Proiect"/"Card" daca lasi gol.
+    private var metaBar: some View {
+        HStack(spacing: 16) {
+            HStack(spacing: 6) {
+                Text("Proiect").font(.system(size: 11)).foregroundStyle(.secondary)
+                TextField("Proiect", text: $projectName)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 160)
+            }
+            HStack(spacing: 6) {
+                Text("Card").font(.system(size: 11)).foregroundStyle(.secondary)
+                TextField("Card", text: $cardName)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 120)
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
     }
 
     // MARK: - Coloana SOURCES
@@ -220,7 +253,7 @@ struct ContentView: View {
 
             ZStack {
                 if destinationPaths.isEmpty {
-                    Text("Trage un disc aici\nca destinatie")
+                    Text("Trage un disc din Disks,\nsau un folder din Finder")
                         .multilineTextAlignment(.center)
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
@@ -249,11 +282,29 @@ struct ContentView: View {
             .frame(maxHeight: .infinity)
             .background(
                 RoundedRectangle(cornerRadius: 8)
-                    .fill(isHoveringDest ? Color.green.opacity(0.12) : Color.clear)
+                    .fill((isHoveringDest || isDropTargetedDestFromFinder) ? Color.green.opacity(0.12) : Color.clear)
             )
             .contentShape(Rectangle())
             .padding(.horizontal, 10)
+            .onDrop(of: [.fileURL], isTargeted: $isDropTargetedDestFromFinder) { providers in
+                handleDestinationFinderDrop(providers)
+            }
         }
+    }
+
+    /// Permite si tragerea unui folder direct din Finder (nu doar a unui
+    /// disc din grila Disks) peste DESTINATIONS, ca sa salvezi intr-un
+    /// folder anume, nu neaparat in radacina unui disc intreg.
+    private func handleDestinationFinderDrop(_ providers: [NSItemProvider]) -> Bool {
+        for provider in providers {
+            _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                guard let url else { return }
+                var isDir: ObjCBool = false
+                guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir), isDir.boolValue else { return }
+                DispatchQueue.main.async { addDestination(url.path) }
+            }
+        }
+        return true
     }
 
     private func addDestination(_ path: String) {
@@ -282,13 +333,28 @@ struct ContentView: View {
                     }
                 }
                 Spacer()
+                Button {
+                    showSettings = true
+                } label: {
+                    Image(systemName: "gearshape")
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .padding(.trailing, 12)
+                .disabled(runner.isRunning)
+                .popover(isPresented: $showSettings, arrowEdge: .top) {
+                    settingsPopover
+                }
                 Button("Anuleaza") { runner.cancel() }
                     .buttonStyle(.plain)
                     .foregroundStyle(.secondary)
                     .padding(.trailing, 12)
                     .disabled(!runner.isRunning)
                 Button(runner.isRunning ? "Se copiaza..." : "Start") {
-                    runner.start(sources: sourcePaths, destinations: destinationPaths)
+                    let exclusions = exclusionsText.split(separator: ",").map(String.init)
+                    runner.start(sources: sourcePaths, destinations: destinationPaths,
+                                 verificationModel: verificationModel, exclusions: exclusions,
+                                 resume: resumeEnabled, project: projectName, card: cardName)
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(.green)
@@ -297,6 +363,42 @@ struct ContentView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
+    }
+
+    private var settingsPopover: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Setari copiere").font(.headline)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Model de verificare").font(.system(size: 11)).foregroundStyle(.secondary)
+                Picker("", selection: $verificationModel) {
+                    ForEach(VerificationModel.allCases) { model in
+                        Text(model.label).tag(model)
+                    }
+                }
+                .labelsHidden()
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Excluderi (nume exact sau .extensie, separate prin virgula)")
+                    .font(.system(size: 11)).foregroundStyle(.secondary)
+                TextField(".tmp, .DS_Store, Thumbs.db", text: $exclusionsText)
+                    .textFieldStyle(.roundedBorder)
+            }
+
+            Toggle("Reia automat dintr-un checkpoint existent", isOn: $resumeEnabled)
+                .font(.system(size: 12))
+
+            if let last = runner.lastResults.first, let folder = last.csvPath.map({ ($0 as NSString).deletingLastPathComponent }) {
+                Divider()
+                Button("Deschide ultimul raport in Finder") {
+                    NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: folder)
+                }
+                .buttonStyle(.link)
+            }
+        }
+        .padding(16)
+        .frame(width: 340)
     }
 
     private var footerStatusText: String {
