@@ -339,7 +339,7 @@ class DataMoverApp(_BASE_CLASS):
         self._reg(ttk.Checkbutton(
             skip_row, variable=self.skip_existing_var
         ), "opts_skip").pack(side="left")
-        from tooltip import add_help_icon_packed
+        from ui.common.tooltip import add_help_icon_packed
         self.skip_help_icon = add_help_icon_packed(skip_row, "")
         self._reg_tooltip(self.skip_help_icon, "tooltip_skip")
 

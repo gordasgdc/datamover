@@ -573,7 +573,7 @@ class DestinationJob:
             self.log_queue.put(f"[EROARE] Nu am putut scrie CSV in {target_root}: {e}")
 
         try:
-            from pdf_report import generate_pdf_report
+            from .pdf_report import generate_pdf_report
             pdf_path = os.path.join(target_root, f"offload_report_{timestamp}.pdf")
             generate_pdf_report(
                 output_path=pdf_path,
