@@ -24,7 +24,7 @@ import platform
 import subprocess
 from datetime import datetime
 
-import checkpoint as ckpt
+from . import checkpoint as ckpt
 
 CHUNK_SIZE = 1024 * 1024  # 1 MB
 
