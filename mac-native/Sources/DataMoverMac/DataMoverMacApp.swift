@@ -26,7 +26,7 @@ struct DataMoverMacApp: App {
                     openWindow(id: "help")
                 }
                 Button(L.t("menu.whatsapp")) {
-                    NSWorkspace.shared.open(URL(string: "https://wa.me/40712345678")!)
+                    NSWorkspace.shared.open(URL(string: "https://wa.me/34643109979")!)
                 }
             }
         }
