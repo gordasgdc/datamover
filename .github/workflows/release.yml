@@ -66,15 +66,22 @@ jobs:
             --collect-all PIL `
             tray_monitor.py
 
-      - name: Pregateste folderul de distributie (exe + monitor + ghiduri PDF, la un loc)
+      - name: Pregateste folderul de distributie (exe + monitor, la un loc, pt. installer.iss)
         run: |
           mkdir dist_release
           copy "dist\DataMover.exe" dist_release\
           copy "dist\DataMover Monitor.exe" dist_release\
-          copy "docs\guides\*.pdf" dist_release\
 
-      - name: Arhiveaza intr-un singur .zip
-        run: Compress-Archive -Path "dist_release\*" -DestinationPath "DataMover-Windows.zip"
+      - name: Compileaza instalatorul (Inno Setup - preinstalat pe runner-ul windows-latest)
+        run: |
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss
+
+      - name: Arhiveaza instalatorul + ghidurile PDF intr-un singur .zip
+        run: |
+          mkdir dist_final
+          copy "Output\DataMoverSetup.exe" dist_final\
+          copy "docs\guides\*.pdf" dist_final\
+          Compress-Archive -Path "dist_final\*" -DestinationPath "DataMover-Windows.zip"
 
       - name: Salveaza pentru pasul de release
         uses: actions/upload-artifact@v4
