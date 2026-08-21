@@ -1,6 +1,17 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
+/// Frame-ul curent al coloanei DESTINATIONS, in coordonatele spatiului
+/// numit "root" — colectat prin GeometryReader, folosit ca sa stim daca
+/// punctul unde se lasa un disc (drag manual, vezi mai jos) cade sau nu
+/// peste ea. SwiftUI onDrag/onDrop intre doua view-uri proprii (nu din
+/// Finder) s-a dovedit nesigur pe macOS, mai ales cu un ScrollView pe
+/// calea gestului — drag manual bazat pe DragGesture e mult mai robust.
+private struct DestFrameKey: PreferenceKey {
+    static var defaultValue: CGRect = .zero
+    static func reduce(value: inout CGRect, nextValue: () -> CGRect) { value = nextValue() }
+}
+
 struct ContentView: View {
     @EnvironmentObject var license: LicenseManager
     @StateObject private var runner = OffloadRunner()
@@ -9,39 +20,63 @@ struct ContentView: View {
     @State private var destinationPaths: [String] = []
     @State private var volumes: [VolumeInfo] = []
     @State private var isDropTargetedSources = false
-    @State private var isDropTargetedDest = false
     @State private var showActivation = false
+
+    // drag manual disc -> DESTINATIONS
+    @State private var draggingDiskPath: String? = nil
+    @State private var dragPoint: CGPoint = .zero
+    @State private var destFrame: CGRect = .zero
 
     private let refreshTimer = Timer.publish(every: 4, on: .main, in: .common).autoconnect()
 
+    private var isHoveringDest: Bool {
+        draggingDiskPath != nil && destFrame.contains(dragPoint)
+    }
+
     var body: some View {
-        VStack(spacing: 0) {
-            if license.isTrialActive && !license.isLicensed {
-                trialBar
+        ZStack(alignment: .topLeading) {
+            VStack(spacing: 0) {
+                if license.isTrialActive && !license.isLicensed {
+                    trialBar
+                }
+
+                HStack(spacing: 0) {
+                    sourcesColumn
+                        .frame(width: 230)
+                    Divider()
+                    disksColumn
+                        .frame(maxWidth: .infinity)
+                    Divider()
+                    destinationsColumn
+                        .frame(width: 230)
+                }
+                .frame(maxHeight: .infinity)
+
+                Divider()
+                footer
+            }
+            .background(Color(nsColor: .windowBackgroundColor))
+            .onAppear { volumes = VolumeInfo.detectAll() }
+            .onReceive(refreshTimer) { _ in volumes = VolumeInfo.detectAll() }
+            .onPreferenceChange(DestFrameKey.self) { destFrame = $0 }
+            .sheet(isPresented: $showActivation) {
+                ActivationSheet(isPresented: $showActivation)
+                    .environmentObject(license)
             }
 
-            HStack(spacing: 0) {
-                sourcesColumn
-                    .frame(width: 230)
-                Divider()
-                disksColumn
-                    .frame(maxWidth: .infinity)
-                Divider()
-                destinationsColumn
-                    .frame(width: 230)
+            // eticheta "fantoma" care urmareste cursorul cat timp tragi un disc
+            if let path = draggingDiskPath {
+                Text((path as NSString).lastPathComponent)
+                    .font(.system(size: 11, weight: .semibold))
+                    .padding(.horizontal, 8).padding(.vertical, 4)
+                    .background(Color.green)
+                    .foregroundStyle(.black)
+                    .clipShape(RoundedRectangle(cornerRadius: 5))
+                    .position(dragPoint)
+                    .allowsHitTesting(false)
             }
-            .frame(maxHeight: .infinity)
-
-            Divider()
-            footer
         }
-        .background(Color(nsColor: .windowBackgroundColor))
-        .onAppear { volumes = VolumeInfo.detectAll() }
-        .onReceive(refreshTimer) { _ in volumes = VolumeInfo.detectAll() }
-        .sheet(isPresented: $showActivation) {
-            ActivationSheet(isPresented: $showActivation)
-                .environmentObject(license)
-        }
+        .coordinateSpace(name: "root")
     }
 
     // MARK: - Header (proba gratuita)
@@ -160,7 +195,19 @@ struct ContentView: View {
                     ForEach(volumes) { volume in
                         DiskTileView(volume: volume)
                             .contentShape(Rectangle())
-                            .onDrag { NSItemProvider(object: volume.path as NSString) }
+                            .gesture(
+                                DragGesture(minimumDistance: 4, coordinateSpace: .named("root"))
+                                    .onChanged { value in
+                                        draggingDiskPath = volume.path
+                                        dragPoint = value.location
+                                    }
+                                    .onEnded { value in
+                                        if destFrame.contains(value.location) {
+                                            addDestination(volume.path)
+                                        }
+                                        draggingDiskPath = nil
+                                    }
+                            )
                     }
                 }
                 .padding(14)
@@ -208,28 +255,22 @@ struct ContentView: View {
             .frame(maxHeight: .infinity)
             .background(
                 RoundedRectangle(cornerRadius: 8)
-                    .fill(isDropTargetedDest ? Color.green.opacity(0.12) : Color.clear)
+                    .fill(isHoveringDest ? Color.green.opacity(0.12) : Color.clear)
             )
             .contentShape(Rectangle())
             .padding(.horizontal, 10)
-            .onDrop(of: [.text], isTargeted: $isDropTargetedDest) { providers in
-                handleDestinationDrop(providers)
-            }
+            .background(
+                GeometryReader { geo in
+                    Color.clear.preference(key: DestFrameKey.self, value: geo.frame(in: .named("root")))
+                }
+            )
         }
     }
 
-    private func handleDestinationDrop(_ providers: [NSItemProvider]) -> Bool {
-        for provider in providers {
-            _ = provider.loadObject(ofClass: NSString.self) { text, _ in
-                guard let path = text as? String else { return }
-                DispatchQueue.main.async {
-                    if !destinationPaths.contains(path) {
-                        destinationPaths.append(path)
-                    }
-                }
-            }
+    private func addDestination(_ path: String) {
+        if !destinationPaths.contains(path) {
+            destinationPaths.append(path)
         }
-        return true
     }
 
     // MARK: - Footer (Start / Anuleaza)
