@@ -1,17 +1,6 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Frame-ul curent al coloanei DESTINATIONS, in coordonatele spatiului
-/// numit "root" — colectat prin GeometryReader, folosit ca sa stim daca
-/// punctul unde se lasa un disc (drag manual, vezi mai jos) cade sau nu
-/// peste ea. SwiftUI onDrag/onDrop intre doua view-uri proprii (nu din
-/// Finder) s-a dovedit nesigur pe macOS, mai ales cu un ScrollView pe
-/// calea gestului — drag manual bazat pe DragGesture e mult mai robust.
-private struct DestFrameKey: PreferenceKey {
-    static var defaultValue: CGRect = .zero
-    static func reduce(value: inout CGRect, nextValue: () -> CGRect) { value = nextValue() }
-}
-
 struct ContentView: View {
     @EnvironmentObject var license: LicenseManager
     @StateObject private var runner = OffloadRunner()
@@ -47,8 +36,18 @@ struct ContentView: View {
                     disksColumn
                         .frame(maxWidth: .infinity)
                     Divider()
-                    destinationsColumn
-                        .frame(width: 230)
+                    GeometryReader { geo in
+                        destinationsColumn
+                            .onAppear {
+                                destFrame = geo.frame(in: .named("root"))
+                                print("DEBUG destFrame (onAppear) =", destFrame)
+                            }
+                            .onChange(of: geo.size) { _, _ in
+                                destFrame = geo.frame(in: .named("root"))
+                                print("DEBUG destFrame (onChange) =", destFrame)
+                            }
+                    }
+                    .frame(width: 230)
                 }
                 .frame(maxHeight: .infinity)
 
@@ -58,7 +57,6 @@ struct ContentView: View {
             .background(Color(nsColor: .windowBackgroundColor))
             .onAppear { volumes = VolumeInfo.detectAll() }
             .onReceive(refreshTimer) { _ in volumes = VolumeInfo.detectAll() }
-            .onPreferenceChange(DestFrameKey.self) { destFrame = $0; print("DEBUG destFrame =", $0) }
             .sheet(isPresented: $showActivation) {
                 ActivationSheet(isPresented: $showActivation)
                     .environmentObject(license)
@@ -200,10 +198,8 @@ struct ContentView: View {
                                     .onChanged { value in
                                         draggingDiskPath = volume.path
                                         dragPoint = value.location
-                                        print("DEBUG onChanged, location =", value.location)
                                     }
                                     .onEnded { value in
-                                        print("DEBUG onEnded, location =", value.location, "destFrame =", destFrame, "contains =", destFrame.contains(value.location))
                                         if destFrame.contains(value.location) {
                                             addDestination(volume.path)
                                         }
@@ -261,11 +257,6 @@ struct ContentView: View {
             )
             .contentShape(Rectangle())
             .padding(.horizontal, 10)
-            .background(
-                GeometryReader { geo in
-                    Color.clear.preference(key: DestFrameKey.self, value: geo.frame(in: .named("root")))
-                }
-            )
         }
     }
 
