@@ -58,7 +58,7 @@ struct ContentView: View {
             .background(Color(nsColor: .windowBackgroundColor))
             .onAppear { volumes = VolumeInfo.detectAll() }
             .onReceive(refreshTimer) { _ in volumes = VolumeInfo.detectAll() }
-            .onPreferenceChange(DestFrameKey.self) { destFrame = $0 }
+            .onPreferenceChange(DestFrameKey.self) { destFrame = $0; print("DEBUG destFrame =", $0) }
             .sheet(isPresented: $showActivation) {
                 ActivationSheet(isPresented: $showActivation)
                     .environmentObject(license)
@@ -200,8 +200,10 @@ struct ContentView: View {
                                     .onChanged { value in
                                         draggingDiskPath = volume.path
                                         dragPoint = value.location
+                                        print("DEBUG onChanged, location =", value.location)
                                     }
                                     .onEnded { value in
+                                        print("DEBUG onEnded, location =", value.location, "destFrame =", destFrame, "contains =", destFrame.contains(value.location))
                                         if destFrame.contains(value.location) {
                                             addDestination(volume.path)
                                         }
