@@ -173,7 +173,10 @@ class DataMoverApp(_BASE_CLASS):
     # ---------------- UI ----------------
 
     def _build_ui(self):
-        pad = {"padx": 12, "pady": 8}
+        # Marit de la (12, 8) - spacing mai generos intre sectiuni, mai
+        # aproape de aerul din layout-ul Mac (SwiftUI foloseste padding
+        # mult mai mare implicit decat Tk).
+        pad = {"padx": 16, "pady": 12}
 
         # Container scrollabil pentru TOT continutul ferestrei. Fara asta,
         # daca inaltimea naturala a continutului depaseste inaltimea
