@@ -33,11 +33,14 @@ LIGHT = {
     "muted": "#777777",
     # Adaugiri pentru "polish" vizual: accent (buton principal, procent mare,
     # bife de succes), card-uri per destinatie, si culori de status in jurnal.
-    "accent": "#2f8f5c",
-    "accent_hover": "#267a4d",
+    # Aliniat cu SwiftUI ".green" (sistemul de culori Apple) folosit pe
+    # DataMover Mac (ContentView.swift), ca cele doua platforme sa arate
+    # cat mai la fel - #34C759 e verdele exact folosit de Apple in light mode.
+    "accent": "#34c759",
+    "accent_hover": "#248a3d",
     "accent_fg": "#ffffff",
     "card_bg": "#e6e6e6",
-    "success": "#2f8f5c",
+    "success": "#34c759",
     "error": "#c0392b",
     "warn": "#a86a00",
 }
@@ -53,11 +56,13 @@ DARK = {
     "trough": "#333333",
     "border": "#4a4a4a",
     "muted": "#a0a0a0",
-    "accent": "#4fd18b",
-    "accent_hover": "#63dd9c",
+    # #30d158 e verdele exact folosit de Apple in dark mode (SwiftUI ".green"
+    # se adapteaza automat light/dark, aici il fixam manual pe Windows).
+    "accent": "#30d158",
+    "accent_hover": "#28b64a",
     "accent_fg": "#08120d",
     "card_bg": "#282828",
-    "success": "#4fd18b",
+    "success": "#30d158",
     "error": "#e0685e",
     "warn": "#d9a441",
 }
@@ -95,13 +100,22 @@ def _configure_ttk_style(style, palette):
     style.configure(".", background=palette["bg"], foreground=palette["fg"],
                      fieldbackground=palette["entry_bg"], font=("", DEFAULT_FONT_SIZE))
     style.configure("TFrame", background=palette["bg"])
-    style.configure("TLabelframe", background=palette["bg"], foreground=palette["fg"])
-    style.configure("TLabelframe.Label", background=palette["bg"], foreground=palette["fg"])
+    # Sectiunile (Surse/Meta/Optiuni/Destinatii/Progres) capata o bordura
+    # subtire, bine definita, in loc de reliful implicit "groove" al Tk
+    # (invechit vizual) - apropiat de cardurile rotunjite de pe Mac, in
+    # limitele a ce ttk poate face fara rescrierea layout-ului pe canvas.
+    style.configure("TLabelframe", background=palette["bg"], foreground=palette["fg"],
+                     relief="solid", borderwidth=1, bordercolor=palette["border"])
+    style.configure("TLabelframe.Label", background=palette["bg"], foreground=palette["fg"],
+                     font=("", DEFAULT_FONT_SIZE + 1, "bold"))
     style.configure("TLabel", background=palette["bg"], foreground=palette["fg"])
     style.configure("TCheckbutton", background=palette["bg"], foreground=palette["fg"])
     style.map("TCheckbutton", background=[("active", palette["bg"])])
+    # relief="flat" - butoanele beveled implicite ale Tk arata invechit
+    # (stil Windows 95); flat + bordura subtire e mai aproape de aspectul
+    # butoanelor native macOS/moderne Windows 11.
     style.configure("TButton", background=palette["button_bg"], foreground=palette["fg"],
-                     bordercolor=palette["border"], padding=(10, 6))
+                     bordercolor=palette["border"], relief="flat", padding=(12, 7))
     style.map("TButton",
               background=[("active", palette["select_bg"]), ("disabled", palette["bg"])],
               foreground=[("disabled", palette["muted"])])
@@ -118,7 +132,7 @@ def _configure_ttk_style(style, palette):
 
     # ── Buton principal (Start offload), scos in evidenta cu accent-ul ──
     style.configure("Accent.TButton", background=palette["accent"], foreground=palette["accent_fg"],
-                     bordercolor=palette["accent"], font=("", 12, "bold"), padding=(18, 10))
+                     bordercolor=palette["accent"], relief="flat", font=("", 13, "bold"), padding=(22, 12))
     style.map("Accent.TButton",
               background=[("active", palette["accent_hover"]), ("disabled", palette["button_bg"])],
               foreground=[("disabled", palette["muted"])])
