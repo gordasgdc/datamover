@@ -14,14 +14,17 @@ struct DataMoverMacApp: App {
         .windowResizability(.contentSize)
         .commands {
             CommandGroup(replacing: .appInfo) {
-                Button("Despre DataMover") { showAboutPanel() }
+                Button(L.t("menu.about")) { showAboutPanel() }
             }
             CommandGroup(after: .appInfo) {
-                Button("Verifica actualizari...") { UpdateChecker.checkAndShowAlert() }
+                Button(L.t("menu.checkForUpdates")) { UpdateChecker.checkAndShowAlert() }
             }
             CommandGroup(replacing: .help) {
-                Button("Ghid de utilizare DataMover") { openWindow(id: "help") }
-                Button("Contact WhatsApp") {
+                Button(L.t("menu.help")) {
+                    NSApp.activate(ignoringOtherApps: true)
+                    openWindow(id: "help")
+                }
+                Button(L.t("menu.whatsapp")) {
                     NSWorkspace.shared.open(URL(string: "https://wa.me/40712345678")!)
                 }
             }
@@ -37,7 +40,7 @@ struct DataMoverMacApp: App {
         NSApp.orderFrontStandardAboutPanel(options: [
             .applicationName: "DataMover",
             .applicationVersion: UpdateChecker.currentVersion,
-            .credits: NSAttributedString(string: "Dezvoltat de GDC — dumitrugdc@gmail.com\n© \(Calendar.current.component(.year, from: Date())) GDC. Toate drepturile rezervate."),
+            .credits: NSAttributedString(string: "\(L.t("about.credits"))\n© \(Calendar.current.component(.year, from: Date())) GDC. \(L.t("about.rights"))"),
         ])
     }
 

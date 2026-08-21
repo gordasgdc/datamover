@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 struct ContentView: View {
     @EnvironmentObject var license: LicenseManager
     @StateObject private var runner = OffloadRunner()
+    @Environment(\.openWindow) private var openWindow
 
     @State private var sourcePaths: [String] = []
     @State private var destinationPaths: [String] = []
@@ -20,6 +21,8 @@ struct ContentView: View {
     @State private var showHistory = false
     @State private var projectName: String = ""
     @State private var cardName: String = ""
+    @State private var diskIconSize: CGFloat = 150
+    @State private var lang: AppLanguage = L.current
 
     // drag manual disc -> DESTINATIONS
     @State private var draggingDiskPath: String? = nil
@@ -89,10 +92,10 @@ struct ContentView: View {
 
     private var trialBar: some View {
         HStack {
-            Text("Proba gratuita — \(license.trialDaysRemaining) zile ramase")
+            Text(String(format: L.t("trial.daysLeft"), license.trialDaysRemaining))
                 .foregroundStyle(.secondary)
             Spacer()
-            Button("Activeaza licenta") { showActivation = true }
+            Button(L.t("trial.activate")) { showActivation = true }
                 .buttonStyle(.plain)
                 .foregroundStyle(.green)
                 .fontWeight(.semibold)
@@ -108,18 +111,26 @@ struct ContentView: View {
     private var metaBar: some View {
         HStack(spacing: 16) {
             HStack(spacing: 6) {
-                Text("Proiect").font(.system(size: 11)).foregroundStyle(.secondary)
-                TextField("Proiect", text: $projectName)
+                Text(L.t("meta.project")).font(.system(size: 11)).foregroundStyle(.secondary)
+                TextField(L.t("meta.project"), text: $projectName)
                     .textFieldStyle(.roundedBorder)
                     .frame(width: 160)
             }
             HStack(spacing: 6) {
-                Text("Card").font(.system(size: 11)).foregroundStyle(.secondary)
-                TextField("Card", text: $cardName)
+                Text(L.t("meta.card")).font(.system(size: 11)).foregroundStyle(.secondary)
+                TextField(L.t("meta.card"), text: $cardName)
                     .textFieldStyle(.roundedBorder)
                     .frame(width: 120)
             }
             Spacer()
+            Button {
+                openWindow(id: "help")
+            } label: {
+                Image(systemName: "questionmark.circle")
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .help(L.t("menu.help"))
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
@@ -129,7 +140,7 @@ struct ContentView: View {
 
     private var sourcesColumn: some View {
         VStack(spacing: 10) {
-            Text("SOURCES")
+            Text(L.t("sources.title"))
                 .font(.system(size: 11, weight: .bold))
                 .foregroundStyle(.secondary)
                 .padding(.top, 14)
@@ -147,7 +158,7 @@ struct ContentView: View {
                 .contentShape(Rectangle())
                 .frame(height: 90)
                 .overlay(
-                    Text("Trage fisiere\nsau foldere aici")
+                    Text(L.t("sources.dropHint"))
                         .multilineTextAlignment(.center)
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
@@ -181,7 +192,7 @@ struct ContentView: View {
             .listStyle(.plain)
             .overlay {
                 if sourcePaths.isEmpty {
-                    Text("Nicio sursa adaugata")
+                    Text(L.t("sources.empty"))
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                 }
@@ -211,19 +222,33 @@ struct ContentView: View {
 
     // MARK: - Coloana centrala: Disks
 
-    private let gridColumns = [GridItem(.adaptive(minimum: 150, maximum: 170), spacing: 14)]
+    private var gridColumns: [GridItem] {
+        [GridItem(.adaptive(minimum: diskIconSize, maximum: diskIconSize + 20), spacing: 14)]
+    }
 
     private var disksColumn: some View {
         VStack(spacing: 10) {
-            Text("Disks")
-                .font(.system(size: 11, weight: .bold))
-                .foregroundStyle(.secondary)
-                .padding(.top, 14)
+            HStack {
+                Text(L.t("disks.title"))
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Image(systemName: "photo")
+                    .font(.system(size: 9))
+                    .foregroundStyle(.secondary)
+                Slider(value: $diskIconSize, in: 100...220)
+                    .frame(width: 90)
+                Image(systemName: "photo")
+                    .font(.system(size: 14))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.top, 14)
+            .padding(.horizontal, 14)
 
             ScrollView {
                 LazyVGrid(columns: gridColumns, spacing: 14) {
                     ForEach(volumes) { volume in
-                        DiskTileView(volume: volume)
+                        DiskTileView(volume: volume, size: diskIconSize)
                             .contentShape(Rectangle())
                             .gesture(
                                 DragGesture(minimumDistance: 4, coordinateSpace: .named("root"))
@@ -249,14 +274,14 @@ struct ContentView: View {
 
     private var destinationsColumn: some View {
         VStack(spacing: 10) {
-            Text("DESTINATIONS")
+            Text(L.t("dest.title"))
                 .font(.system(size: 11, weight: .bold))
                 .foregroundStyle(.secondary)
                 .padding(.top, 14)
 
             ZStack {
                 if destinationPaths.isEmpty {
-                    Text("Trage un disc din Disks,\nsau un folder din Finder")
+                    Text(L.t("dest.dropHint"))
                         .multilineTextAlignment(.center)
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
@@ -340,9 +365,12 @@ struct ContentView: View {
                     showHistory = true
                 } label: {
                     Image(systemName: "clock.arrow.circlepath")
+                        .font(.system(size: 15))
+                        .frame(width: 30, height: 30)
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
+                .buttonStyle(.bordered)
+                .clipShape(Circle())
+                .contentShape(Circle())
                 .padding(.trailing, 8)
                 .popover(isPresented: $showHistory, arrowEdge: .top) {
                     historyPopover
@@ -361,12 +389,12 @@ struct ContentView: View {
                 .popover(isPresented: $showSettings, arrowEdge: .top) {
                     settingsPopover
                 }
-                Button("Anuleaza") { runner.cancel() }
+                Button(L.t("footer.cancel")) { runner.cancel() }
                     .buttonStyle(.plain)
                     .foregroundStyle(.secondary)
                     .padding(.trailing, 12)
                     .disabled(!runner.isRunning)
-                Button(runner.isRunning ? "Se copiaza..." : "Start") {
+                Button(runner.isRunning ? L.t("footer.copying") : L.t("footer.start")) {
                     let exclusions = exclusionsText.split(separator: ",").map(String.init)
                     runner.start(sources: sourcePaths, destinations: destinationPaths,
                                  verificationModel: verificationModel, exclusions: exclusions,
@@ -383,10 +411,21 @@ struct ContentView: View {
 
     private var settingsPopover: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Setari copiere").font(.headline)
+            HStack {
+                Text(L.t("settings.title")).font(.headline)
+                Spacer()
+                Picker("", selection: $lang) {
+                    ForEach(AppLanguage.allCases) { l in
+                        Text(l.displayName).tag(l)
+                    }
+                }
+                .labelsHidden()
+                .frame(width: 110)
+                .onChange(of: lang) { _, newValue in L.current = newValue }
+            }
 
             VStack(alignment: .leading, spacing: 4) {
-                Text("Model de verificare").font(.system(size: 11)).foregroundStyle(.secondary)
+                Text(L.t("settings.verificationModel")).font(.system(size: 11)).foregroundStyle(.secondary)
                 Picker("", selection: $verificationModel) {
                     ForEach(VerificationModel.allCases) { model in
                         Text(model.label).tag(model)
@@ -396,18 +435,18 @@ struct ContentView: View {
             }
 
             VStack(alignment: .leading, spacing: 4) {
-                Text("Excluderi (nume exact sau .extensie, separate prin virgula)")
+                Text(L.t("settings.exclusions"))
                     .font(.system(size: 11)).foregroundStyle(.secondary)
                 TextField(".tmp, .DS_Store, Thumbs.db", text: $exclusionsText)
                     .textFieldStyle(.roundedBorder)
             }
 
-            Toggle("Reia automat dintr-un checkpoint existent", isOn: $resumeEnabled)
+            Toggle(L.t("settings.resume"), isOn: $resumeEnabled)
                 .font(.system(size: 12))
 
             if let last = runner.lastResults.first, let folder = last.csvPath.map({ ($0 as NSString).deletingLastPathComponent }) {
                 Divider()
-                Button("Deschide ultimul raport in Finder") {
+                Button(L.t("settings.openLastReport")) {
                     NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: folder)
                 }
                 .buttonStyle(.link)
@@ -421,9 +460,9 @@ struct ContentView: View {
     /// cate fisiere OK/sarite/esuate) — persistat pe disc intre lansari.
     private var historyPopover: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Istoric copieri").font(.headline)
+            Text(L.t("history.title")).font(.headline)
             if HistoryStore.shared.entries.isEmpty {
-                Text("Nicio copiere efectuata inca.")
+                Text(L.t("history.empty"))
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
             } else {
@@ -434,7 +473,7 @@ struct ContentView: View {
                                 Text(entry.folderName).font(.system(size: 12, weight: .semibold))
                                 Text("\(entry.dateText) · \(entry.sourcesSummary) -> \(entry.destSummary)")
                                     .font(.system(size: 10)).foregroundStyle(.secondary)
-                                Text("OK: \(entry.okCount)  Sarite: \(entry.skipCount)  Esuate: \(entry.failCount)")
+                                Text("\(L.t("history.ok")): \(entry.okCount)  \(L.t("history.skipped")): \(entry.skipCount)  \(L.t("history.failed")): \(entry.failCount)")
                                     .font(.system(size: 10)).foregroundStyle(.secondary)
                             }
                             Divider()
@@ -449,13 +488,13 @@ struct ContentView: View {
     }
 
     private var footerStatusText: String {
-        if runner.isRunning || runner.statusText != "Gata de pornire" {
+        if runner.isRunning || runner.statusText != L.t("status.ready") {
             return runner.statusText
         }
         if sourcePaths.isEmpty || destinationPaths.isEmpty {
-            return "Adauga surse si destinatii ca sa pornesti"
+            return L.t("footer.needSourcesDest")
         }
-        return "\(sourcePaths.count) surse -> \(destinationPaths.count) destinatie(i)"
+        return String(format: L.t("footer.summary"), sourcePaths.count, destinationPaths.count)
     }
 }
 
@@ -463,6 +502,9 @@ struct ContentView: View {
 
 private struct DiskTileView: View {
     let volume: VolumeInfo
+    var size: CGFloat = 150
+
+    private var iconSize: CGFloat { size * 0.35 }
 
     var body: some View {
         VStack(spacing: 6) {
@@ -471,7 +513,7 @@ private struct DiskTileView: View {
                 // intern etc.) — aceeasi cu cea din Finder, nu un simbol generic.
                 Image(nsImage: volume.icon)
                     .resizable()
-                    .frame(width: 52, height: 52)
+                    .frame(width: iconSize, height: iconSize)
                 Circle()
                     .fill(.green)
                     .frame(width: 10, height: 10)
@@ -486,7 +528,7 @@ private struct DiskTileView: View {
                 .foregroundStyle(.secondary)
         }
         .padding(.vertical, 12)
-        .frame(width: 150, height: 130)
+        .frame(width: size, height: size + (size * 0.13))
         .background(Color(nsColor: .controlBackgroundColor))
         .clipShape(RoundedRectangle(cornerRadius: 10))
     }

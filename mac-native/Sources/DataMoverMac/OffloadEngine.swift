@@ -45,11 +45,11 @@ enum VerificationModel: String, CaseIterable, Identifiable, Codable {
 
     var label: String {
         switch self {
-        case .md5: return "MD5 (rapid)"
-        case .sha1: return "SHA-1 (echilibrat)"
-        case .sha256: return "SHA-256 (recomandat pentru arhivare)"
-        case .sha512: return "SHA-512 (maxim de siguranta)"
-        case .sizeOnly: return "Doar dimensiune (rapid, mai putin sigur)"
+        case .md5: return L.t("verif.md5")
+        case .sha1: return L.t("verif.sha1")
+        case .sha256: return L.t("verif.sha256")
+        case .sha512: return L.t("verif.sha512")
+        case .sizeOnly: return L.t("verif.sizeOnly")
         }
     }
 }
@@ -435,7 +435,7 @@ final class OffloadRunner: ObservableObject {
     @Published var progressPercent = 0
     @Published var filesDone = 0
     @Published var totalUnits = 0
-    @Published var statusText = "Gata de pornire"
+    @Published var statusText = L.t("status.ready")
     @Published var speedText = ""
     @Published var lastResults: [DestinationResult] = []
 
@@ -463,7 +463,7 @@ final class OffloadRunner: ObservableObject {
             }
         }
         guard !files.isEmpty else {
-            statusText = "Nu am gasit niciun fisier de copiat."
+            statusText = L.t("footer.noFiles")
             return
         }
 
@@ -486,7 +486,7 @@ final class OffloadRunner: ObservableObject {
         filesDone = 0
         totalUnits = files.count * destinations.count
         progressPercent = 0
-        statusText = "Se copiaza..."
+        statusText = L.t("footer.copying")
         speedText = ""
         lastResults = []
 
@@ -518,14 +518,14 @@ final class OffloadRunner: ObservableObject {
     func cancel() {
         guard isRunning else { return }
         cancelToken.cancel()
-        statusText = "Se anuleaza..."
+        statusText = L.t("status.cancelling")
     }
 
     private func advance(size: Int64) {
         filesDone += 1
         bytesDone += size
         progressPercent = totalUnits > 0 ? Int(Double(filesDone) * 100 / Double(totalUnits)) : 0
-        statusText = "\(progressPercent)% (\(filesDone)/\(totalUnits) fisiere)"
+        statusText = "\(progressPercent)% (\(filesDone)/\(totalUnits) \(L.t("footer.filesWord")))"
         if let start = startTime {
             let elapsed = Date().timeIntervalSince(start)
             if elapsed > 0 {
@@ -542,8 +542,8 @@ final class OffloadRunner: ObservableObject {
         let totalSkip = results.reduce(0) { $0 + $1.skipCount }
         let totalFail = results.reduce(0) { $0 + $1.failCount }
         statusText = anyCancelled
-            ? "Anulat."
-            : "Finalizat — \(totalOK) OK\(totalFail > 0 ? ", \(totalFail) probleme" : "")."
+            ? L.t("footer.cancelled")
+            : "\(L.t("footer.finished")) — \(totalOK) OK\(totalFail > 0 ? ", \(totalFail) \(L.t("footer.problems"))" : "")."
         NSSound(named: "Glass")?.play()
 
         HistoryStore.shared.record(folderName: folderName, sources: sources, destinations: destinations,

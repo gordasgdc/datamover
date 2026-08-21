@@ -95,11 +95,11 @@ final class LicenseManager: ObservableObject {
 
     private static func message(for error: LicenseCore.ValidationError) -> String {
         switch error {
-        case .malformedCode: return "Format de cod invalid."
-        case .badSignature: return "Cod serial invalid — semnatura nu se potriveste."
-        case .wrongProduct: return "Acest cod e pentru alt produs."
-        case .wrongMachine: return "Acest cod e activat pentru alt calculator."
-        case .expired: return "Codul serial a expirat."
+        case .malformedCode: return L.t("license.error.malformed")
+        case .badSignature: return L.t("license.error.badSignature")
+        case .wrongProduct: return L.t("license.error.wrongProduct")
+        case .wrongMachine: return L.t("license.error.wrongMachine")
+        case .expired: return L.t("license.error.expired")
         }
     }
 }

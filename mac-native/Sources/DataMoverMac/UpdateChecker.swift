@@ -60,21 +60,21 @@ enum UpdateChecker {
         let alert = NSAlert()
         switch result {
         case .upToDate:
-            alert.messageText = "Esti la zi"
-            alert.informativeText = "Ai deja ultima versiune (\(currentVersion))."
+            alert.messageText = L.t("update.upToDate.title")
+            alert.informativeText = String(format: L.t("update.upToDate.body"), currentVersion)
             alert.addButton(withTitle: "OK")
             alert.runModal()
         case .newVersion(let version):
-            alert.messageText = "Versiune noua disponibila"
-            alert.informativeText = "Versiunea \(version) este disponibila (ai \(currentVersion))."
-            alert.addButton(withTitle: "Descarca")
-            alert.addButton(withTitle: "Mai tarziu")
+            alert.messageText = L.t("update.available.title")
+            alert.informativeText = String(format: L.t("update.available.body"), version, currentVersion)
+            alert.addButton(withTitle: L.t("update.download"))
+            alert.addButton(withTitle: L.t("update.later"))
             if alert.runModal() == .alertFirstButtonReturn {
                 NSWorkspace.shared.open(releasesPageURL)
             }
         case .error:
-            alert.messageText = "Verificare actualizari"
-            alert.informativeText = "Nu am putut verifica versiunea — incearca mai tarziu."
+            alert.messageText = L.t("update.error.title")
+            alert.informativeText = L.t("update.error.body")
             alert.addButton(withTitle: "OK")
             alert.runModal()
         }
