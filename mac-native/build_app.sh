@@ -21,6 +21,7 @@ mkdir -p "$APP_PATH/Contents/Resources"
 
 cp ".build/release/$BIN_NAME" "$APP_PATH/Contents/MacOS/$BIN_NAME"
 cp "Info.plist" "$APP_PATH/Contents/Info.plist"
+cp "AppIcon.icns" "$APP_PATH/Contents/Resources/AppIcon.icns"
 
 echo "==> Curat atributele extinse..."
 xattr -cr "$APP_PATH"
