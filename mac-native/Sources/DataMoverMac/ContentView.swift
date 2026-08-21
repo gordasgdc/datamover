@@ -38,13 +38,9 @@ struct ContentView: View {
                     Divider()
                     GeometryReader { geo in
                         destinationsColumn
-                            .onAppear {
-                                destFrame = geo.frame(in: .named("root"))
-                                print("DEBUG destFrame (onAppear) =", destFrame)
-                            }
+                            .onAppear { destFrame = geo.frame(in: .named("root")) }
                             .onChange(of: geo.size) { _, _ in
                                 destFrame = geo.frame(in: .named("root"))
-                                print("DEBUG destFrame (onChange) =", destFrame)
                             }
                     }
                     .frame(width: 230)
