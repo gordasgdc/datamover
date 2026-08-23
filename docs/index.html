@@ -11,18 +11,6 @@
     location.replace("https://gordas.dev/datamover/" + location.search + location.hash);
   }
 </script>
-<!-- ── PWA (aplicatia Android / instalare pe telefon) ─────────────────────
-     Manifestul si service worker-ul stau in acelasi folder (docs/). Ele fac
-     pagina instalabila si stau la baza APK-ului TWA din folderul twa/.
-     Daca redenumesti sau muti aceste fisiere, actualizeaza si twa/twa-manifest.json. -->
-<link rel="manifest" href="manifest.webmanifest">
-<meta name="theme-color" content="#0a0d0f">
-<link rel="icon" href="icons/icon-192.png" type="image/png">
-<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="DataMover">
-<meta name="mobile-web-app-capable" content="yes">
 <title>DataMover — Offload verificat pentru echipe video</title>
 <meta name="description" content="Aplicatie Mac si Windows pentru offload de media cu verificare de integritate, copiere simultana catre mai multe destinatii si rapoarte profesionale. De Cristi Gordas.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -1057,19 +1045,5 @@
 </script>
 
 
-<!-- ── Inregistrarea service worker-ului ────────────────────────────────────
-     Se face dupa 'load' ca sa nu concureze cu randarea paginii. Nu inregistram
-     pe domeniul vechi (gordasgdc.github.io), care oricum face redirect: un SW
-     lasat acolo ar servi pagina veche din cache la infinit.
-     La fiecare update de pagina incrementeaza CACHE_VERSION din sw.js. -->
-<script>
-  if ('serviceWorker' in navigator && location.hostname !== 'gordasgdc.github.io') {
-    window.addEventListener('load', function () {
-      navigator.serviceWorker.register('sw.js').catch(function (err) {
-        console.warn('Service worker neinregistrat:', err);
-      });
-    });
-  }
-</script>
 </body>
 </html>
