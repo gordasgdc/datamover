@@ -1,0 +1,32 @@
+{
+  "_comentariu": "Manifest PWA pentru DataMover. Servit de pe https://gordas.dev/datamover/ (si, ca oglinda, gordasgdc.github.io/datamover/). Toate caile sunt RELATIVE, ca sa functioneze identic pe ambele domenii. Daca schimbi 'name' sau 'start_url', actualizeaza si twa/twa-manifest.json, altfel APK-ul si PWA-ul diverg.",
+  "id": "/datamover/",
+  "name": "DataMover — Offload verificat",
+  "short_name": "DataMover",
+  "description": "Offload de media cu verificare de integritate, copiere simultana catre mai multe destinatii si rapoarte profesionale. Companion mobil: cursuri, calendar, noutati si cont.",
+  "lang": "ro",
+  "dir": "ltr",
+  "start_url": "./?source=pwa",
+  "scope": "./",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui", "browser"],
+  "orientation": "portrait-primary",
+  "background_color": "#0a0d0f",
+  "theme_color": "#0a0d0f",
+  "categories": ["productivity", "utilities", "education"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "screenshots": [
+    { "src": "img/mac-ui-main.png", "sizes": "1600x1000", "type": "image/png", "form_factor": "wide", "label": "Ecranul principal DataMover" }
+  ],
+  "shortcuts": [
+    { "name": "Descarca aplicatia", "short_name": "Descarca", "url": "./?source=pwa#activare", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Cum se foloseste", "short_name": "Ghid", "url": "./?source=pwa#cum-se-foloseste", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Functii", "short_name": "Functii", "url": "./?source=pwa#functii", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] }
+  ],
+  "prefer_related_applications": false
+}
