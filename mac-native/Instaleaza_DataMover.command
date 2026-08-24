@@ -1,5 +1,9 @@
 #!/bin/bash
-# Lanseaza_DataMover.command
+# Instaleaza_DataMover.command
+# (redenumit din Lanseaza_DataMover.command 2026-08-24 — acum chiar
+# instaleaza in Applications, nu doar lanseaza, deci numele vechi era
+# inselator pentru un utilizator care vede fisierul prima data)
+#
 # Wrapper de lansare: (1) muta DataMover.app in /Applications daca inca
 # nu ruleaza de acolo, (2) elimina carantina Gatekeeper si re-semneaza
 # ad-hoc, (3) il deschide. Ruleaza o singura data, la prima lansare, in
@@ -76,5 +80,16 @@ if ! codesign --verify "${APP_PATH}" 2>/dev/null; then
     codesign --force --deep --sign - "${APP_PATH}" 2>/dev/null
 fi
 open "${APP_PATH}"
-sleep 1
-osascript -e 'tell application "Terminal" to close front window' 2>/dev/null &
+
+# PITFALL FIXED 2026-08-24: fereastra se inchidea singura (osascript
+# "close front window") imediat dupa "open" — un script care isi
+# inchide chiar el propria fereastra de Terminal in mai putin de o
+# secunda declanseaza avertismentul nativ al Terminal.app "A session
+# ended very soon after starting. Check that the command in profile
+# ... is correct." (Terminal presupune ca o sesiune atat de scurta a
+# picat, chiar daca de fapt a reusit). Solutia: NU ne mai inchidem
+# singuri fereastra — lasam un mesaj clar si userul apasa Enter/inchide
+# manual cand vrea, ca la orice alt script normal.
+echo ""
+echo "DataMover a pornit. Poti inchide aceasta fereastra."
+read -p "Apasa Enter pentru a inchide..."

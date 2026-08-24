@@ -48,7 +48,7 @@ Descarga la última versión desde [Releases](https://github.com/gordasgdc/datam
 
 ### Mac
 1. Descarga `DataMover-Mac.zip` y extráelo
-2. Doble clic en `Lanseaza_DataMover.command` (incluido en el archivo) — mueve automáticamente `DataMover.app` a `/Applications` (con confirmación) si aún no está ahí, elimina el aviso habitual de Gatekeeper y abre la app. Alternativa (sin mover automáticamente a Applications): clic derecho sobre `DataMover.app` → `Open` → confirma (la app está firmada ad-hoc, sin cuenta de Apple Developer de pago)
+2. Doble clic en `Instaleaza_DataMover.command` (incluido en el archivo) — mueve automáticamente `DataMover.app` a `/Applications` (con confirmación) si aún no está ahí, elimina el aviso habitual de Gatekeeper y abre la app. Alternativa (sin mover automáticamente a Applications): clic derecho sobre `DataMover.app` → `Open` → confirma (la app está firmada ad-hoc, sin cuenta de Apple Developer de pago)
 
 ### Windows
 1. Descarga `DataMover-Windows.zip` y extrae el contenido
