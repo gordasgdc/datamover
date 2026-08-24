@@ -31,8 +31,8 @@ codesign --force --deep --sign - "$APP_PATH"
 codesign --verify --verbose "$APP_PATH"
 
 echo "==> Copiez launcher-ul (elimina carantina automat la prima lansare)..."
-cp "Lanseaza_DataMover.command" "dist/Lanseaza_DataMover.command"
-chmod +x "dist/Lanseaza_DataMover.command"
+cp "Instaleaza_DataMover.command" "dist/Instaleaza_DataMover.command"
+chmod +x "dist/Instaleaza_DataMover.command"
 
 echo ""
 echo "==> Gata: $APP_PATH"

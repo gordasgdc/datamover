@@ -105,8 +105,8 @@ jobs:
           mkdir -p mac_bundle/Aplicatie
           cp -R "mac-native/dist/DataMover.app" mac_bundle/Aplicatie/
           cp docs/guides/*.pdf mac_bundle/Aplicatie/
-          cp "mac-native/dist/Lanseaza_DataMover.command" mac_bundle/
-          chmod +x "mac_bundle/Lanseaza_DataMover.command"
+          cp "mac-native/dist/Instaleaza_DataMover.command" mac_bundle/
+          chmod +x "mac_bundle/Instaleaza_DataMover.command"
           cd mac_bundle
           zip -r -y "$GITHUB_WORKSPACE/DataMover-Mac.zip" .
 
