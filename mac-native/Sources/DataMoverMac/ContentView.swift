@@ -166,7 +166,7 @@ struct ContentView: View {
                         .allowsHitTesting(false)
                 )
                 .padding(.horizontal, 10)
-                .onDrop(of: [.fileURL], isTargeted: $isDropTargetedSources) { providers in
+                .onDrop(of: [.fileURL, .volume], isTargeted: $isDropTargetedSources) { providers in
                     handleSourceDrop(providers)
                 }
 
@@ -201,18 +201,45 @@ struct ContentView: View {
         }
     }
 
+    /// PITFALL FIXED 2026-08-24: tragerea unui FOLDER din interiorul unui
+    /// card extern mergea, dar tragerea iconitei RADACINII volumului
+    /// (cardul insusi, din Finder/Desktop) nu era preluata deloc.
+    /// `NSItemProvider.loadObject(ofClass: URL.self)` foloseste bridging-ul
+    /// standard NSURL<->"public.file-url", care merge sigur pentru un
+    /// fisier/folder obisnuit — dar pentru radacina unui volum montat,
+    /// Finder nu garanteaza mereu acel bridging (item-ul poate veni doar
+    /// ca reprezentare bruta de date pentru identificatorul de tip, fara
+    /// sa treaca prin `NSItemProviderReading`). Fix: incercam intai calea
+    /// standard, iar daca provider-ul nu poate incarca direct un `URL`
+    /// (cazul volumelor), citim manual `public.file-url` ca `Data` si
+    /// decodam URL-ul de acolo — acopera ambele cazuri, foldere si
+    /// radacini de volum deopotriva. `.onDrop` de mai jos accepta acum si
+    /// `.volume`, nu doar `.fileURL`, ca hit-testul de drop sa recunoasca
+    /// volumul ca tinta valida inca din faza de hover.
     private func handleSourceDrop(_ providers: [NSItemProvider]) -> Bool {
+        var handled = false
         for provider in providers {
-            _ = provider.loadObject(ofClass: URL.self) { url, _ in
-                guard let url else { return }
-                DispatchQueue.main.async {
-                    if !sourcePaths.contains(url.path) {
-                        sourcePaths.append(url.path)
-                    }
+            if provider.canLoadObject(ofClass: URL.self) {
+                handled = true
+                _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                    guard let url else { return }
+                    DispatchQueue.main.async { self.addSource(url.path) }
+                }
+            } else if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
+                handled = true
+                provider.loadDataRepresentation(forTypeIdentifier: UTType.fileURL.identifier) { data, _ in
+                    guard let data, let url = URL(dataRepresentation: data, relativeTo: nil) else { return }
+                    DispatchQueue.main.async { self.addSource(url.path) }
                 }
             }
         }
-        return true
+        return handled
+    }
+
+    private func addSource(_ path: String) {
+        if !sourcePaths.contains(path) {
+            sourcePaths.append(path)
+        }
     }
 
     private func isDirectory(_ path: String) -> Bool {
@@ -315,7 +342,7 @@ struct ContentView: View {
             )
             .contentShape(Rectangle())
             .padding(.horizontal, 10)
-            .onDrop(of: [.fileURL], isTargeted: $isDropTargetedDestFromFinder) { providers in
+            .onDrop(of: [.fileURL, .volume], isTargeted: $isDropTargetedDestFromFinder) { providers in
                 handleDestinationFinderDrop(providers)
             }
         }
@@ -325,15 +352,29 @@ struct ContentView: View {
     /// disc din grila Disks) peste DESTINATIONS, ca sa salvezi intr-un
     /// folder anume, nu neaparat in radacina unui disc intreg.
     private func handleDestinationFinderDrop(_ providers: [NSItemProvider]) -> Bool {
+        var handled = false
         for provider in providers {
-            _ = provider.loadObject(ofClass: URL.self) { url, _ in
-                guard let url else { return }
-                var isDir: ObjCBool = false
-                guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir), isDir.boolValue else { return }
-                DispatchQueue.main.async { addDestination(url.path) }
+            if provider.canLoadObject(ofClass: URL.self) {
+                handled = true
+                _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                    guard let url else { return }
+                    self.acceptDestinationIfDirectory(url)
+                }
+            } else if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
+                handled = true
+                provider.loadDataRepresentation(forTypeIdentifier: UTType.fileURL.identifier) { data, _ in
+                    guard let data, let url = URL(dataRepresentation: data, relativeTo: nil) else { return }
+                    self.acceptDestinationIfDirectory(url)
+                }
             }
         }
-        return true
+        return handled
+    }
+
+    private func acceptDestinationIfDirectory(_ url: URL) {
+        var isDir: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir), isDir.boolValue else { return }
+        DispatchQueue.main.async { addDestination(url.path) }
     }
 
     private func addDestination(_ path: String) {
