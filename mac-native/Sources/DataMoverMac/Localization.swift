@@ -80,6 +80,12 @@ enum L {
         "settings.verificationModel": [.ro: "Model de verificare", .en: "Verification model", .es: "Modelo de verificación"],
         "settings.exclusions": [.ro: "Excluderi (nume exact sau .extensie, separate prin virgula)", .en: "Exclusions (exact name or .extension, comma-separated)", .es: "Exclusiones (nombre exacto o .extensión, separadas por comas)"],
         "settings.resume": [.ro: "Reia automat dintr-un checkpoint existent", .en: "Resume automatically from an existing checkpoint", .es: "Reanudar automáticamente desde un punto de control"],
+        "settings.autoOpenDestFolder": [.ro: "Deschide automat folderul destinație la finalizarea transferului", .en: "Automatically open the destination folder when the transfer finishes", .es: "Abrir automáticamente la carpeta de destino al finalizar la transferencia"],
+
+        // MARK: - Alerta de finalizare transfer
+        "completion.title": [.ro: "Transfer finalizat", .en: "Transfer finished", .es: "Transferencia finalizada"],
+        "completion.openFolder": [.ro: "Deschide folderul destinație", .en: "Open destination folder", .es: "Abrir carpeta de destino"],
+        "completion.ok": [.ro: "OK", .en: "OK", .es: "OK"],
         "settings.openLastReport": [.ro: "Deschide ultimul raport in Finder", .en: "Open last report in Finder", .es: "Abrir el último informe en Finder"],
 
         "verif.md5": [.ro: "MD5 (rapid)", .en: "MD5 (fast)", .es: "MD5 (rápido)"],

@@ -25,6 +25,12 @@ struct ContentView: View {
     // setari de copiere/verificare
     @State private var verificationModel: VerificationModel = .md5
     @State private var exclusionsText: String = ""
+    // Deschidere automata a folderului destinatie la final — persistata
+    // (spre deosebire de restul setarilor de mai sus, care se reseteaza
+    // la fiecare pornire): e o preferinta stabila a userului, nu ceva ce
+    // vrei sa reintrodui manual la fiecare transfer.
+    @AppStorage("dm_autoOpenDestFolder") private var autoOpenDestFolder = false
+    @State private var showCompletionAlert = false
     @State private var resumeEnabled: Bool = true
     @State private var showSettings = false
     @State private var showHistory = false
@@ -115,6 +121,23 @@ struct ContentView: View {
                 Button(L.t("volume.newCard.ignore"), role: .cancel) { newlyDetectedVolume = nil }
             } message: { volume in
                 Text(String(format: L.t("volume.newCard.message"), volume.name))
+            }
+            // Transfer terminat (isRunning: true -> false): deschide
+            // automat folderul destinatie daca userul a bifat setarea, si
+            // arata mereu alerta de succes cu butonul "Deschide folderul
+            // destinatie" — cele doua sunt independente (2026-08-24,
+            // cerinta explicita: buton mereu disponibil + o bifa separata
+            // de auto-deschidere).
+            .onChange(of: runner.isRunning) { wasRunning, isRunning in
+                guard wasRunning, !isRunning, !(runner.lastResults.first?.cancelled ?? true) else { return }
+                if autoOpenDestFolder { openLastDestinationFolder() }
+                showCompletionAlert = true
+            }
+            .alert(L.t("completion.title"), isPresented: $showCompletionAlert) {
+                Button(L.t("completion.openFolder")) { openLastDestinationFolder() }
+                Button(L.t("completion.ok"), role: .cancel) {}
+            } message: {
+                Text(footerStatusText)
             }
 
             // eticheta "fantoma" care urmareste cursorul cat timp tragi un disc
@@ -309,6 +332,18 @@ struct ContentView: View {
         }
         volumes = detected
         knownVolumePaths = Set(detected.map(\.path))
+    }
+
+    /// Deschide in Finder folderul CREAT pentru ultimul transfer (nu
+    /// radacina destinatiei alese de user — subfolderul cu numele
+    /// generat `<data>_<Proiect>_<Card>`). `csvPath` e mereu in acel
+    /// subfolder (vezi writeReports), deci parintele lui e calea corecta
+    /// — acelasi trick folosit deja de "Deschide ultimul raport" din
+    /// Setari, aici doar reutilizat pentru noua cerinta.
+    private func openLastDestinationFolder() {
+        guard let last = runner.lastResults.first,
+              let folder = last.csvPath.map({ ($0 as NSString).deletingLastPathComponent }) else { return }
+        NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: folder)
     }
 
     private func addSource(_ path: String) {
@@ -599,6 +634,9 @@ struct ContentView: View {
             }
 
             Toggle(L.t("settings.resume"), isOn: $resumeEnabled)
+                .font(.system(size: 12))
+
+            Toggle(L.t("settings.autoOpenDestFolder"), isOn: $autoOpenDestFolder)
                 .font(.system(size: 12))
 
             if let last = runner.lastResults.first, let folder = last.csvPath.map({ ($0 as NSString).deletingLastPathComponent }) {
