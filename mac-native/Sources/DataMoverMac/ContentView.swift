@@ -25,13 +25,29 @@ struct ContentView: View {
     @State private var diskIconSize: CGFloat = 150
     @ObservedObject private var langStore = LanguageStore.shared
 
-    // drag manual disc -> DESTINATIONS
+    // drag manual disc -> SOURCES sau DESTINATIONS
+    //
+    // PITFALL FIXED 2026-08-24 (bug critic raportat de Cristi): gest-ul de
+    // drag intern al gridului de discuri (DiskTileView, mai jos) urmarea
+    // DOAR `destFrame` — nu exista niciun `sourcesFrame`, deci tragerea
+    // unui disc peste caseta de Surse nu facea NIMIC, desi acelasi disc
+    // tras peste Destinatii mergea perfect. Nu are legatura cu bug-ul de
+    // `.onDrop`/NSItemProvider (radacina de volum din Finder) fixat
+    // anterior — asta e un mecanism de drag COMPLET SEPARAT, intern
+    // aplicatiei (DragGesture + hit-test pe coordonate), folosit doar
+    // pentru discurile din grila centrala. `sourcesFrame` adaugat acum,
+    // urmarit la fel ca `destFrame` (GeometryReader + coordinateSpace
+    // "root"), iar `onEnded` verifica ambele cutii.
     @State private var draggingDiskPath: String? = nil
     @State private var dragPoint: CGPoint = .zero
+    @State private var sourcesFrame: CGRect = .zero
     @State private var destFrame: CGRect = .zero
 
     private let refreshTimer = Timer.publish(every: 4, on: .main, in: .common).autoconnect()
 
+    private var isHoveringSource: Bool {
+        draggingDiskPath != nil && sourcesFrame.contains(dragPoint)
+    }
     private var isHoveringDest: Bool {
         draggingDiskPath != nil && destFrame.contains(dragPoint)
     }
@@ -148,7 +164,7 @@ struct ContentView: View {
 
             RoundedRectangle(cornerRadius: 8)
                 .strokeBorder(style: StrokeStyle(lineWidth: 2, dash: [5, 3]))
-                .foregroundStyle(isDropTargetedSources ? .green : .secondary.opacity(0.4))
+                .foregroundStyle((isDropTargetedSources || isHoveringSource) ? .green : .secondary.opacity(0.4))
                 .background(
                     // strokeBorder deseneaza DOAR conturul — fara un fundal
                     // "plin" (chiar si transparent), doar linia subtire e
@@ -166,6 +182,18 @@ struct ContentView: View {
                         .allowsHitTesting(false)
                 )
                 .padding(.horizontal, 10)
+                .background(
+                    // Urmarim cutia asta (nu toata coloana) in coordonate
+                    // "root", la fel ca destFrame pt. Destinatii — vezi
+                    // nota de arhitectura de la `sourcesFrame`.
+                    GeometryReader { geo in
+                        Color.clear
+                            .onAppear { sourcesFrame = geo.frame(in: .named("root")) }
+                            .onChange(of: geo.size) { _, _ in
+                                sourcesFrame = geo.frame(in: .named("root"))
+                            }
+                    }
+                )
                 .onDrop(of: [.fileURL, .volume], isTargeted: $isDropTargetedSources) { providers in
                     handleSourceDrop(providers)
                 }
@@ -285,7 +313,9 @@ struct ContentView: View {
                                         dragPoint = value.location
                                     }
                                     .onEnded { value in
-                                        if destFrame.contains(value.location) {
+                                        if sourcesFrame.contains(value.location) {
+                                            addSource(volume.path)
+                                        } else if destFrame.contains(value.location) {
                                             addDestination(volume.path)
                                         }
                                         draggingDiskPath = nil
