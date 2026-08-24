@@ -10,6 +10,14 @@ struct ContentView: View {
     @State private var sourcePaths: [String] = []
     @State private var destinationPaths: [String] = []
     @State private var volumes: [VolumeInfo] = []
+    // Auto-detectare card nou — reintrodusa 2026-08-24 (exista intr-o
+    // forma veche, pierduta la rescrierea nativa). `knownVolumePaths`
+    // nil = inca n-am facut niciun poll: PRIMUL `detectAll()` de la
+    // pornire stabileste doar baseline-ul, fara popup — altfel orice
+    // card deja conectat cand deschizi aplicatia ar declansa fals un
+    // "card nou detectat".
+    @State private var knownVolumePaths: Set<String>? = nil
+    @State private var newlyDetectedVolume: VolumeInfo?
     @State private var isDropTargetedSources = false
     @State private var isDropTargetedDestFromFinder = false
     @State private var showActivation = false
@@ -83,11 +91,30 @@ struct ContentView: View {
                 footer
             }
             .background(Color(nsColor: .windowBackgroundColor))
-            .onAppear { volumes = VolumeInfo.detectAll() }
-            .onReceive(refreshTimer) { _ in volumes = VolumeInfo.detectAll() }
+            .onAppear {
+                volumes = VolumeInfo.detectAll()
+                knownVolumePaths = Set(volumes.map(\.path))
+            }
+            .onReceive(refreshTimer) { _ in refreshVolumesAndDetectNew() }
             .sheet(isPresented: $showActivation) {
                 ActivationSheet(isPresented: $showActivation)
                     .environmentObject(license)
+            }
+            .alert(
+                L.t("volume.newCard.title"),
+                isPresented: Binding(
+                    get: { newlyDetectedVolume != nil },
+                    set: { if !$0 { newlyDetectedVolume = nil } }
+                ),
+                presenting: newlyDetectedVolume
+            ) { volume in
+                Button(L.t("volume.newCard.add")) {
+                    addSource(volume.path)
+                    newlyDetectedVolume = nil
+                }
+                Button(L.t("volume.newCard.ignore"), role: .cancel) { newlyDetectedVolume = nil }
+            } message: { volume in
+                Text(String(format: L.t("volume.newCard.message"), volume.name))
             }
 
             // eticheta "fantoma" care urmareste cursorul cat timp tragi un disc
@@ -264,6 +291,26 @@ struct ContentView: View {
         return handled
     }
 
+    /// Compara volumele curente cu ultimul poll — un volum aparut nou
+    /// (nu era in `knownVolumePaths`) declanseaza popup-ul "Card nou
+    /// detectat". Nu alertam pentru un card deja conectat la pornirea
+    /// aplicatiei (baseline-ul din primul .onAppear) si nu alertam de
+    /// doua ori pentru acelasi card cat timp ramane conectat.
+    private func refreshVolumesAndDetectNew() {
+        let detected = VolumeInfo.detectAll()
+        if let known = knownVolumePaths {
+            let newlyAppeared = detected.filter { !known.contains($0.path) }
+            // Daca s-au conectat mai multe simultan (rar), aratam popup
+            // doar pentru primul — restul raman disponibile in grila,
+            // fara sa inecam userul in popup-uri consecutive.
+            if newlyDetectedVolume == nil, let first = newlyAppeared.first {
+                newlyDetectedVolume = first
+            }
+        }
+        volumes = detected
+        knownVolumePaths = Set(detected.map(\.path))
+    }
+
     private func addSource(_ path: String) {
         if !sourcePaths.contains(path) {
             sourcePaths.append(path)
@@ -420,6 +467,7 @@ struct ContentView: View {
             if runner.isRunning {
                 ProgressView(value: Double(runner.progressPercent), total: 100)
                     .tint(.green)
+                terminalActivityFeed
             }
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
@@ -480,6 +528,43 @@ struct ContentView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
+    }
+
+    /// Flux de activitate stil Terminal, in footer, cat timp ruleaza un
+    /// transfer — vezi DestinationJob.onActivity/OffloadRunner.logActivity.
+    /// Motivul: la fisiere foarte mari (video 4K/RAW), bara de progres
+    /// poate ramane pe loc zeci de secunde intre doua fisiere, dand
+    /// impresia ca aplicatia s-a blocat. Un flux de text care se misca
+    /// (chiar daca procentul nu se misca inca) e liniștitor — userul vede
+    /// ca se lucreaza, nu ghiceste.
+    private var terminalActivityFeed: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 1) {
+                    ForEach(Array(runner.activityLines.enumerated()), id: \.offset) { index, line in
+                        Text(line)
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundStyle(Color.green.opacity(0.85))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .id(index)
+                    }
+                }
+                .padding(6)
+            }
+            .background(Color.black.opacity(0.85))
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .frame(height: 70)
+            .padding(.horizontal, 14)
+            // Deruleaza automat la ultima linie — un terminal real nu
+            // asteapta ca userul sa dea scroll manual ca sa vada ce
+            // urmeaza sa se intample.
+            .onChange(of: runner.activityLines.count) { _, _ in
+                guard let lastIndex = runner.activityLines.indices.last else { return }
+                withAnimation(.linear(duration: 0.1)) {
+                    proxy.scrollTo(lastIndex, anchor: .bottom)
+                }
+            }
+        }
     }
 
     private var settingsPopover: some View {
