@@ -47,6 +47,12 @@ enum L {
         "sources.dropHint": [.ro: "Trage fisiere\nsau foldere aici", .en: "Drag files\nor folders here", .es: "Arrastra archivos\no carpetas aquí"],
         "sources.empty": [.ro: "Nicio sursa adaugata", .en: "No sources added", .es: "Sin orígenes añadidos"],
 
+        // MARK: - Auto-detectare card nou (VolumeInfo polling, ContentView)
+        "volume.newCard.title": [.ro: "Card nou detectat", .en: "New card detected", .es: "Nueva tarjeta detectada"],
+        "volume.newCard.message": [.ro: "Card nou detectat: %@. Dorești să pornești transferul în Data Mover?", .en: "New card detected: %@. Do you want to start the transfer in Data Mover?", .es: "Nueva tarjeta detectada: %@. ¿Quieres iniciar la transferencia en Data Mover?"],
+        "volume.newCard.add": [.ro: "Adaugă ca sursă", .en: "Add as source", .es: "Añadir como origen"],
+        "volume.newCard.ignore": [.ro: "Ignoră", .en: "Ignore", .es: "Ignorar"],
+
         // MARK: - Disks
         "disks.title": [.ro: "Discuri", .en: "Disks", .es: "Discos"],
         "disks.iconSize": [.ro: "Marime iconite", .en: "Icon size", .es: "Tamaño de iconos"],

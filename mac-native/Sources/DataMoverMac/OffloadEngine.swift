@@ -236,6 +236,13 @@ final class DestinationJob {
     /// apelat dupa fiecare fisier procesat (pe thread-ul de fundal —
     /// OffloadRunner e cel care sare pe main thread inainte sa atinga UI)
     let onFileDone: (_ size: Int64) -> Void
+    /// Feed-ul de activitate stil Terminal din footer — apelat INAINTE de
+    /// copiere si INAINTE de verificare (nu doar la final, ca onFileDone),
+    /// tocmai ca userul sa vada ceva miscandu-se cat timp un fisier mare
+    /// (video 4K/RAW) ia zeci de secunde si bara de progres pare inghetata
+    /// intre doua incrementari. Fisierele mari sunt EXACT cazul in care
+    /// asigurarea asta psihologica conteaza cel mai mult.
+    let onActivity: (_ line: String) -> Void
 
     private var reportRows: [ReportRow] = []
     private var okCount = 0, skipCount = 0, failCount = 0
@@ -247,11 +254,13 @@ final class DestinationJob {
 
     init(destRoot: String, folderName: String, files: [FileEntry], cancel: CancelToken,
          verificationModel: VerificationModel = .md5, resume: Bool = false, sourceRoot: String? = nil,
-         onFileDone: @escaping (_ size: Int64) -> Void) {
+         onFileDone: @escaping (_ size: Int64) -> Void,
+         onActivity: @escaping (_ line: String) -> Void = { _ in }) {
         self.destRoot = destRoot
         self.folderName = folderName
         self.files = files
         self.cancel = cancel
+        self.onActivity = onActivity
         self.verificationModel = verificationModel
         self.resume = resume
         self.sourceRoot = sourceRoot
@@ -287,7 +296,9 @@ final class DestinationJob {
             var srcRepr = "", dstRepr = "", errorMsg = ""
 
             do {
+                onActivity("Copiere: \(entry.relPath) (\(formatBytes(entry.size)))")
                 try copyFileCancelable(src: entry.fullPath, dst: destPath, cancel: cancel)
+                onActivity("Verificare checksum: \(entry.relPath)…")
                 let (same, s, d) = try verifyPair(entry: entry, destPath: destPath)
                 srcRepr = s; dstRepr = d
                 if !same { status = "NEPOTRIVIRE" }
@@ -477,6 +488,11 @@ final class OffloadRunner: ObservableObject {
     @Published var statusText = L.t("status.ready")
     @Published var speedText = ""
     @Published var lastResults: [DestinationResult] = []
+    /// Feed-ul stil Terminal din footer (vezi DestinationJob.onActivity).
+    /// Capat la `activityLogLimit` — nu tinem tot istoricul unui transfer
+    /// de mii de fisiere in memorie/UI, doar ce s-a intamplat recent.
+    @Published private(set) var activityLines: [String] = []
+    private let activityLogLimit = 200
 
     private var cancelToken = CancelToken()
     private var startTime: Date?
@@ -528,6 +544,7 @@ final class OffloadRunner: ObservableObject {
         statusText = L.t("footer.copying")
         speedText = ""
         lastResults = []
+        activityLines = []
 
         let token = cancelToken
         let group = DispatchGroup()
@@ -537,12 +554,20 @@ final class OffloadRunner: ObservableObject {
         for dest in destinations {
             group.enter()
             DispatchQueue.global(qos: .utility).async { [weak self] in
-                let job = DestinationJob(destRoot: dest, folderName: folderName, files: files, cancel: token,
-                                          verificationModel: verificationModel, resume: resume, sourceRoot: sourceRoot) { size in
-                    Task { @MainActor [weak self] in
-                        self?.advance(size: size)
+                let job = DestinationJob(
+                    destRoot: dest, folderName: folderName, files: files, cancel: token,
+                    verificationModel: verificationModel, resume: resume, sourceRoot: sourceRoot,
+                    onFileDone: { size in
+                        Task { @MainActor [weak self] in
+                            self?.advance(size: size)
+                        }
+                    },
+                    onActivity: { line in
+                        Task { @MainActor [weak self] in
+                            self?.logActivity(line)
+                        }
                     }
-                }
+                )
                 let result = job.run()
                 resultsLock.lock(); results.append(result); resultsLock.unlock()
                 group.leave()
@@ -558,6 +583,17 @@ final class OffloadRunner: ObservableObject {
         guard isRunning else { return }
         cancelToken.cancel()
         statusText = L.t("status.cancelling")
+    }
+
+    /// Adauga o linie in feed-ul de activitate — cu viteza curenta atasata,
+    /// ca in exemplul cerut ("Copiere: fisier.MOV | 450 MB/s"), ca userul
+    /// sa vada dintr-o privire ca aplicatia lucreaza, nu ca s-a blocat.
+    private func logActivity(_ line: String) {
+        let withSpeed = speedText.isEmpty ? line : "\(line) — \(speedText)"
+        activityLines.append(withSpeed)
+        if activityLines.count > activityLogLimit {
+            activityLines.removeFirst(activityLines.count - activityLogLimit)
+        }
     }
 
     private func advance(size: Int64) {
