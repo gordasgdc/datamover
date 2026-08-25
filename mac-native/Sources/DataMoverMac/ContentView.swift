@@ -190,6 +190,12 @@ struct ContentView: View {
                     .frame(width: 120)
             }
             Spacer()
+            // Versiune vizibila in UI — "Directiva Permanenta Suprema"
+            // (2026-08-25, CLAUDE.md): orice aplicatie GDC trebuie sa-si
+            // arate versiunea, fara exceptie.
+            Text("v\(appVersion)")
+                .font(.system(size: 10))
+                .foregroundStyle(.tertiary)
             Button {
                 openWindow(id: "help")
             } label: {
@@ -201,6 +207,10 @@ struct ContentView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
+    }
+
+    private var appVersion: String {
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
     }
 
     // MARK: - Coloana SOURCES

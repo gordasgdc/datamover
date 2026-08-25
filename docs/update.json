@@ -1,10 +1,10 @@
 {
-  "version": "2.3.2",
-  "release_date": "2026-08-21",
-  "changes": "Pret activare 23€ (donatie pentru dezvoltare) si ghidurile PDF actualizate cu noul pret.",
+  "version": "2.5.1",
+  "release_date": "2026-08-25",
+  "changes": "Mac: pachet semnat + notarizat oficial Apple (in loc de semnare ad-hoc), uninstaller complet inclus, versiune vizibila in interfata. Windows: sincronizat installer.iss la aceeasi versiune ca Mac (era ramas la 2.4.0).",
   "download_url": {
     "windows": "https://github.com/gordasgdc/datamover/releases/latest/download/DataMover-Windows.zip",
-    "mac": "https://github.com/gordasgdc/datamover/releases/latest/download/DataMover-Mac-Installer.pkg"
+    "mac": "https://github.com/gordasgdc/datamover/releases/latest/download/DataMover-Mac.zip"
   },
   "mandatory": false,
   "min_version": "1.0.0"

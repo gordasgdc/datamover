@@ -1,10 +1,11 @@
 #!/bin/bash
 # build_app.sh — compileaza DataMoverMac in release si il impacheteaza
-# intr-un .app bundle (cu Info.plist), semnat ad-hoc (fara cont Apple
-# Developer). Rularea binarului brut din .build/release/ direct (fara
-# bundle) poate cauza probleme de focus tastatura in TextField-uri, ca
-# nu exista un proces de aplicatie "regular" corect inregistrat la
-# WindowServer — .app bundle-ul rezolva asta.
+# intr-un .app bundle (cu Info.plist), semnat cu Developer ID Application
+# + notarizat daca certificatul e configurat pe acest Mac (vezi
+# codesigning/README.md), altfel cade pe semnare ad-hoc. Rularea binarului
+# brut din .build/release/ direct (fara bundle) poate cauza probleme de
+# focus tastatura in TextField-uri, ca nu exista un proces de aplicatie
+# "regular" corect inregistrat la WindowServer — .app bundle-ul rezolva asta.
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -26,13 +27,17 @@ cp "AppIcon.icns" "$APP_PATH/Contents/Resources/AppIcon.icns"
 echo "==> Curat atributele extinse..."
 xattr -cr "$APP_PATH"
 
-echo "==> Semnez ad-hoc..."
-codesign --force --deep --sign - "$APP_PATH"
+# Semnare reala (Developer ID Application) + notarizare, daca certificatul
+# e configurat pe acest Mac (vezi codesigning/README.md) - altfel cade pe
+# semnare ad-hoc, ca inainte (Gatekeeper va bloca la prima deschidere,
+# necesita xattr/click-dreapta -> Open pana se configureaza certificatul).
+if [ -n "${APPLE_SIGN_IDENTITY_APP:-}" ]; then
+    ./codesigning/sign-and-notarize.sh app "$APP_PATH"
+else
+    echo "==> [codesigning] APPLE_SIGN_IDENTITY_APP nesetata - semnez ad-hoc (nesemnat oficial)."
+    codesign --force --deep --sign - "$APP_PATH"
+fi
 codesign --verify --verbose "$APP_PATH"
-
-echo "==> Copiez launcher-ul (elimina carantina automat la prima lansare)..."
-cp "Instaleaza_DataMover.command" "dist/Instaleaza_DataMover.command"
-chmod +x "dist/Instaleaza_DataMover.command"
 
 echo ""
 echo "==> Gata: $APP_PATH"

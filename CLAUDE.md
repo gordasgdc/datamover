@@ -34,3 +34,24 @@ lipsește, spune-o explicit, nu declara release-ul "gata".
    site trebuie să pointeze mereu la `releases/latest/download/...`
    (HTTP 200 verificat, nu presupus) și să menționeze numărul ultimei
    versiuni.
+
+## Audit 2026-08-25 — găsit și reparat
+- **Mac era semnat DOAR ad-hoc** (`TeamIdentifier=not set`), fără
+  certificat Apple real — motiv pentru care exista un launcher cu
+  `xattr -dr com.apple.quarantine`. Fix real (nu doar eliminarea
+  hack-ului): `mac-native/codesigning/` copiat din `cursorpro-gdc`,
+  `build_app.sh`/`build_installer.sh` semnează acum cu Developer ID
+  Application/Installer + notarizează + staplează, dacă
+  `APPLE_SIGN_IDENTITY_APP` e setat (vezi `~/.zshrc`, la fel ca celelalte
+  repo-uri GDC). Job-ul `build-mac` din CI a fost eliminat — Mac se
+  compilează LOCAL de-acum (certificatul e în Keychain local), Windows
+  rămâne CI. Vezi `CHANGELOG.md` v2.5.1 pentru detalii complete.
+- **Windows rulează încă pe codebase-ul Python vechi** (`main.py`,
+  `core/`, `ui/windows/`), NU pe rescrierea nativă SwiftUI — rescrierea
+  există doar pentru Mac (`mac-native/`). Portarea nativă pe Windows
+  rămâne TODO real, nemenționat explicit până acum.
+- `installer.iss` (Windows) și `docs/update.json` erau amândouă
+  desincronizate de versiunea reală lansată (`2.4.0`/`2.3.2` vs `2.5.0`
+  live) — sincronizate la `2.5.1`.
+- Uninstaller Windows: Inno Setup generează unul automat (Add/Remove
+  Programs) — deja conform, nu a fost nevoie de un script nou.

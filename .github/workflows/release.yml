@@ -89,35 +89,20 @@ jobs:
           name: windows-build
           path: DataMover-Windows.zip
 
-  build-mac:
-    runs-on: macos-latest
-    steps:
-      - name: Descarca codul din repo
-        uses: actions/checkout@v4
-
-      - name: Compileaza .app nativ (SwiftUI) si semneaza ad-hoc
-        run: |
-          cd mac-native
-          ./build_app.sh
-
-      - name: Creeaza arhiva pentru utilizatori (.app + ghidurile PDF in 3 limbi, la un loc)
-        run: |
-          mkdir -p mac_bundle/Aplicatie
-          cp -R "mac-native/dist/DataMover.app" mac_bundle/Aplicatie/
-          cp docs/guides/*.pdf mac_bundle/Aplicatie/
-          cp "mac-native/dist/Instaleaza_DataMover.command" mac_bundle/
-          chmod +x "mac_bundle/Instaleaza_DataMover.command"
-          cd mac_bundle
-          zip -r -y "$GITHUB_WORKSPACE/DataMover-Mac.zip" .
-
-      - name: Salveaza arhiva pentru pasul de release
-        uses: actions/upload-artifact@v4
-        with:
-          name: mac-build
-          path: DataMover-Mac.zip
-
+  # NOTA (2026-08-25): job-ul "build-mac" a fost ELIMINAT — semna ad-hoc
+  # (`codesign --sign -`, `TeamIdentifier=not set`), zero certificare
+  # Apple reala, si folosea un launcher cu `xattr -dr com.apple.quarantine`
+  # ca sa treaca de Gatekeeper. Mac-ul se compileaza acum LOCAL, cu
+  # `mac-native/build_installer.sh` (semnat cu Developer ID Application +
+  # Installer, notarizat, stapled — identic cu gdc-plugin-manager si
+  # cursorpro-gdc), pentru ca certificatul e deja configurat in Keychain-ul
+  # local, nu in secretele acestui repo CI. Fluxul de release e acum:
+  # 1. Ruleaza local `cd mac-native && ./build_installer.sh`.
+  # 2. Ruleaza acest workflow (push de tag) pentru artefactul Windows.
+  # 3. `gh release create` cu ambele artefacte (pkg+zip Mac local +
+  #    zip Windows descarcat din acest workflow) — vezi CLAUDE.md.
   create-release:
-    needs: [build-windows, build-mac]
+    needs: [build-windows]
     runs-on: ubuntu-latest
     steps:
       - name: Descarca fisierul Windows compilat
@@ -126,13 +111,7 @@ jobs:
           name: windows-build
           path: release-files
 
-      - name: Descarca fisierul Mac compilat (.zip)
-        uses: actions/download-artifact@v4
-        with:
-          name: mac-build
-          path: release-files
-
-      - name: Creeaza Release-ul pe GitHub, cu fisierele atasate
+      - name: Creeaza Release-ul pe GitHub (Windows) — Mac se ataseaza manual, local
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event.inputs.tag || github.ref_name }}
