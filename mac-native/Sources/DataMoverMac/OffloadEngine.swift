@@ -95,6 +95,23 @@ func listAllFiles(root: String, exclusions: [String] = []) -> [FileEntry] {
 /// cancelToken intre bucati — ca butonul Anuleaza sa opreasca efectiv
 /// copierea unui fisier urias in cateva secunde, nu abia dupa ce
 /// fisierul respectiv termina.
+///
+/// WARNING (2026-08-26, fix de crash): NU folosi niciodata
+/// `FileHandle.readData(ofLength:)` / `.write(_:)` fara `try` aici. Sunt
+/// API-uri Objective-C legacy — la o eroare reala de citire/scriere (card
+/// SD deconectat in timpul copierii, disc extern scos, disc plin,
+/// permisiune refuzata) NU arunca o eroare Swift capturabila cu
+/// `do/catch`, ci ridica o EXCEPTIE OBJECTIVE-C
+/// (`_NSFileHandleRaiseOperationExceptionWhileReading`), pe care Swift n-o
+/// poate prinde. Rezultatul: `objc_exception_throw` necaptata -> `abort()`
+/// -> toata aplicatia crapa, nu doar job-ul curent. Confirmat printr-un
+/// crash real (`copyFileCancelable` -> `readDataOfLength:` -> abort) —
+/// pentru un tool de offload de pe platou, exact scenariul "cineva scoate
+/// cardul SD in timp ce copiaza" trebuia sa fie o eroare de job, nu un
+/// crash total. `FileHandle.read(upToCount:)` / `.write(contentsOf:)` sunt
+/// variantele THROWING corecte, introduse tocmai pentru asta (macOS
+/// 10.15.4+) — orice eroare de I/O ajunge acum in catch-ul de mai jos, ca
+/// eroare normala de job.
 func copyFileCancelable(src: String, dst: String, cancel: CancelToken) throws {
     FileManager.default.createFile(atPath: dst, contents: nil)
     guard let input = FileHandle(forReadingAtPath: src),
@@ -106,9 +123,10 @@ func copyFileCancelable(src: String, dst: String, cancel: CancelToken) throws {
     do {
         while true {
             if cancel.isCancelled { throw OffloadCancelled() }
-            let chunk = input.readData(ofLength: offloadChunkSize)
-            if chunk.isEmpty { break }
-            output.write(chunk)
+            // `read(upToCount:)` intoarce nil sau Data goala la EOF (in
+            // functie de versiune) — verificam ambele, nu doar `.isEmpty`.
+            guard let chunk = try input.read(upToCount: offloadChunkSize), !chunk.isEmpty else { break }
+            try output.write(contentsOf: chunk)
         }
     } catch {
         try? FileManager.default.removeItem(atPath: dst) // nu lasam fisier partial
@@ -133,8 +151,11 @@ private func genericHash<H: HashFunction>(path: String, using: H.Type, cancel: C
     var hasher = H()
     while true {
         if cancel.isCancelled { throw OffloadCancelled() }
-        let chunk = handle.readData(ofLength: offloadChunkSize)
-        if chunk.isEmpty { break }
+        // Vezi WARNING-ul de la copyFileCancelable: `readData(ofLength:)`
+        // ridica o exceptie Objective-C necapturabila la o eroare reala de
+        // citire, in loc sa arunce o eroare Swift. Verificarea (hash-ul de
+        // dupa copiere) rula pe acelasi risc de crash ca si copierea.
+        guard let chunk = try handle.read(upToCount: offloadChunkSize), !chunk.isEmpty else { break }
         hasher.update(data: chunk)
     }
     return hasher.finalize().map { String(format: "%02x", $0) }.joined()
