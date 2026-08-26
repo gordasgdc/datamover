@@ -77,5 +77,6 @@ jobs:
       - name: Incarca .zip ca artefact descarcabil
         uses: actions/upload-artifact@v4
         with:
+          retention-days: 1
           name: DataMover-Windows
           path: dist/DataMover-Windows.zip

@@ -100,6 +100,7 @@ jobs:
       - name: Salveaza pentru pasul de release
         uses: actions/upload-artifact@v4
         with:
+          retention-days: 1
           name: windows-build
           path: DataMover-Windows.zip
 
