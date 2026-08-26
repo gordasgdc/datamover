@@ -1,7 +1,7 @@
 {
-  "version": "2.5.1",
-  "release_date": "2026-08-25",
-  "changes": "Mac: pachet semnat + notarizat oficial Apple (in loc de semnare ad-hoc), uninstaller complet inclus, versiune vizibila in interfata. Windows: sincronizat installer.iss la aceeasi versiune ca Mac (era ramas la 2.4.0).",
+  "version": "2.5.2",
+  "release_date": "2026-08-26",
+  "changes": "Fix bug real: APP_VERSION din core/update_config.py (Windows, sursa unica pt. versiunea raportata de aplicatie) era blocat la 2.3.2 din 21 aug, desi releasele publicate ajunsesera la 2.5.1 - exe-ul arata mereu versiunea gresita in About si semnala etern 'update disponibil', chiar si pe cel mai nou build descarcat.",
   "download_url": {
     "windows": "https://github.com/gordasgdc/datamover/releases/latest/download/DataMover-Windows.zip",
     "mac": "https://github.com/gordasgdc/datamover/releases/latest/download/DataMover-Mac.zip"
