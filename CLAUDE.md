@@ -293,3 +293,23 @@ lipsește, spune-o explicit, nu declara release-ul "gata".
   live) — sincronizate la `2.5.1`.
 - Uninstaller Windows: Inno Setup generează unul automat (Add/Remove
   Programs) — deja conform, nu a fost nevoie de un script nou.
+
+## Audit 2026-08-26 (2) — flux de release optimizat + auto-update Mac reparat
+
+**1. `release.sh` (nou, rădăcina repo-ului) — un singur punct de intrare pentru un release complet.**
+Motiv: fluxul documentat mai sus ("1. build local Mac, 2. push tag, 3. `gh release upload` manual") a fost urmat pas-cu-pas la lansarea `v2.5.3` — și a eșuat o dată în mijloc: `zsh -lc` (login shell) NU citește `~/.zshrc` (doar shell-urile INTERACTIVE îl citesc), deci `APPLE_SIGN_IDENTITY_APP` a ieșit nesetată și `build_installer.sh` a căzut TĂCUT pe semnare ad-hoc — exact regresia pe care auditul de mai sus o documentase deja ca reparată. A fost prinsă citind manual log-ul, înainte de upload — un flux automat trebuie s-o prindă singur.
+
+`./release.sh <versiune> "<descriere>"` face, în ordine: (1) bump în cele patru locuri sincrone + verificare hard că toate patru chiar au ajuns la versiunea cerută; (2) build Mac cu `zsh -ic` (interactiv, nu login) ca să citească real `~/.zshrc`; (3) **verificare independentă cu `spctl`** că pachetul chiar e „Notarized Developer ID" — dacă nu, oprește tot, nu publică nimic nesemnat; (4) commit + push; (5) tag + push, așteaptă CI Windows; (6) urcă artefactele Mac deja verificate; (7) verificare finală că `releases/latest/download/...` și API-ul de update chiar rezolvă la tag-ul nou.
+
+**WARNING**: NU s-a modificat `mac-native/codesigning/sign-and-notarize.sh` (modulul comun, copiat neschimbat în toate repo-urile GDC) — el cade intenționat tăcut pe nesemnat când certificatul nu există încă (bring-up timpuriu). Poarta de verificare stă în `release.sh`, specific acestui proiect, care știe că semnarea reală e deja obligatorie aici.
+
+**2. Butonul de update Mac deschidea browserul în loc să descarce — reparat (`SelfUpdater.swift`, nou).**
+Semnalat direct: *"Când apare actualizare și îi dai actualizare, mă trimite la GitHub... ar trebui să se descarce automat"*. Cauza: `UpdateChecker.presentResult` chema `NSWorkspace.shared.open(releasesPageURL)` — deschidea pagina web, nu descărca nimic. Windows (`core/updater.py`) avea deja o rețetă reală și funcțională de self-update (descarcă `.pkg`/`.exe`, instalează, relansează) — Mac-ul nativ (SwiftUI) nu o avea deloc.
+
+Fix: `SelfUpdater.swift` portează 1:1 rețeta din `updater.py` — descarcă `.pkg`-ul (`URLSession.download`), apoi îl instalează prin promptul NATIV de parolă admin (`osascript ... with administrator privileges`, niciodată `sudo` interactiv sau Terminal), la fel ca elevarea OFX din `gdc-plugin-manager`. `UpdateChecker` citește acum asset-ul `.pkg` direct din răspunsul GitHub API (numele stabil `DataMover.pkg`, publicat de `release.sh` la fiecare lansare) — pagina web rămâne doar fallback, pentru un release incomplet.
+
+Verificat end-to-end (script Swift separat, nu doar citire de cod): API-ul real → găsește `DataMover.pkg` → rezolvă URL-ul de download → **descarcă efectiv** fișierul cu aceeași funcție din `SelfUpdater` → fișierul primit e un `.pkg` valid (magic bytes `xar!`), dimensiune identică cu originalul.
+
+**WARNING — ce NU s-a putut verifica automat**: pasul de instalare (promptul de parolă admin, `installer -pkg ... -target /`, relansarea aplicației) cere interacțiune fizică reală cu fereastra de sistem — Claude nu poate introduce o parolă. Verificat automat doar până la "pachetul e descărcat și integru pe disc". **Cristi trebuie să confirme manual, o singură dată, că instalarea + relansarea chiar funcționează**, înainte ca fluxul să fie considerat complet dovedit.
+
+**3. Site-ul (`docs/index.html`) verificat, deja corect — nimic de reparat.** `initDirectDownload()` folosește deja `releases/latest/download/...` cu detecție de platformă (nu link generic către pagina de Releases). Verificat live: ambele fișiere HTTP 200, rezolvă la `v2.5.3`.

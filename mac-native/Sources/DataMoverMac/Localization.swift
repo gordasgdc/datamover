@@ -134,10 +134,17 @@ enum L {
         "update.upToDate.body": [.ro: "Ai deja ultima versiune (%@).", .en: "You already have the latest version (%@).", .es: "Ya tienes la última versión (%@)."],
         "update.available.title": [.ro: "Versiune noua disponibila", .en: "New version available", .es: "Nueva versión disponible"],
         "update.available.body": [.ro: "Versiunea %@ este disponibila (ai %@).", .en: "Version %@ is available (you have %@).", .es: "La versión %@ está disponible (tienes %@)."],
-        "update.download": [.ro: "Descarca", .en: "Download", .es: "Descargar"],
+        // "update.download": buton care acum descarca SI instaleaza direct
+        // (SelfUpdater), nu mai deschide pagina de GitHub — vezi SelfUpdater.swift.
+        "update.download": [.ro: "Descarcă și instalează", .en: "Download & Install", .es: "Descargar e instalar"],
         "update.later": [.ro: "Mai tarziu", .en: "Later", .es: "Más tarde"],
         "update.error.title": [.ro: "Verificare actualizari", .en: "Check for Updates", .es: "Buscar actualizaciones"],
         "update.error.body": [.ro: "Nu am putut verifica versiunea — incearca mai tarziu.", .en: "Couldn't check the version — try again later.", .es: "No se pudo comprobar la versión — inténtalo más tarde."],
+        "update.downloading": [.ro: "Se descarcă actualizarea…", .en: "Downloading the update…", .es: "Descargando la actualización…"],
+        "update.installing": [.ro: "Se instalează — introdu parola de administrator când ți se cere", .en: "Installing — enter your administrator password when asked", .es: "Instalando — introduce tu contraseña de administrador cuando se te pida"],
+        "update.installFailed.title": [.ro: "Actualizarea a eșuat", .en: "Update failed", .es: "La actualización falló"],
+        "update.installFailed.body": [.ro: "%@\n\nPoți descărca manual ultima versiune de pe pagina de GitHub.", .en: "%@\n\nYou can download the latest version manually from the GitHub page.", .es: "%@\n\nPuedes descargar manualmente la última versión desde la página de GitHub."],
+        "update.installFailed.openPage": [.ro: "Deschide pagina", .en: "Open page", .es: "Abrir página"],
 
         // MARK: - Help window
         "help.windowTitle": [.ro: "Ghid de utilizare DataMover", .en: "DataMover User Guide", .es: "Guía de uso de DataMover"],
