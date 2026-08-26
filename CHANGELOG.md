@@ -4,6 +4,15 @@ Format: fiecare intrare listează versiunea, platformele afectate, și — pentr
 funcționalități noi — dacă are paritate completă Mac/Windows sau e "doar pe
 o platformă, portare pe cealaltă e TODO".
 
+## v2.5.5 (2026-08-26)
+Versiune de test, fără schimbări funcționale — publicată doar ca țintă pentru validarea manuală a self-updater-ului nou din v2.5.4 (vezi mai jos). Confirmat: instalare + relansare automată, funcționează cap-coadă pe mașina reală.
+
+## v2.5.4 (2026-08-26)
+**Mac** — butonul de update descărca acum efectiv, în loc să deschidă browserul:
+- Pana acum, "Descarcă" din alerta de update deschidea `github.com/.../releases/latest` în browser — userul trebuia să găsească singur fișierul și să-l instaleze manual. Windows (`core/updater.py`) avea deja o rețetă reală de self-update — portată acum 1:1 pe Mac (`SelfUpdater.swift`, nou): descarcă `.pkg`-ul, îl instalează prin promptul NATIV de parolă admin (`osascript ... with administrator privileges`), apoi aplicația se relansează singură.
+- `release.sh` (nou, rădăcina repo-ului) — un singur punct de intrare pentru un release complet Mac+Windows, cu verificare independentă (`spctl`) că pachetul chiar e semnat+notarizat înainte de publicare, nu doar promisiunea scriptului de semnare.
+- Site-ul (`docs/index.html`) verificat, era deja corect — link-uri directe de download, cu detecție de platformă.
+
 ## v2.5.3 (2026-08-26)
 **Mac** — reparat un crash real, reprodus dintr-un raport de crash trimis:
 - `copyFileCancelable` (motorul de copiere la offload) folosea `FileHandle.readData(ofLength:)`/`.write(_:)`, API-uri Objective-C legacy — la o eroare reală de I/O (card SD deconectat în mijlocul copierii, disc extern scos, disc plin, permisiune refuzată) acestea ridică o excepție Objective-C necapturabilă cu `do/catch` din Swift, în loc să arunce o eroare normală. Rezultat: `abort()`, toată aplicația moare, nu doar fișierul care a eșuat.
