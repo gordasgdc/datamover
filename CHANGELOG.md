@@ -4,6 +4,14 @@ Format: fiecare intrare listează versiunea, platformele afectate, și — pentr
 funcționalități noi — dacă are paritate completă Mac/Windows sau e "doar pe
 o platformă, portare pe cealaltă e TODO".
 
+## v2.5.3 (2026-08-26)
+**Mac** — reparat un crash real, reprodus dintr-un raport de crash trimis:
+- `copyFileCancelable` (motorul de copiere la offload) folosea `FileHandle.readData(ofLength:)`/`.write(_:)`, API-uri Objective-C legacy — la o eroare reală de I/O (card SD deconectat în mijlocul copierii, disc extern scos, disc plin, permisiune refuzată) acestea ridică o excepție Objective-C necapturabilă cu `do/catch` din Swift, în loc să arunce o eroare normală. Rezultat: `abort()`, toată aplicația moare, nu doar fișierul care a eșuat.
+- Fix: `FileHandle.read(upToCount:)`/`.write(contentsOf:)`, variantele *throwing* (macOS 10.15.4+), în ambele locuri afectate (copiere + hash de verificare). Verificat prin reproducerea separată a aceluiași crash cu API-ul vechi, apoi confirmat că API-ul nou capturează aceeași eroare normal.
+
+## v2.5.2 (2026-08-26)
+**Windows** — fix bug real: `APP_VERSION` din `core/update_config.py` (sursa unică pentru versiunea raportată de aplicație pe Windows) era blocat la `2.3.2` din 21 august, deși release-urile publicate ajunseseră la `2.5.1` — exe-ul arăta mereu versiunea greșită în About și semnala etern "update disponibil", chiar și pe cel mai nou build descărcat.
+
 ## v2.5.1 (2026-08-25)
 **Mac** — schimbare majoră, urmare a auditului "Directivă Permanentă Supremă":
 - **Semnare + notarizare Apple reală** pentru prima dată (`mac-native/codesigning/`, copiat din `cursorpro-gdc`) — anterior era semnat DOAR ad-hoc (`TeamIdentifier=not set`), motiv pentru care launcherul avea nevoie de `xattr -dr com.apple.quarantine` ca să treacă de Gatekeeper.
