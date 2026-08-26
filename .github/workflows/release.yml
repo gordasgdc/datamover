@@ -32,7 +32,7 @@ jobs:
       - name: Instaleaza dependintele
         run: |
           python -m pip install --upgrade pip
-          pip install pyinstaller reportlab tkinterdnd2 plyer pystray pillow cryptography
+          pip install pyinstaller reportlab tkinterdnd2 plyer pystray pillow cryptography pypdf
 
       - name: Compileaza .exe cu PyInstaller
         run: |
@@ -76,11 +76,25 @@ jobs:
         run: |
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss
 
-      - name: Arhiveaza instalatorul + ghidurile PDF intr-un singur .zip
+      - name: Uneste ghidurile RO/EN/ES intr-un singur PDF
+        # AUDIT 2026-08-26 (CLAUDE.md Partea 1, Regula 8): arhiva Windows
+        # avea 3 fisiere PDF separate (RO/EN/ES) - unificat intr-unul
+        # singur, acelasi tipar ca varianta Mac (mac-native/build_installer.sh)
+        # si gdc-production-manager.
+        run: |
+          python -c "
+          from pypdf import PdfWriter
+          w = PdfWriter()
+          for f in ['docs/guides/DataMover_Ghid_RO.pdf', 'docs/guides/DataMover_Guide_EN.pdf', 'docs/guides/DataMover_Guia_ES.pdf']:
+              w.append(f)
+          w.write('Ghid-de-Utilizare.pdf')
+          "
+
+      - name: Arhiveaza instalatorul + ghidul PDF intr-un singur .zip
         run: |
           mkdir dist_final
           copy "Output\DataMoverSetup.exe" dist_final\
-          copy "docs\guides\*.pdf" dist_final\
+          copy "Ghid-de-Utilizare.pdf" dist_final\
           Compress-Archive -Path "dist_final\*" -DestinationPath "DataMover-Windows.zip"
 
       - name: Salveaza pentru pasul de release
