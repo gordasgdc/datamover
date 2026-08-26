@@ -83,7 +83,18 @@ mkdir -p "$ZIP_STAGE"
 cp "$DIST_DIR/DataMover.pkg" "$ZIP_STAGE/"
 cp "$DIST_DIR/Dezinstalare_DataMover.command" "$ZIP_STAGE/"
 chmod +x "$ZIP_STAGE/Dezinstalare_DataMover.command"
-cp "../docs/guides/DataMover_Ghid_RO.pdf" "$ZIP_STAGE/Ghid-de-Utilizare.pdf" 2>/dev/null || true
+# AUDIT 2026-08-26 (CLAUDE.md Partea 1, Regula 8/5): ghidul livrat era
+# doar RO - EN/ES existau ca fisiere separate in docs/guides/ dar nu erau
+# niciodata unite in arhiva finala. Unificate cu pypdf (acelasi tipar ca
+# gdc-production-manager, vezi CLAUDE.md de acolo), RO->EN->ES intr-un
+# singur PDF, ca sa respecte "3 fisiere strict" + multilingv.
+python3 -c "
+from pypdf import PdfWriter
+w = PdfWriter()
+for f in ['../docs/guides/DataMover_Ghid_RO.pdf', '../docs/guides/DataMover_Guide_EN.pdf', '../docs/guides/DataMover_Guia_ES.pdf']:
+    w.append(f)
+w.write('$ZIP_STAGE/Ghid-de-Utilizare.pdf')
+" 2>/dev/null || cp "../docs/guides/DataMover_Ghid_RO.pdf" "$ZIP_STAGE/Ghid-de-Utilizare.pdf" 2>/dev/null || true
 ( cd "$ZIP_STAGE" && zip -q -r -y "../DataMover-Mac.zip" . )
 rm -rf "$ZIP_STAGE"
 
