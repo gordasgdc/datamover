@@ -120,11 +120,11 @@ RO = {
                   "aplicatia are nevoie de un cod de activare personal ca sa continue sa porneasca."),
             ("table", [
                 ("Pasul 1", "Apasa „Activeaza licenta” din bara de sus a aplicatiei — oricand, in timpul probei sau dupa."),
-                ("Pasul 2", "In fereastra de activare vezi ID-ul calculatorului tau (buton Copiaza langa el) si un buton verde de WhatsApp — apasa-l ca sa ma contactezi direct, cu ID-ul copiat, pentru cumparare."),
+                ("Pasul 2", "In fereastra de activare vezi ID-ul calculatorului tau (buton Copiaza langa el) si un buton verde de WhatsApp — apasa-l ca sa ma contactezi direct, cu ID-ul copiat, pentru donatie (activare)."),
                 ("Pasul 3", "Iti trimit inapoi codul de activare personal, legat exact de calculatorul tau — nu va functiona pe alt calculator, chiar daca il distribui."),
                 ("Pasul 4", "Introduci codul primit in campul „Cod licenta” si apesi Activeaza. Aplicatia porneste normal de fiecare data, fara sa mai ceara codul din nou."),
             ]),
-            ("p", "Cei 23 € sunt o donatie, nu un pret de lista — ma ajuta sa acopar costurile de "
+            ("p", "Cei 23 € sunt o donatie — ma ajuta sa acopar costurile de "
                   "dezvoltare si sa continui sa intretin si imbunatatesc aplicatia."),
             ("p", "Nota: daca schimbi calculatorul, ai nevoie de un cod nou — scrie-mi din nou pe WhatsApp."),
         ]},
