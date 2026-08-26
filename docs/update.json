@@ -1,7 +1,7 @@
 {
-  "version": "2.5.4",
+  "version": "2.5.5",
   "release_date": "2026-08-26",
-  "changes": "Reparat butonul de actualizare pe Mac: acum descarca si instaleaza automat ultima versiune, in loc sa deschida pagina de GitHub in browser. Flux de release optimizat (release.sh).",
+  "changes": "Versiune de test pentru validarea fluxului de auto-update pe Mac (fara alte schimbari functionale).",
   "download_url": {
     "windows": "https://github.com/gordasgdc/datamover/releases/latest/download/DataMover-Windows.zip",
     "mac": "https://github.com/gordasgdc/datamover/releases/latest/download/DataMover-Mac.zip"
