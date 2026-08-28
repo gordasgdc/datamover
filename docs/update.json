@@ -1,7 +1,7 @@
 {
-  "version": "2.5.5",
-  "release_date": "2026-08-26",
-  "changes": "Versiune de test pentru validarea fluxului de auto-update pe Mac (fara alte schimbari functionale).",
+  "version": "2.6.0",
+  "release_date": "2026-08-28",
+  "changes": "Fix real de memorie/swap la transferuri mari (3+ TB); Setari I/O & Memorie granulare cu preset-uri; detectare duplicate la pornire (Completeaza/Reia, Folder nou, Suprascrie); Pauza/Continua fara pierdere de progres; istoric extins cu deschidere directa in Finder; profile de transfer salvabile.",
   "download_url": {
     "windows": "https://github.com/gordasgdc/datamover/releases/latest/download/DataMover-Windows.zip",
     "mac": "https://github.com/gordasgdc/datamover/releases/latest/download/DataMover-Mac.zip"
