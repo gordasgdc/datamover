@@ -1012,7 +1012,12 @@
   // versiune, fara nicio intretinere manuala aici la fiecare release).
   (function initDirectDownload() {
     const RELEASE_BASE = 'https://github.com/gordasgdc/datamover/releases/latest/download/';
-    const FILES = { mac: RELEASE_BASE + 'DataMover-Mac.zip', win: RELEASE_BASE + 'DataMover-Windows.zip' };
+    // 2026-08-28: butonul Windows trece la clientul WPF nou
+    // (DataMover-WPF-Windows.zip) - design "Shift" aliniat cu Mac,
+    // cerut explicit de Cristi. Clientul Python vechi (DataMover-Windows.zip)
+    // ramane publicat pe fiecare release, accesibil manual din pagina de
+    // Releases GitHub, dar nu mai e ce ofera site-ul implicit.
+    const FILES = { mac: RELEASE_BASE + 'DataMover-Mac.zip', win: RELEASE_BASE + 'DataMover-WPF-Windows.zip' };
 
     const ua = navigator.userAgent || '';
     const plat = navigator.platform || '';

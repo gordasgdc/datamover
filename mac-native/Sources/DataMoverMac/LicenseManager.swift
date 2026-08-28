@@ -46,6 +46,17 @@ final class LicenseManager: ObservableObject {
 
     var isTrialActive: Bool { trialDaysRemaining > 0 }
 
+    /// Codul de licenta SALVAT pe disc, daca exista - doar pentru afisare
+    /// in panoul de Profil (2026-08-28, cerut de Cristi: "sa isi vada
+    /// serialul care l-a introdus, ca sa stie care e"). Nu revalideaza
+    /// nimic aici, doar citeste fisierul - la fel ca `SavedLicenseCode`
+    /// (Windows, LicenseManager.cs).
+    var savedLicenseCode: String? {
+        guard let url = activationFileURL,
+              let code = try? String(contentsOf: url, encoding: .utf8) else { return nil }
+        return code.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     /// Singurul loc verificat inainte de a permite pornirea unui offload.
     var isUnlocked: Bool { isLicensed || isTrialActive }
 

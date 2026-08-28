@@ -138,6 +138,19 @@ enum L {
         "history.skipped": [.ro: "Sarite", .en: "Skipped", .es: "Omitidos"],
         "history.failed": [.ro: "Esuate", .en: "Failed", .es: "Fallidos"],
 
+        // MARK: - Profil utilizator (2026-08-28, sectiune noua in Setari -
+        // Cristi: "nu vad panoul... numele, email, ID-ul masinii, plus
+        // acces sa-si vada serialul introdus, ca sa stie care e")
+        "profile.title": [.ro: "Profil & Licenta", .en: "Profile & License", .es: "Perfil y licencia"],
+        "profile.name": [.ro: "Nume (optional)", .en: "Name (optional)", .es: "Nombre (opcional)"],
+        "profile.email": [.ro: "Email (optional)", .en: "Email (optional)", .es: "Email (opcional)"],
+        "profile.machineId": [.ro: "ID calculator", .en: "Machine ID", .es: "ID del ordenador"],
+        "profile.savedCode": [.ro: "Cod de licenta salvat", .en: "Saved license code", .es: "Código de licencia guardado"],
+        "profile.noCode": [.ro: "Niciun cod salvat inca — activeaza mai jos.", .en: "No saved code yet — activate below.", .es: "Aún no hay código guardado — activa abajo."],
+        "profile.licensedStatus": [.ro: "Licentiat.", .en: "Licensed.", .es: "Con licencia."],
+        "profile.expiredStatus": [.ro: "Proba a expirat.", .en: "Trial expired.", .es: "La prueba ha caducado."],
+        "profile.activate": [.ro: "Activeaza…", .en: "Activate…", .es: "Activar…"],
+
         // MARK: - Activation sheet
         "activation.title": [.ro: "Activare DataMover", .en: "Activate DataMover", .es: "Activar DataMover"],
         "activation.machineID": [.ro: "ID calculator (trimite-mi asta):", .en: "Computer ID (send me this):", .es: "ID del ordenador (envíamelo):"],

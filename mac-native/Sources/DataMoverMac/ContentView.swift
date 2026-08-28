@@ -34,6 +34,10 @@ struct ContentView: View {
     // IOSettings.chunkSizeMB/ramLimitMB, ca engine-ul sa citeasca direct
     // ce alege userul aici, fara alt strat de sincronizare.
     @AppStorage("datamover_chunk_size_mb") private var chunkSizeMB = IOSettings.defaultChunkSizeMB
+    // Profil utilizator (2026-08-28) - Nume/Email optionale, doar locale
+    // (@AppStorage, la fel ca restul setarilor din acest fisier).
+    @AppStorage("datamover_profile_name") private var profileName = ""
+    @AppStorage("datamover_profile_email") private var profileEmail = ""
     @AppStorage("datamover_ram_limit_mb") private var ramLimitMB = 1024
     @State private var showCompletionAlert = false
     @State private var resumeEnabled: Bool = true
@@ -787,6 +791,9 @@ struct ContentView: View {
             }
 
             Divider()
+            profileSection
+
+            Divider()
             Button {
                 UpdateChecker.checkAndShowAlert()
             } label: {
@@ -796,6 +803,70 @@ struct ContentView: View {
         }
         .padding(16)
         .frame(width: 360)
+    }
+
+    // MARK: - Profil utilizator + Licenta (2026-08-28)
+    // Lipsea complet - Cristi: "nu vad panoul... numele de la client,
+    // email, ID-ul masinii, plus acces sa-si vada serialul introdus, ca
+    // sa stie care e". Nume/Email raman locale (@AppStorage) - Mac nu are
+    // inca infrastructura Supabase de profil (vezi flag de paritate din
+    // CLAUDE.md, portat deja pe Windows) - de aliniat la o etapa viitoare.
+    private var profileSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(L.t("profile.title")).font(.system(size: 11)).foregroundStyle(.secondary)
+
+            TextField(L.t("profile.name"), text: $profileName)
+                .textFieldStyle(.roundedBorder)
+            TextField(L.t("profile.email"), text: $profileEmail)
+                .textFieldStyle(.roundedBorder)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(L.t("profile.machineId")).font(.system(size: 10)).foregroundStyle(.secondary)
+                HStack {
+                    Text(MachineID.display).font(.system(.caption, design: .monospaced))
+                    Spacer()
+                    Button(L.t("activation.copy")) {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(MachineID.display, forType: .string)
+                    }
+                    .buttonStyle(.link)
+                    .font(.system(size: 11))
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(L.t("profile.savedCode")).font(.system(size: 10)).foregroundStyle(.secondary)
+                if let code = license.savedLicenseCode {
+                    HStack {
+                        Text(code).font(.system(.caption, design: .monospaced)).lineLimit(1).truncationMode(.middle)
+                        Spacer()
+                        Button(L.t("activation.copy")) {
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(code, forType: .string)
+                        }
+                        .buttonStyle(.link)
+                        .font(.system(size: 11))
+                    }
+                } else {
+                    HStack {
+                        Text(L.t("profile.noCode")).font(.system(size: 11)).foregroundStyle(.secondary)
+                        Spacer()
+                        Button(L.t("profile.activate")) { showSettings = false; showActivation = true }
+                            .buttonStyle(.link)
+                            .font(.system(size: 11))
+                    }
+                }
+            }
+
+            if license.isLicensed {
+                Text(L.t("profile.licensedStatus")).font(.system(size: 11)).foregroundStyle(.secondary)
+            } else if license.isTrialActive {
+                Text(String(format: L.t("trial.daysLeft"), license.trialDaysRemaining)).font(.system(size: 11)).foregroundStyle(.secondary)
+            } else {
+                Text(L.t("profile.expiredStatus")).font(.system(size: 11)).foregroundStyle(.red)
+            }
+        }
+        .font(.system(size: 12))
     }
 
     /// "512 MB" sub 1 GB, "8 GB" de la 1024 MB in sus - cerinta explicita

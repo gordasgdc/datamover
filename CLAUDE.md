@@ -833,3 +833,49 @@ sintaxa OK. `dotnet build` (Debug) - 0 erori dupa toate schimbarile.
 (necesita Windows - se va confirma la prima rulare CI/release real),
 si fluxul complet `release.sh` (necesita un release real, nu doar
 pregatire - urmeaza cand Cristi confirma ca vrea sa apese "publica").
+
+**[CONFIRMAT 2026-08-28] Publicat `v2.7.0` — primul release cu 3 artefacte
+(Mac + Windows Python + Windows WPF).** `release.sh` a cazut o data in
+Pasul 2 pe ACEEASI eroare de permisiuni documentata deja mai jos in acest
+fisier (`dist/DataMover.app` ramas `root:wheel` dintr-un build anterior
+cu `sudo`) - Cristi a rulat manual `sudo rm -rf mac-native/dist`, apoi
+`release.sh` a rulat curat pana la capat (Mac semnat+notarizat+stapled,
+CI Windows x2 verde, toate 3 artefactele HTTP 200 pe tag-ul corect).
+**Regula practica confirmata**: aceasta eroare de permisiuni tinde sa
+reapara oricand cineva a rulat vreodata un build Mac cu `sudo` - de
+verificat `ls -la mac-native/dist` INAINTE de a rula `release.sh`, nu
+doar dupa ce pica.
+
+## Etapa 2026-08-28 (6) — 2 probleme reale gasite dupa primul release v2.7.0
+
+1. **Site-ul (`docs/index.html`) dadea clientul Windows VECHI (Python).**
+   Cristi a descarcat de pe `gordas.dev/datamover` si a primit designul
+   vechi ("imi da versiunea veche") - cauza REALA, nu cache: butonul
+   Windows din `initDirectDownload()` tintea `DataMover-Windows.zip`
+   (clientul Python), niciodata schimbat catre clientul WPF nou. Fix,
+   confirmat explicit de Cristi: `FILES.win` -> `DataMover-WPF-Windows.zip`.
+   **Clientul Python vechi ramane publicat pe fiecare release** (nu
+   sters, nu oprit din CI) - doar nu mai e ce ofera site-ul implicit;
+   ramane accesibil manual din pagina de Releases GitHub. `docs/
+   update.json` campul `"windows"` (folosit de self-update-ul clientului
+   Python INSTALAT deja la userii vechi) **NU s-a atins** - schimbarea
+   lui ar fi facut update checker-ul vechi sa incerce sa se auto-inlocuiasca
+   cu binarul WPF, flux netestat si periculos pentru useri existenti.
+2. **Mismatch real de 7 vs 15 zile proba, intre Mac si Windows.**
+   `LicenseManager.swift` (Mac) foloseste explicit `trialDurationDays = 7`
+   (nu 15, valoarea implicita din Regula 3 a ecosistemului) - `LicenseManager.cs`
+   (Windows, scris in aceasta sesiune) fusese copiat gresit cu 15. Fixat
+   la 7, cu comentariu explicit sa nu se mai repete confuzia.
+3. **Mac nu avea panou de Profil vizibil** (Cristi: "nu vad... numele de
+   la client, email, ID-ul masinii, plus acces sa-si vada serialul").
+   Adaugat `profileSection` (nou) in popover-ul de Setari
+   (`ContentView.swift`): Nume/Email optionale (`@AppStorage`, LOCALE -
+   Mac nu are inca infrastructura Supabase portata pe Windows in aceasta
+   sesiune, ramane flag de paritate), Machine ID cu buton Copiaza, si
+   **codul de licenta salvat** cu buton Copiaza (`LicenseManager.
+   savedLicenseCode`, nou - citeste fisierul deja salvat, nu revalideaza
+   nimic). Daca nu exista cod salvat, un link "Activeaza…" deschide
+   `ActivationSheet` direct din Setari.
+
+**Verificat**: `swift build` (Mac) - 0 erori. `dotnet build` (Windows,
+fix trial) - 0 erori.
