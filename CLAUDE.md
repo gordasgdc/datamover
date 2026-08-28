@@ -769,3 +769,67 @@ client WPF nu e inca livrat, vezi TODO installer).
 **Verificat**: `dotnet build` (Core + Client, C# + XAML→BAML) - 0 erori,
 0 avertismente. **Nu s-a testat inca real pe Windows** fluxul de
 Activare/Profil/Update/PDF - urmeaza confirmarea lui Cristi.
+
+**[CONFIRMAT 2026-08-28]** Cristi a testat real pe Windows - PDF-ul nu
+aparea deloc. Diagnosticat prin fisierul `offload_report_PDF_EROARE.txt`
+(adaugat ca fallback in acelasi commit al fix-ului): `QuestPDF` nu are
+build nativ pentru **win-arm64** - Cristi ruleaza Windows in Parallels pe
+Mac Apple Silicon, deci host-ul e ARM64, iar proiectul (implicit "Any
+CPU") rula procesul ca win-arm64. QuestPDF cere explicit "Platform target
+= x64 sau x86, nu Any CPU" - Windows 11 ARM ruleaza un proces x64 prin
+emulatie nativa a OS-ului. Fix: `<PlatformTarget>x64</PlatformTarget>` in
+`DataMover.Client.csproj`. **Regula practica noua**: orice pachet NuGet
+cu dependinte native (Skia, etc.) intr-un proiect WPF trebuie testat cu
+`PlatformTarget` explicit, niciodata "Any CPU" implicit - un host ARM64
+(Parallels pe Mac, sau un Windows on ARM real) altfel pica silentios pe
+orice librarie fara build arm64.
+
+## Etapa 2026-08-28 (5) — Installer Inno Setup + CI pentru clientul WPF (pregatire pentru primul release real)
+
+Cerinta lui Cristi ("se poate publica") - dupa ce a vazut clientul WPF
+functional (drive-uri, drag&drop, PDF, profil/licentiere), a ales explicit
+sa PREGATIM intai installer-ul inainte de orice release public (nu
+publicare directa fara pachet propriu). Inchide TODO #4 din etapa (2).
+
+1. **`windows-native/installer.iss` (nou)** - Inno Setup, port al
+   `installer.iss` din radacina (clientul Python vechi), dar SEPARAT -
+   cei doi clienti Windows coexista, fiecare cu propriul installer.
+   `LicenseFile=License.txt` inclus de la ÎNCEPUT (Regula 19, Consent
+   Gate - obligatoriu pentru orice installer NOU, nu opt-in).
+   `[UninstallDelete]` acopera `%LocalAppData%\DataMover` SI
+   `%AppData%\DataMover` (LicenseManager/UserProfileStore scriu in primul,
+   HistoryStore/TransferProfileStore/UpdateChecker dismissal in al doilea).
+2. **`windows-native/License.txt` (nou)** - NU un MIT License generic
+   (interzis explicit de completarea 2026-08-27 a Regulii 19) - text
+   propriu cu cele 4 puncte cerute: statut independent, licentiere
+   Machine ID, natura de donatie, garantie "as is"/limitare raspundere.
+3. **Iconita** - `windows-native/DataMover.Client/app.ico` (copiat din
+   `DataMover.ico` existent la radacina repo, acelasi folosit de clientul
+   Python) + `<ApplicationIcon>` in `.csproj`.
+4. **`.github/workflows/build-windows-wpf.yml` (nou)** - CI separat,
+   ruleaza doar cand se modifica `windows-native/**` (path filter, ca sa
+   nu dubleze build-ul la fiecare push care nu-l atinge): `dotnet publish
+   -r win-x64 --self-contained` + compilare Inno Setup + arhiva
+   `DataMover-WPF-Windows.zip` ca artefact descarcabil (verificare
+   continua, NU e inca folosit pentru un release real).
+5. **`release.yml`** - job nou `build-windows-wpf` (aceeasi reteta ca (4),
+   ruleaza la push de tag), inclus in `needs` al `create-release` -
+   arhiva `DataMover-WPF-Windows.zip` se ataseaza acum AUTOMAT la orice
+   release viitor, alaturi de Mac si de clientul Python vechi.
+6. **`release.sh`** - extins sa bumpe si sincronizeze ACUM 6 locuri (nu 4):
+   adaugat `windows-native/DataMover.Client/DataMover.Client.csproj` si
+   `windows-native/installer.iss`, cu aceeasi verificare HARD ca toate sa
+   ajunga la versiunea ceruta. `docs/update.json` capata campul nou
+   `download_url.windows_wpf` (URL stabil `releases/latest/download/
+   DataMover-WPF-Windows.zip`, Regula 17 - campul `windows` existent
+   ramane neatins, tinteste tot clientul Python). Verificarea finala HTTP
+   include acum si `DataMover-WPF-Windows.zip`.
+
+**Verificat**: `dotnet publish -r win-x64 --self-contained` ruleaza cu
+succes DE PE MAC (`EnableWindowsTargeting`) - produce `DataMover.exe` +
+264 fisiere in `publish/`, verificat manual. `bash -n release.sh` -
+sintaxa OK. `dotnet build` (Debug) - 0 erori dupa toate schimbarile.
+**NU verificat inca**: compilarea REALA a `installer.iss` cu Inno Setup
+(necesita Windows - se va confirma la prima rulare CI/release real),
+si fluxul complet `release.sh` (necesita un release real, nu doar
+pregatire - urmeaza cand Cristi confirma ca vrea sa apese "publica").

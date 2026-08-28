@@ -1,0 +1,51 @@
+name: Build DataMover WPF (Windows nou, .NET/Wpf.Ui)
+
+# Client Windows nou (windows-native/), separat de clientul Python vechi
+# (build-windows.yml) - cei doi coexista pana la validarea completa a
+# celui nou (vezi CLAUDE.md). Ruleaza doar cand se schimba ceva in
+# windows-native/, ca sa nu dubleze CI-ul la fiecare push care nu-l
+# atinge.
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'windows-native/**'
+      - '.github/workflows/build-windows-wpf.yml'
+  workflow_dispatch: {}
+
+jobs:
+  build-windows-wpf:
+    runs-on: windows-latest
+
+    steps:
+      - name: Descarca codul din repo
+        uses: actions/checkout@v4
+
+      - name: Instaleaza .NET 8 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Publica clientul WPF (self-contained, win-x64)
+        run: |
+          dotnet publish windows-native/DataMover.Client/DataMover.Client.csproj `
+            -c Release -r win-x64 --self-contained true `
+            -p:PublishSingleFile=false `
+            -o windows-native/publish
+
+      - name: Compileaza instalatorul (Inno Setup - preinstalat pe windows-latest)
+        run: |
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" windows-native\installer.iss
+
+      - name: Arhiveaza instalatorul intr-un .zip
+        run: |
+          mkdir windows-native\dist_final
+          copy "windows-native\Output\DataMoverSetup.exe" windows-native\dist_final\
+          Compress-Archive -Path "windows-native\dist_final\*" -DestinationPath "windows-native\DataMover-WPF-Windows.zip"
+
+      - name: Incarca .zip ca artefact descarcabil
+        uses: actions/upload-artifact@v4
+        with:
+          retention-days: 7
+          name: DataMover-WPF-Windows
+          path: windows-native/DataMover-WPF-Windows.zip

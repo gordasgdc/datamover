@@ -26,6 +26,7 @@
          (Python/Tkinter). Versiune sincronizata cu varianta Mac/Python -
          vezi Regula 14 din CLAUDE.md. -->
     <Version>2.7.0</Version>
+    <ApplicationIcon>app.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>

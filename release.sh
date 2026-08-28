@@ -62,7 +62,7 @@ fi
 # CHANGELOG.md v2.5.2 (core/update_config.py ramasese blocat 5 zile la o
 # versiune veche, exact pentru ca update-ul asta se face de obicei manual
 # si se uita un loc).
-echo "==> [1/6] Bump versiune in Info.plist, installer.iss, docs/update.json, core/update_config.py…"
+echo "==> [1/6] Bump versiune in Info.plist, installer.iss, docs/update.json, core/update_config.py, windows-native…"
 
 OLD_BUILD=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" mac-native/Info.plist)
 NEW_BUILD=$((OLD_BUILD + 1))
@@ -70,6 +70,12 @@ NEW_BUILD=$((OLD_BUILD + 1))
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $NEW_BUILD" mac-native/Info.plist
 
 sed -i '' -E "s/#define MyAppVersion \"[0-9]+\.[0-9]+\.[0-9]+\"/#define MyAppVersion \"$VERSION\"/" installer.iss
+
+# windows-native (client WPF nou) - propriul .csproj + installer.iss,
+# ACUM sincronizate cu release-ul principal (2026-08-28: primul release
+# care publica si acest client - vezi CLAUDE.md).
+sed -i '' -E "s/<Version>[0-9]+\.[0-9]+\.[0-9]+<\/Version>/<Version>$VERSION<\/Version>/" windows-native/DataMover.Client/DataMover.Client.csproj
+sed -i '' -E "s/#define MyAppVersion \"[0-9]+\.[0-9]+\.[0-9]+\"/#define MyAppVersion \"$VERSION\"/" windows-native/installer.iss
 
 python3 - "$VERSION" "$CHANGES" <<'PY'
 import json, sys, collections, datetime
@@ -79,6 +85,10 @@ d = json.load(open(p), object_pairs_hook=collections.OrderedDict)
 d["version"] = version
 d["release_date"] = datetime.date.today().isoformat()
 d["changes"] = changes
+# Client WPF nou (2026-08-28) - acum publicat de release.sh ca artefact
+# real (DataMover-WPF-Windows.zip), vezi build-windows-wpf in release.yml.
+# Campul "windows" ramane pt. clientul Python vechi (coexista).
+d["download_url"]["windows_wpf"] = "https://github.com/gordasgdc/datamover/releases/latest/download/DataMover-WPF-Windows.zip"
 json.dump(d, open(p, "w"), indent=2, ensure_ascii=False)
 open(p, "a").write("\n")
 PY
@@ -92,7 +102,9 @@ FOUND_PLIST=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" mac
 FOUND_ISS=$(grep -oE 'MyAppVersion "[0-9.]+"' installer.iss | grep -oE '[0-9.]+')
 FOUND_JSON=$(python3 -c "import json;print(json.load(open('docs/update.json'))['version'])")
 FOUND_PY=$(grep -oE 'APP_VERSION = "[0-9.]+"' core/update_config.py | grep -oE '[0-9.]+')
-for pair in "Info.plist:$FOUND_PLIST" "installer.iss:$FOUND_ISS" "update.json:$FOUND_JSON" "update_config.py:$FOUND_PY"; do
+FOUND_WPF_CSPROJ=$(grep -oE '<Version>[0-9.]+</Version>' windows-native/DataMover.Client/DataMover.Client.csproj | grep -oE '[0-9.]+')
+FOUND_WPF_ISS=$(grep -oE 'MyAppVersion "[0-9.]+"' windows-native/installer.iss | grep -oE '[0-9.]+')
+for pair in "Info.plist:$FOUND_PLIST" "installer.iss:$FOUND_ISS" "update.json:$FOUND_JSON" "update_config.py:$FOUND_PY" "windows-native/DataMover.Client.csproj:$FOUND_WPF_CSPROJ" "windows-native/installer.iss:$FOUND_WPF_ISS"; do
     name="${pair%%:*}"; found="${pair##*:}"
     if [ "$found" != "$VERSION" ]; then
         echo "EROARE: $name a ramas la $found, nu $VERSION — bump esuat." >&2
@@ -133,7 +145,8 @@ echo "    OK — Gatekeeper confirma: semnat si notarizat."
 
 # ── Pas 4: commit versiune + push (main) ────────────────────────────────
 echo "==> [4/6] Commit + push bump de versiune…"
-git add mac-native/Info.plist installer.iss docs/update.json core/update_config.py
+git add mac-native/Info.plist installer.iss docs/update.json core/update_config.py \
+    windows-native/DataMover.Client/DataMover.Client.csproj windows-native/installer.iss
 git commit -q -m "Versiune $VERSION
 
 $CHANGES
@@ -191,7 +204,7 @@ echo "════════════════════════�
 echo " Verificare finala (releases/latest/download + API de update)"
 echo "════════════════════════════════════════════════════════════════"
 FAILED=0
-for f in DataMover-Mac.zip DataMover-Windows.zip; do
+for f in DataMover-Mac.zip DataMover-Windows.zip DataMover-WPF-Windows.zip; do
     CODE=$(curl -sIL -o /dev/null -w '%{http_code}' "https://github.com/gordasgdc/datamover/releases/latest/download/$f")
     RESOLVED_TAG=$(curl -sI "https://github.com/gordasgdc/datamover/releases/latest/download/$f" \
         | grep -i '^location:' | grep -oE "v[0-9]+\.[0-9]+\.[0-9]+" | head -1)
