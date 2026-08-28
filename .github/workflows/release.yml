@@ -104,6 +104,44 @@ jobs:
           name: windows-build
           path: DataMover-Windows.zip
 
+  # Client Windows NOU (windows-native/, WPF + Wpf.Ui) - coexista cu
+  # clientul Python de mai sus pana la validare completa (vezi CLAUDE.md).
+  # Nu inlocuieste build-windows - produce un artefact SEPARAT.
+  build-windows-wpf:
+    runs-on: windows-latest
+    steps:
+      - name: Descarca codul din repo
+        uses: actions/checkout@v4
+
+      - name: Instaleaza .NET 8 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Publica clientul WPF (self-contained, win-x64)
+        run: |
+          dotnet publish windows-native/DataMover.Client/DataMover.Client.csproj `
+            -c Release -r win-x64 --self-contained true `
+            -p:PublishSingleFile=false `
+            -o windows-native/publish
+
+      - name: Compileaza instalatorul (Inno Setup)
+        run: |
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" windows-native\installer.iss
+
+      - name: Arhiveaza instalatorul intr-un .zip
+        run: |
+          mkdir windows-native\dist_final
+          copy "windows-native\Output\DataMoverSetup.exe" windows-native\dist_final\
+          Compress-Archive -Path "windows-native\dist_final\*" -DestinationPath "DataMover-WPF-Windows.zip"
+
+      - name: Salveaza pentru pasul de release
+        uses: actions/upload-artifact@v4
+        with:
+          retention-days: 1
+          name: windows-wpf-build
+          path: DataMover-WPF-Windows.zip
+
   # NOTA (2026-08-25): job-ul "build-mac" a fost ELIMINAT — semna ad-hoc
   # (`codesign --sign -`, `TeamIdentifier=not set`), zero certificare
   # Apple reala, si folosea un launcher cu `xattr -dr com.apple.quarantine`
@@ -117,13 +155,19 @@ jobs:
   # 3. `gh release create` cu ambele artefacte (pkg+zip Mac local +
   #    zip Windows descarcat din acest workflow) — vezi CLAUDE.md.
   create-release:
-    needs: [build-windows]
+    needs: [build-windows, build-windows-wpf]
     runs-on: ubuntu-latest
     steps:
-      - name: Descarca fisierul Windows compilat
+      - name: Descarca fisierul Windows compilat (client Python vechi)
         uses: actions/download-artifact@v4
         with:
           name: windows-build
+          path: release-files
+
+      - name: Descarca fisierul Windows compilat (client WPF nou)
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-wpf-build
           path: release-files
 
       - name: Creeaza Release-ul pe GitHub (Windows) — Mac se ataseaza manual, local

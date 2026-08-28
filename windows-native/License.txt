@@ -1,0 +1,34 @@
+DataMover — Termeni de utilizare (rezumat obligatoriu la instalare)
+====================================================================
+
+1. STATUT INDEPENDENT
+DataMover este dezvoltat si distribuit de un dezvoltator independent
+(Cristi Gordas), nu de o companie sau corporatie. Nu exista un
+departament de suport comercial clasic — contactul se face direct
+(WhatsApp/email), prin canalele afisate in aplicatie.
+
+2. LICENTIERE LEGATA DE MACHINE ID
+Aplicatia foloseste o perioada de proba gratuita (15 zile). Dupa
+expirare, continuarea folosirii necesita un cod de activare legat de
+identificatorul unic al calculatorului tau (Machine ID), generat si
+transmis manual de dezvoltator. Codul de activare functioneaza DOAR pe
+masina pentru care a fost generat, daca este marcat ca atare.
+
+3. NATURA DE DONATIE A SUSTINERII
+Suma asociata activarii aplicatiei NU reprezinta un pret de vanzare in
+sensul comercial clasic, ci o contributie/donatie optionala de sustinere
+a dezvoltarii si mentinerii proiectului. Aceasta nu implica un contract
+de vanzare-cumparare cu garantii comerciale standard.
+
+4. GARANTIE "AS IS" / LIMITAREA RASPUNDERII
+Aplicatia este furnizata "ca atare" (AS IS), fara nicio garantie expresa
+sau implicita, inclusiv (dar fara a se limita la) garantii de
+vandabilitate sau adecvare pentru un anumit scop. Dezvoltatorul nu este
+raspunzator pentru nicio pierdere de date, prejudiciu sau daune rezultate
+din utilizarea acestei aplicatii. Se recomanda intotdeauna pastrarea unei
+copii de rezerva a datelor inainte de orice operatiune de transfer/
+copiere de volum mare.
+
+Continuarea instalarii reprezinta acceptarea explicita a acestor termeni.
+Textul complet, actualizat, este disponibil la:
+https://gordas.dev/termeni si https://gordas.dev/confidentialitate
