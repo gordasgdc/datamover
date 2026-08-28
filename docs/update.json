@@ -1,10 +1,11 @@
 {
-  "version": "2.6.0",
+  "version": "2.7.0",
   "release_date": "2026-08-28",
-  "changes": "Fix real de memorie/swap la transferuri mari (3+ TB); Setari I/O & Memorie granulare cu preset-uri; detectare duplicate la pornire (Completeaza/Reia, Folder nou, Suprascrie); Pauza/Continua fara pierdere de progres; istoric extins cu deschidere directa in Finder; profile de transfer salvabile.",
+  "changes": "Client Windows nou (WPF/Wpf.Ui) cu installer propriu, alaturi de Mac si clientul Python existent: raport PDF, detectare automata a discurilor cu iconite native, profil utilizator + licentiere Ed25519 + verificare online de revocare, Update Checker si Self-Updater, drag&drop din Explorer, deschidere automata a destinatiei la final, layout complet responsiv.",
   "download_url": {
     "windows": "https://github.com/gordasgdc/datamover/releases/latest/download/DataMover-Windows.zip",
-    "mac": "https://github.com/gordasgdc/datamover/releases/latest/download/DataMover-Mac.zip"
+    "mac": "https://github.com/gordasgdc/datamover/releases/latest/download/DataMover-Mac.zip",
+    "windows_wpf": "https://github.com/gordasgdc/datamover/releases/latest/download/DataMover-WPF-Windows.zip"
   },
   "mandatory": false,
   "min_version": "1.0.0"
