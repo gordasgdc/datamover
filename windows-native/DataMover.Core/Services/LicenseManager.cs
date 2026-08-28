@@ -10,7 +10,12 @@ public sealed class LicenseManager
 {
     public static readonly LicenseManager Shared = new();
     public const string ProductId = "gdc-datamover";
-    public const int TrialDurationDays = 15;
+    // 7, NU 15 - trebuie sa fie IDENTIC cu LicenseManager.swift (Mac),
+    // acelasi ProductId inseamna acelasi produs/aceleasi coduri de
+    // activare emise. Gresit copiat initial dupa Regula 3 (implicitul
+    // ecosistemului), dar DataMover Mac foloseste explicit 7 zile -
+    // gasit la audit 2026-08-28, dupa observatia lui Cristi despre profil.
+    public const int TrialDurationDays = 7;
 
     public bool IsLicensed { get; private set; }
     public long LicenseExpiresAt { get; private set; }
