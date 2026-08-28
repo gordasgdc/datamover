@@ -136,9 +136,11 @@ public sealed class DestinationJob
     public int FailCount { get; private set; }
     public bool Cancelled { get; private set; }
     public string? CsvPath { get; private set; }
+    public string? PdfPath { get; private set; }
 
-    private const int PdfSampleLimit = 500; // pastrat ca nume, desi aici nu mai generam PDF - vezi CLAUDE.md TODO
+    private const int PdfSampleLimit = 500; // esantion plafonat pentru PDF (Regula 21) - lista completa ramane in CSV
     private readonly List<ReportRow> _sampleRows = new();
+    private DateTime _startedAt;
     private readonly Dictionary<string, string> _filesStatus = new();
     private int _filesSinceCheckpoint;
     private DateTime _lastCheckpointTime = DateTime.MinValue;
@@ -162,6 +164,7 @@ public sealed class DestinationJob
 
     public DestinationResult Run()
     {
+        _startedAt = DateTime.Now;
         var targetRoot = Path.Combine(DestRoot, FolderName);
         Directory.CreateDirectory(targetRoot);
 
@@ -259,12 +262,30 @@ public sealed class DestinationJob
 
         MaybeWriteCheckpoint(targetRoot, force: true);
         CloseCsv();
+        WritePdf(targetRoot);
 
         return new DestinationResult
         {
             DestRoot = DestRoot, OkCount = OkCount, SkipCount = SkipCount,
-            FailCount = FailCount, Cancelled = Cancelled, CsvPath = CsvPath,
+            FailCount = FailCount, Cancelled = Cancelled, CsvPath = CsvPath, PdfPath = PdfPath,
         };
+    }
+
+    private void WritePdf(string targetRoot)
+    {
+        try
+        {
+            string? truncatedNote = Files.Count > _sampleRows.Count
+                ? $"Esantion plafonat: {_sampleRows.Count} din {Files.Count} fisiere afisate mai jos (toate erorile/nepotrivirile sunt incluse). Lista completa e in CSV-ul de langa acest raport."
+                : null;
+            PdfPath = PdfReport.Generate(
+                targetRoot, DestRoot, FolderName, _sampleRows, _startedAt, DateTime.Now,
+                OkCount, SkipCount, FailCount, Cancelled, Model.Label(), truncatedNote);
+        }
+        catch (Exception ex)
+        {
+            OnActivity?.Invoke($"Nu s-a putut genera raportul PDF: {ex.Message}");
+        }
     }
 
     private (bool same, string srcRepr, string dstRepr) VerifyPair(FileEntry entry, string destPath)

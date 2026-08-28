@@ -655,3 +655,117 @@ lipsuri, toate reparate in aceeasi sesiune:
 Verificat: `dotnet build` curat (C# + XAML->BAML) dupa toate cele 3
 fix-uri. Ramane de retestat REAL pe Windows (Parallels) inainte de a
 declara aceasta etapa completa - vezi WARNING standard.
+
+**[CONFIRMAT 2026-08-28]** Retestat de Cristi pe Windows real: cele 3
+fix-uri de mai sus functioneaza. Drag&drop a parut initial tot nefunctional
+- cauza reala gasita: Cristi rula `dotnet run` dintr-un PowerShell
+**elevat** ("Run as Administrator"), in timp ce Explorer.exe (sursa
+drag-ului) rula ca user normal - Windows blocheaza silentios drag&drop
+intre procese cu nivele de integritate/privilegii diferite (UIPI). Fix:
+niciunul in cod - doar rulat din PowerShell normal. **Regula practica
+noua**: orice test manual de drag&drop pe Windows trebuie facut dintr-un
+terminal NEelevat, altfel pare bug de cod cand nu e.
+
+## Etapa 2026-08-28 (4) — Raport PDF, iconite reale de disc, Versiune/Update/Self-Updater, Profil+Licentiere+Supabase, Panou dependinte, layout responsiv (Windows WPF)
+
+Cerinta lui Cristi dupa retestarea de mai sus, in doua runde: (1) raport
+PDF lipsa + iconite de disc "ca in Windows"; (2) dupa observatia ca
+lipsesc complet versiune/update/auto-update/profil-HWID-email/indicator
+dependinte, a ales explicit sa implementez toate patru deodata.
+
+**1. Raport PDF (`DataMover.Core/Services/PdfReport.cs`, nou).** Lipsea
+complet in clientul WPF (CSV/JSON existau, PDF nu fusese portat - vezi
+TODO din etapa (2)). Foloseste **QuestPDF** (licenta Community, gratuita
+pentru acest proiect - .NET nu are un echivalent nativ al `reportlab`).
+Port al `pdf_report.py`: antet cu destinatie/folder/model verificare/
+durata, sumar OK/Sarite/Probleme, tabel cu esantionul plafonat
+(`_sampleRows`, `PdfSampleLimit=500`, Regula 21 - toate erorile incluse
+oricum), nota de trunchiere daca esantionul nu acopera tot transferul.
+`DestinationJob.Run()` cheama `WritePdf()` dupa inchiderea CSV-ului;
+esec de generare PDF nu opreste transferul (doar logheaza in activitate).
+
+**2. Iconite REALE de disc (`ShellIcon.cs`, nou, `DataMover.Client`).**
+Cerut explicit: "sa apara imaginea, iconitele, simbolurile de la hard
+disk-uri, asa cum sunt prezentate in Windows" - nu o iconita desenata de
+noi, ci EXACT cea pe care o arata Explorer. `SHGetFileInfo` (Shell32,
+P/Invoke) + `Imaging.CreateBitmapSourceFromHIcon` (fara dependinta
+System.Drawing). `DriveTile.IconSource` nou, populat in `RefreshDrives()`,
+afisat in tile-ul din panoul "DISCURI DETECTATE".
+
+**3. Versiune vizibila + Update Checker + Self-Updater.** Lipseau
+COMPLET pe acest client (semnalat de Cristi: "aici nu vad numarul de
+versiune, update, auto update, actualizari"). `DataMover.Core/Services/
+UpdateChecker.cs` (nou) - citeste `docs/update.json` (ACELASI fisier
+folosit de Mac/Python, nu un API GitHub separat - vezi
+`core/update_config.py`), compara versiunea, expune
+`AvailableVersion`/`Changes`/`Mandatory`. `MainWindow` arata acum
+`VersionText` in footer si verifica automat la lansare (`respectDismissal:
+true`) + manual din footer/Profil (`respectDismissal: false`).
+
+**WARNING arhitectural, NU o omisiune**: clientul WPF inca NU are
+installer Inno Setup (TODO separat, nemodificat), deci self-update-ul nu
+poate folosi reteta "descarca .exe, lanseaza-l" ca GDCVaultWin.
+`SelfUpdater.cs` (nou, `DataMover.Client`) porteaza in schimb reteta deja
+functionala din `core/updater.py` (clientul Python vechi): descarca o
+arhiva `.zip`, extrage `DataMover.exe`, si il inlocuieste pe cel curent
+printr-un script `.bat` auxiliar care asteapta (in bucla) ca procesul
+curent sa elibereze fisierul, apoi relanseaza aplicatia. Citeste un camp
+JSON NOU, optional, `download_url.windows_wpf` din `update.json` - campul
+`windows` existent tinteste inca arhiva clientului Python vechi si NU
+trebuie folosit pentru acest client (l-ar inlocui cu binarul gresit).
+**`docs/update.json` NU are inca acest camp populat** (nicio arhiva reala
+a clientului WPF nu exista pana la primul release al lui) - codul
+detecteaza asta si arata un mesaj explicit ("arhiva nu e inca disponibila
+la acest link") in loc sa descarce ceva gresit. **De facut la primul
+release real al clientului WPF**: `release.sh` (sau un flux nou) trebuie
+sa publice o arhiva `DataMover-WPF-Windows.zip` si sa completeze acest
+camp in `update.json`.
+
+**4. Profil Utilizator/HWID + Licentiere Ed25519 + Revocare Supabase.**
+Portate 1:1 din `GDCVaultWin` (namespace ajustat la `DataMover.Core.
+Services`, acelasi proiect Supabase - Regula 12): `LicenseCore.cs`
+(validare seriale Ed25519, aceeasi cheie publica a ecosistemului),
+`MachineID.cs` (WMI `Win32_ComputerSystemProduct.UUID`), `LicenseManager.cs`
+(`ProductId="gdc-datamover"` - **acelasi ID ca `LicenseManager.swift`
+Mac**, `TrialDurationDays=15`, **fara gating dur pe Start - la fel ca Mac**,
+vezi mai jos), `SupabaseConfig.cs`/`AnalyticsClient.cs`/`RevocationCheck.cs`
+(fail-open)/`UserProfileStore.cs` (Nume/Email/MachineID persistate local).
+UI nou: `ProfileWindow.xaml(.cs)` (fereastra separata, deschisa din
+butonul "Profil" din footer) - arata status licenta/proba, camp de
+activare cod + link WhatsApp (`wa.me/34643109970`, acelasi numar ca restul
+ecosistemului), editare Nume/Email cu buton Salveaza (trimite telemetrie
+catre Supabase doar daca Numele nu e gol).
+
+**[GASIT LA AUDIT, NU REPARAT INCA - flag de paritate]** DataMover Mac
+(`LicenseManager.swift`) NU are inca infrastructura Supabase de Profil/
+Revocare (Regula 12) - doar trial+activare Ed25519 locala, 100% offline.
+Windows WPF e acum INAINTEA lui Mac la acest capitol - de aliniat Mac la
+aceeasi infrastructura la o viitoare etapa, nu invers.
+
+**5. Panou dependinte 🔴/🟢.** DataMover nu are dependinte externe grele
+(spre deosebire de CGConvertor/FFmpeg) - indicatorul din `ProfileWindow`
+e simplificat la un rand static verde ("Toate componentele necesare sunt
+prezente (.NET 8 runtime inclus)"), pastrat totusi vizibil pentru
+consecventa cu Regula 4 din restul ecosistemului, nu ca panou complet
+modular `DependencyItem` (nejustificat aici - nimic de verificat headless).
+
+**6. Layout responsiv (raportat de Cristi: "sa nu se urce una peste
+alta... sa fie destul de responsiv casutele").** Toate randurile
+orizontale din coloana centrala (`MainWindow.xaml` - Proiect/Card,
+Model verificare, Excluderi, preset-uri I/O, Buffer/RAM, Profile de
+transfer) convertite din `StackPanel Orientation="Horizontal"` in
+`WrapPanel` - la o fereastra ingusta, campurile trec pe randul urmator in
+loc sa se taie sau sa iasa din card. Footer-ul (progres/status/butoane)
+rescris pe 3 randuri SEPARATE (status text, apoi un `WrapPanel` de butoane
+aliniat dreapta) in loc de un `Grid` cu 2 coloane fixe - butoanele noi
+(Actualizari, Profil, langa Istoric/Pauza/Anuleaza/Start) nu mai risca sa
+iasa din marginea ferestrei la `MinWidth=900`.
+
+**Versiune** `windows-native/DataMover.Client.csproj` → `2.7.0` (MINOR -
+patru functionalitati noi vizibile). Nu s-a atins `docs/update.json`
+(versiunea publica 2.6.0 ramane a clientilor Mac/Python existenti - acest
+client WPF nu e inca livrat, vezi TODO installer).
+
+**Verificat**: `dotnet build` (Core + Client, C# + XAML→BAML) - 0 erori,
+0 avertismente. **Nu s-a testat inca real pe Windows** fluxul de
+Activare/Profil/Update/PDF - urmeaza confirmarea lui Cristi.

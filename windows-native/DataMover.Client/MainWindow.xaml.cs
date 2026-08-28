@@ -19,6 +19,7 @@ public sealed class DriveTile
     public string Path { get; init; } = "";
     public string Label { get; init; } = "";
     public string FreeSpaceText { get; init; } = "";
+    public System.Windows.Media.ImageSource? IconSource { get; init; }
 }
 
 public partial class MainWindow : FluentWindow
@@ -72,7 +73,65 @@ public partial class MainWindow : FluentWindow
         _drivesTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(4) };
         _drivesTimer.Tick += (_, _) => RefreshDrives();
         _drivesTimer.Start();
+
+        VersionText.Text = $"DataMover {UpdateChecker.CurrentVersion}";
+        Loaded += async (_, _) =>
+        {
+            _ = LicenseManager.Shared.RefreshRevocationAsync();
+            await CheckForUpdatesAsync(this, respectDismissal: true);
+        };
     }
+
+    // ---------------- Versiune, Update Checker, Profil (2026-08-28) ----------------
+    // Lipseau complet pe clientul WPF - semnalat de Cristi: "aici nu vad
+    // numarul de versiune, update, auto update... numele de la client si
+    // ID-ul de la masina si mail-ul". Port al UpdateChecker.swift/.cs
+    // (Regula 13/20, CLAUDE.md).
+
+    /// `respectDismissal: true` - verificare automata la lansare, nu
+    /// reapare pentru o versiune deja inchisa de user. `false` - verificare
+    /// manuala (butonul "Actualizari"/"Cauta actualizari"), arata mereu
+    /// rezultatul real chiar daca versiunea a fost respinsa anterior.
+    public static async Task CheckForUpdatesAsync(Window owner, bool respectDismissal)
+    {
+        await UpdateChecker.Shared.CheckAsync();
+        var version = UpdateChecker.Shared.AvailableVersion;
+        if (version is null)
+        {
+            if (!respectDismissal)
+                MessageBox.Show("Ai deja ultima versiune instalată.", "DataMover", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+        if (respectDismissal && !UpdateChecker.Shared.Mandatory && UpdateChecker.Shared.WasDismissed(version)) return;
+
+        var changes = string.IsNullOrWhiteSpace(UpdateChecker.Shared.Changes) ? "" : $"\n\n{UpdateChecker.Shared.Changes}";
+        var result = MessageBox.Show(
+            $"Este disponibilă versiunea {version}.{changes}\n\nVrei să actualizezi acum?",
+            "Actualizare disponibilă", MessageBoxButton.YesNo, MessageBoxImage.Information);
+
+        if (result == MessageBoxResult.Yes)
+        {
+            var url = UpdateChecker.Shared.WindowsWpfDownloadUrl;
+            if (string.IsNullOrEmpty(url))
+            {
+                MessageBox.Show(
+                    "Versiunea nouă e publicată, dar arhiva pentru clientul Windows nou nu e încă disponibilă la acest link. Descarcă manual de pe gordas.dev.",
+                    "DataMover", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+            await SelfUpdater.DownloadAndInstallAsync(version, url);
+        }
+        else
+        {
+            UpdateChecker.Shared.Dismiss();
+        }
+    }
+
+    private async void OnCheckUpdatesClicked(object sender, RoutedEventArgs e) =>
+        await CheckForUpdatesAsync(this, respectDismissal: false);
+
+    private void OnShowProfileClicked(object sender, RoutedEventArgs e) =>
+        new ProfileWindow { Owner = this }.ShowDialog();
 
     // ---------------- Discuri detectate (2026-08-28) ----------------
     // Raportat lipsa la testul real pe Windows: "nu detecteaza sursele, nu
@@ -91,7 +150,8 @@ public partial class MainWindow : FluentWindow
             string freeText;
             try { freeText = $"{FormatBytes(drive.AvailableFreeSpace)} liber din {FormatBytes(drive.TotalSize)}"; }
             catch { freeText = ""; }
-            tiles.Add(new DriveTile { Path = drive.RootDirectory.FullName, Label = label, FreeSpaceText = freeText });
+            var icon = ShellIcon.GetDriveIcon(drive.RootDirectory.FullName);
+            tiles.Add(new DriveTile { Path = drive.RootDirectory.FullName, Label = label, FreeSpaceText = freeText, IconSource = icon });
         }
 
         // pastram selectia curenta din UI intacta - inlocuim doar continutul
