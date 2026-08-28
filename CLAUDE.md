@@ -628,3 +628,30 @@ Explorer; profile de transfer complete (cai + model + buffer/RAM).
 **Nu declara acest client "gata" pana cand Cristi nu-l testeaza REAL pe o
 masina Windows** - vezi WARNING-ul standard din Regula 20/celelalte etape:
 Claude nu poate verifica interactiuni native Windows de pe Mac.
+
+## Etapa 2026-08-28 (3) — 3 bug-uri reale gasite la primul test pe Windows real (Parallels)
+
+Primul test real al clientului WPF (`windows-native/`) pe Windows (Parallels,
+nu doar `dotnet build` de pe Mac) - confirmat FUNCTIONAL end-to-end
+(11 fisiere OK, verificat cu screenshot-uri reale). Cristi a gasit 3
+lipsuri, toate reparate in aceeasi sesiune:
+
+1. **Fara "Deschide destinatia" la final.** Buton nou in footer
+   (`OpenDestinationButton`), aparut doar dupa un transfer finalizat -
+   plus un checkbox "Deschide automat destinatia la final"
+   (`AutoOpenDestCheck`), la fel ca `autoOpenDestFolder` (Mac). Detectat
+   prin tranzitia `IsRunning: true -> false` in `RefreshUiFromRunner`.
+2. **Fara drag&drop din Explorer.** `AllowDrop="True"` + `DragOver`/`Drop`
+   pe panourile SURSE/DESTINATII (atat pe `ui:CardExpander` cat si pe
+   `ui:ListView` din interior, ca dropul sa functioneze oriunde in caseta,
+   nu doar exact pe lista). Destinatiile accepta doar foldere (nu fisiere
+   individuale, spre deosebire de surse).
+3. **Fara detectare de discuri/carduri.** Lipsea complet echivalentul
+   grid-ului de discuri de pe Mac (`VolumeInfo.swift`) - Windows nu arata
+   NIMIC. Panou nou "DISCURI DETECTATE" (sus, full-width, `DriveInfo.
+   GetDrives()` filtrat pe `IsReady`), reimprospatat automat la 4 secunde
+   (`_drivesTimer`), cu buton "+ Sursa"/"+ Destinatie" per disc.
+
+Verificat: `dotnet build` curat (C# + XAML->BAML) dupa toate cele 3
+fix-uri. Ramane de retestat REAL pe Windows (Parallels) inainte de a
+declara aceasta etapa completa - vezi WARNING standard.

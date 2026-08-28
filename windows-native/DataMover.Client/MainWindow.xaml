@@ -21,13 +21,45 @@
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
         <ui:TitleBar Grid.Row="0" Title="DataMover 2.6.0" />
 
-        <Grid Grid.Row="1" Margin="16,8,16,8">
+        <!-- ===================== DISCURI DETECTATE ===================== -->
+        <!-- Raportat de Cristi (2026-08-28, test real pe Windows/Parallels):
+             "nu detecteaza sursele, nu se vad hard discurile, cardurile
+             video" - lipsea complet, spre deosebire de Mac (grid de discuri
+             in ContentView.swift). Lista se reimprospateaza periodic (vezi
+             RefreshDrives), clic pe "+ Sursa"/"+ Destinatie" adauga direct
+             litera de disc in lista corespunzatoare. -->
+        <ui:CardExpander Grid.Row="1" Header="DISCURI DETECTATE" IsExpanded="True" Margin="16,8,16,0">
+            <ItemsControl x:Name="DrivesList" Margin="0,8,0,0">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <WrapPanel Orientation="Horizontal" />
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Border Background="#1C1C1C" CornerRadius="6" Padding="10" Margin="0,0,8,8" Width="180">
+                            <StackPanel>
+                                <TextBlock Text="{Binding Label}" FontWeight="Bold" FontSize="12" TextTrimming="CharacterEllipsis" />
+                                <TextBlock Text="{Binding FreeSpaceText}" Foreground="Gray" FontSize="11" Margin="0,0,0,6" />
+                                <StackPanel Orientation="Horizontal">
+                                    <Button Content="+ Sursa" Tag="{Binding Path}" Click="OnAddDriveAsSourceClicked" Margin="0,0,6,0" Padding="6,2" FontSize="11" />
+                                    <Button Content="+ Destinatie" Tag="{Binding Path}" Click="OnAddDriveAsDestinationClicked" Padding="6,2" FontSize="11" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ui:CardExpander>
+
+        <Grid Grid.Row="2" Margin="16,8,16,8">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="260" MinWidth="200" MaxWidth="380" />
                 <ColumnDefinition Width="8" />
@@ -37,9 +69,14 @@
             </Grid.ColumnDefinitions>
 
             <!-- ===================== SURSE ===================== -->
-            <ui:CardExpander Grid.Column="0" Header="SURSE" IsExpanded="True">
+            <!-- AllowDrop pe intreg panoul (nu doar pe ListView) - trage un
+                 folder din Explorer oriunde in caseta Surse. Raportat lipsa
+                 la testul real pe Windows (2026-08-28). -->
+            <ui:CardExpander Grid.Column="0" Header="SURSE" IsExpanded="True"
+                             AllowDrop="True" DragOver="OnSourcesDragOver" Drop="OnSourcesDrop">
                 <StackPanel>
-                    <ui:ListView x:Name="SourcesList" Height="140" Margin="0,0,0,8" />
+                    <ui:ListView x:Name="SourcesList" Height="140" Margin="0,0,0,8"
+                                 AllowDrop="True" DragOver="OnSourcesDragOver" Drop="OnSourcesDrop" />
                     <ui:Button Content="Adauga sursa..." Icon="{ui:SymbolIcon FolderAdd24}" Click="OnAddSourceClicked" HorizontalAlignment="Stretch" Margin="0,0,0,4" />
                     <ui:Button Content="Elimina selectia" Click="OnRemoveSourceClicked" HorizontalAlignment="Stretch" Appearance="Secondary" />
                 </StackPanel>
@@ -118,9 +155,11 @@
             </ScrollViewer>
 
             <!-- ===================== DESTINATII ===================== -->
-            <ui:CardExpander Grid.Column="4" Header="DESTINATII" IsExpanded="True">
+            <ui:CardExpander Grid.Column="4" Header="DESTINATII" IsExpanded="True"
+                             AllowDrop="True" DragOver="OnDestinationsDragOver" Drop="OnDestinationsDrop">
                 <StackPanel>
-                    <ui:ListView x:Name="DestinationsList" Height="140" Margin="0,0,0,8" />
+                    <ui:ListView x:Name="DestinationsList" Height="140" Margin="0,0,0,8"
+                                 AllowDrop="True" DragOver="OnDestinationsDragOver" Drop="OnDestinationsDrop" />
                     <ui:Button Content="Adauga destinatie..." Icon="{ui:SymbolIcon FolderAdd24}" Click="OnAddDestinationClicked" HorizontalAlignment="Stretch" Margin="0,0,0,4" />
                     <ui:Button Content="Elimina selectia" Click="OnRemoveDestinationClicked" HorizontalAlignment="Stretch" Appearance="Secondary" />
                 </StackPanel>
@@ -128,7 +167,7 @@
         </Grid>
 
         <!-- ===================== FOOTER ===================== -->
-        <Grid Grid.Row="2" Margin="16,0,16,12">
+        <Grid Grid.Row="3" Margin="16,0,16,12">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
@@ -145,9 +184,15 @@
                 <StackPanel Grid.Column="0">
                     <TextBlock x:Name="StatusText" Text="Gata de pornire" FontSize="12" Foreground="Gray" />
                     <TextBlock x:Name="SpeedAndUsageText" FontSize="11" Foreground="Gray" />
+                    <CheckBox x:Name="AutoOpenDestCheck" Content="Deschide automat destinatia la final" FontSize="11" Margin="0,4,0,0" />
                 </StackPanel>
 
                 <StackPanel Grid.Column="1" Orientation="Horizontal">
+                    <!-- Raportat lipsa la testul real (2026-08-28): "la sfarsit
+                         nu-mi da optiunea sa deschid folderul destinatie" -
+                         buton vizibil doar dupa un transfer finalizat. -->
+                    <ui:Button x:Name="OpenDestinationButton" Content="Deschide destinatia" Icon="{ui:SymbolIcon FolderOpen24}"
+                               Click="OnOpenLastDestinationClicked" Visibility="Collapsed" Margin="0,0,6,0" />
                     <ui:Button Content="Istoric" Icon="{ui:SymbolIcon History24}" Click="OnShowHistoryClicked" Margin="0,0,6,0" />
                     <ui:Button x:Name="PauseButton" Content="Pauza" Click="OnPauseClicked" IsEnabled="False" Margin="0,0,6,0" />
                     <ui:Button x:Name="CancelButton" Content="Anuleaza" Click="OnCancelClicked" IsEnabled="False" Appearance="Secondary" Margin="0,0,6,0" />
