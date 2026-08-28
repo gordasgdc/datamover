@@ -16,17 +16,33 @@ restul aplicatiei.
 
 import os
 import csv
+import json
 import time
 import shutil
 import string
+import tempfile
 import hashlib
 import platform
 import subprocess
 from datetime import datetime
 
 from . import checkpoint as ckpt
+from . import io_settings
 
-CHUNK_SIZE = 1024 * 1024  # 1 MB
+CHUNK_SIZE = io_settings.DEFAULT_CHUNK_SIZE_MB * 1024 * 1024  # fallback, vezi io_settings.get_chunk_size_bytes()
+
+# Numarul de fisiere pastrate ca "esantion" pentru raportul PDF (Regula
+# "Log-uri si Stare UI" din cerere - nu tinem in memorie randul fiecarui
+# fisier dintr-un transfer de sute de mii de fisiere doar ca sa-l desenam
+# intr-un PDF pe care oricum nimeni nu-l citeste rand cu rand pana la
+# capat). CSV-ul de langa el ramane complet, scris incremental pe disc -
+# el e sursa de adevar completa, nu PDF-ul.
+PDF_SAMPLE_LIMIT = 500
+
+# Cate fisiere sunt grupate intr-un "lot" la scanare/iterare lazy - vezi
+# scan_files_streaming/iter_manifest_batches. Tine memoria plafonata
+# indiferent daca sursa are 1.000 sau 2.000.000 de fisiere.
+SCAN_BATCH_SIZE = 1000
 
 
 class _OffloadCancelled(Exception):
@@ -36,19 +52,28 @@ class _OffloadCancelled(Exception):
     pass
 
 
-def _copy_file_cancelable(src, dst, cancel_event):
-    """Copiaza src -> dst in bucati de CHUNK_SIZE, verificand cancel_event
+def _copy_file_cancelable(src, dst, cancel_event, chunk_size=CHUNK_SIZE):
+    """Copiaza src -> dst in bucati de chunk_size (configurabil din
+    Setari I/O & Memorie - vezi io_settings.py), verificand cancel_event
     intre bucati - spre deosebire de un singur shutil.copy2() blocant,
     asta face ca butonul Anuleaza sa opreasca efectiv copierea unui
     fisier urias in cateva secunde, nu abia dupa ce acel fisier termina
     (care, pentru un clip video de zeci de GB pe un drive lent, poate
-    insemna minute intregi in care Anuleaza pare sa nu faca nimic)."""
+    insemna minute intregi in care Anuleaza pare sa nu faca nimic).
+
+    Streaming real: niciodata mai mult de un singur "chunk_size" din
+    fisier in memorie deodata (nu shutil.copy2/fsrc.read() fara argument,
+    care ar incarca tot fisierul). Citirea urmatorului bloc asteapta
+    mereu scrierea celui curent (acelasi thread, secvential) - asta
+    ofera backpressure natural intre citire (SSD rapid) si scriere (HDD
+    lent): nu exista niciun buffer de "read-ahead" care sa acumuleze date
+    nescrise inca in RAM."""
     try:
         with open(src, "rb") as fsrc, open(dst, "wb") as fdst:
             while True:
                 if cancel_event is not None and cancel_event.is_set():
                     raise _OffloadCancelled()
-                chunk = fsrc.read(CHUNK_SIZE)
+                chunk = fsrc.read(chunk_size)
                 if not chunk:
                     break
                 fdst.write(chunk)
@@ -106,7 +131,7 @@ VERIFICATION_MODELS = {
 DEFAULT_VERIFICATION_MODEL = "md5"
 
 
-def hash_of_file(path, hashlib_name, cancel_event=None):
+def hash_of_file(path, hashlib_name, cancel_event=None, chunk_size=CHUNK_SIZE):
     """Calculeaza hash-ul unui fisier folosind algoritmul specificat (md5, sha1,
     sha256, sha512...). Returneaza hexdigest-ul. Daca se da un cancel_event
     si e setat in timpul hash-uirii (poate dura la fel de mult ca si
@@ -116,7 +141,7 @@ def hash_of_file(path, hashlib_name, cancel_event=None):
         while True:
             if cancel_event is not None and cancel_event.is_set():
                 raise _OffloadCancelled()
-            chunk = f.read(CHUNK_SIZE)
+            chunk = f.read(chunk_size)
             if not chunk:
                 break
             h.update(chunk)
@@ -159,6 +184,73 @@ def list_all_files(root, exclusions=None):
                 size = 0
             files.append((full, rel, size))
     return files
+
+
+def scan_files_streaming(root, exclusions=None):
+    """Varianta "lazy" a list_all_files: parcurge sursa cu os.walk ca si
+    inainte, dar NU construieste o lista Python cu toate fisierele in
+    memorie (poate fi sute de mii/milioane de intrari la 3+ TB) - scrie
+    fiecare intrare direct pe disc, intr-un fisier manifest temporar
+    (JSON Lines: un rand = un fisier), pastrand in memorie doar
+    numaratorile agregate.
+
+    Returneaza (total_files, total_bytes, manifest_path). Apelantul e
+    responsabil sa stearga manifest_path cand nu mai are nevoie de el
+    (vezi DestinationJob.run / cleanup_manifest)."""
+    if exclusions is None:
+        exclusions = DEFAULT_EXCLUSIONS
+    fd, manifest_path = tempfile.mkstemp(prefix="datamover_scan_", suffix=".jsonl")
+    total_files = 0
+    total_bytes = 0
+    with os.fdopen(fd, "w", encoding="utf-8") as manifest:
+        for dirpath, _dirnames, filenames in os.walk(root):
+            for fn in filenames:
+                if _is_excluded(fn, exclusions):
+                    continue
+                full = os.path.join(dirpath, fn)
+                rel = os.path.relpath(full, root)
+                try:
+                    size = os.path.getsize(full)
+                except OSError:
+                    size = 0
+                manifest.write(json.dumps({"rel": rel, "size": size}) + "\n")
+                total_files += 1
+                total_bytes += size
+    return total_files, total_bytes, manifest_path
+
+
+def iter_manifest_batches(manifest_path, source_root, batch_size=SCAN_BATCH_SIZE):
+    """Genereaza loturi (liste) de cel mult batch_size tupluri
+    (full_path, rel_path, size), citind manifestul scris de
+    scan_files_streaming rand cu rand - memoria folosita ramane
+    plafonata la marimea unui singur lot, indiferent cate fisiere are
+    sursa in total (cerinta "Scanare & Recursivitate fara Memorie
+    Acumulata")."""
+    batch = []
+    with open(manifest_path, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            entry = json.loads(line)
+            rel = entry["rel"]
+            full = os.path.join(source_root, rel)
+            batch.append((full, rel, entry["size"]))
+            if len(batch) >= batch_size:
+                yield batch
+                batch = []
+    if batch:
+        yield batch
+
+
+def cleanup_manifest(manifest_path):
+    """Sterge fisierul manifest temporar - best-effort, nu trebuie sa
+    opreasca aplicatia daca esueaza (ex. deja sters)."""
+    try:
+        if manifest_path and os.path.isfile(manifest_path):
+            os.remove(manifest_path)
+    except OSError:
+        pass
 
 
 def get_free_space_bytes(path):
@@ -290,10 +382,18 @@ class DestinationJob:
                  verification_model=DEFAULT_VERIFICATION_MODEL,
                  copy_counter=None, verify_counter=None,
                  resume=False, source_root=None,
-                 checkpoint_interval_files=10, checkpoint_interval_seconds=5.0):
+                 checkpoint_interval_files=10, checkpoint_interval_seconds=5.0,
+                 manifest_path=None, total_files=None, total_bytes=None,
+                 chunk_size=None, io_cfg=None):
         self.dest_root = dest_root
         self.folder_name = folder_name
-        self.files = files  # list of (full_path, rel_path, size)
+        # Mod "clasic": lista completa in memorie (folosit de UI-uri mai
+        # vechi/scanari mici). Mod "lazy" (recomandat pentru transferuri
+        # mari): manifest_path != None - vezi scan_files_streaming() /
+        # iter_manifest_batches() - fisierele sunt citite de pe disc, in
+        # loturi de SCAN_BATCH_SIZE, niciodata toate deodata in RAM.
+        self.files = files  # list of (full_path, rel_path, size) sau None
+        self.manifest_path = manifest_path
         self.log_queue = log_queue
         self.progress_counter = progress_counter
         self.bytes_counter = bytes_counter
@@ -318,9 +418,22 @@ class DestinationJob:
         self._files_since_checkpoint = 0
         self._last_checkpoint_time = 0.0
 
-        # progres LOCAL, per-destinatie (citit de UI pentru bara proprie)
-        self.total_files = len(files)
-        self.total_bytes = sum(size for _f, _r, size in files)
+        # Setari I/O & Memorie (buffer configurabil + prag RAM pentru
+        # backpressure) - vezi io_settings.py si Regula globala "Memory &
+        # I/O Performance" din CLAUDE.md.
+        self._io_cfg = io_cfg
+        self.chunk_size = chunk_size if chunk_size is not None else io_settings.get_chunk_size_bytes(io_cfg)
+
+        # progres LOCAL, per-destinatie (citit de UI pentru bara proprie).
+        # In modul lazy, total_files/total_bytes vin deja calculate de
+        # scan_files_streaming (care le-a numarat in timp ce scria
+        # manifestul) - NU mai recalculam din `files`, care e None.
+        if files is not None:
+            self.total_files = len(files)
+            self.total_bytes = sum(size for _f, _r, size in files)
+        else:
+            self.total_files = total_files or 0
+            self.total_bytes = total_bytes or 0
         self.files_done = 0
         self.bytes_done = 0
         self.current_speed_bps = 0.0
@@ -329,7 +442,14 @@ class DestinationJob:
         self._last_speed_sample_time = None
         self._last_speed_sample_bytes = 0
 
-        self.report_rows = []
+        # Raport: CSV-ul e scris INCREMENTAL pe disc (vezi _open_csv_writer/
+        # _log_row) - nu tinem randul fiecarui fisier in memorie pana la
+        # final. Pentru PDF (care oricum nu poate afisa lizibil sute de mii
+        # de randuri) pastram doar un esantion plafonat - toate erorile/
+        # nepotrivirile plus o mostra din restul, vezi PDF_SAMPLE_LIMIT.
+        self._pdf_sample_rows = []
+        self._csv_file = None
+        self._csv_writer = None
         self.ok_count = 0
         self.skip_count = 0
         self.fail_count = 0
@@ -351,8 +471,8 @@ class DestinationJob:
             dst_size = os.path.getsize(dest_path) if os.path.isfile(dest_path) else -1
             same = (dst_size == size)
             return same, f"marime={size}", f"marime={dst_size}"
-        src_hash = hash_of_file(full_src, self.hashlib_name, self.cancel_event)
-        dst_hash = hash_of_file(dest_path, self.hashlib_name, self.cancel_event)
+        src_hash = hash_of_file(full_src, self.hashlib_name, self.cancel_event, self.chunk_size)
+        dst_hash = hash_of_file(dest_path, self.hashlib_name, self.cancel_event, self.chunk_size)
         return src_hash == dst_hash, src_hash, dst_hash
 
     # ---------------- checkpoint ----------------
@@ -391,6 +511,19 @@ class DestinationJob:
 
     # ---------------- rulare principala ----------------
 
+    def _iter_source_files(self):
+        """Sursa unica a listei de fisiere de procesat, indiferent de mod:
+        lista clasica in memorie (self.files) sau manifest lazy pe disc
+        (self.manifest_path) - citit in loturi de SCAN_BATCH_SIZE, ca sa nu
+        tina niciodata toata sursa in RAM deodata (vezi scan_files_streaming)."""
+        if self.files is not None:
+            for entry in self.files:
+                yield entry
+        elif self.manifest_path is not None:
+            for batch in iter_manifest_batches(self.manifest_path, self.source_root):
+                for entry in batch:
+                    yield entry
+
     def run(self):
         self.started_at = datetime.now()
         self._job_start_time = time.time()
@@ -399,17 +532,29 @@ class DestinationJob:
         os.makedirs(target_root, exist_ok=True)
 
         already_done = self._load_resume_state(target_root) if self.resume else set()
+        self._open_csv_writer(target_root)
 
         log_master(
             f"Offload pornit -> destinatie={self.dest_root}, folder={self.folder_name}, "
-            f"fisiere={len(self.files)}, model_verificare={self.verification_model}"
+            f"fisiere={self.total_files}, model_verificare={self.verification_model}, "
+            f"buffer={self.chunk_size // (1024 * 1024)}MB"
             f"{' (reluare)' if self.resume else ''}"
         )
 
-        for full_src, rel_path, size in self.files:
+        for full_src, rel_path, size in self._iter_source_files():
             if self.cancel_event is not None and self.cancel_event.is_set():
                 self.cancelled = True
                 break
+
+            # Backpressure: daca memoria procesului a depasit limita
+            # configurata (Setari I/O & Memorie), asteapta putin inainte
+            # sa continue - previne acumularea nestapanita in RAM/swap
+            # cand scrierea (ex. HDD) e mai lenta decat citirea (ex. SSD).
+            io_settings.wait_if_over_ram_limit(
+                cancel_event=self.cancel_event,
+                log_fn=self.log_queue.put,
+                cfg=self._io_cfg,
+            )
 
             if rel_path in already_done:
                 # deja confirmat corect la o rulare anterioara - nu recopiem,
@@ -444,7 +589,7 @@ class DestinationJob:
 
                 # faza 1: copiere
                 self.phase_text = f"Copiere: {rel_path}"
-                _copy_file_cancelable(full_src, dest_path, self.cancel_event)
+                _copy_file_cancelable(full_src, dest_path, self.cancel_event, self.chunk_size)
                 self._bump_copy_counter()
 
                 # faza 2: verificare (separata vizual de copiere)
@@ -523,15 +668,52 @@ class DestinationJob:
             with self.progress_lock:
                 self.verify_counter[0] += 1
 
+    def _open_csv_writer(self, target_root):
+        """Deschide CSV-ul de raport O SINGURA DATA, la inceputul run(), si
+        il tine deschis pe toata durata copierii - fiecare rand se scrie
+        IMEDIAT (_log_row), nu se acumuleaza intr-o lista Python pana la
+        final (regula "Log-uri si Stare UI": nu tinem in RAM istoricul
+        complet al unui transfer de sute de mii de fisiere)."""
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        self._report_timestamp = timestamp
+        csv_path = os.path.join(target_root, f"offload_report_{timestamp}.csv")
+        try:
+            self._csv_file = open(csv_path, "w", newline="", encoding="utf-8")
+            self._csv_writer = csv.DictWriter(
+                self._csv_file,
+                fieldnames=["fisier", "marime_bytes", "verificare_sursa",
+                            "verificare_destinatie", "status", "eroare"],
+            )
+            self._csv_writer.writeheader()
+            self.report_csv_path = csv_path
+        except Exception as e:
+            self._csv_file = None
+            self._csv_writer = None
+            self.log_queue.put(f"[EROARE] Nu am putut deschide CSV in {target_root}: {e}")
+
     def _log_row(self, rel_path, size, src_repr, dst_repr, status, error_msg):
-        self.report_rows.append({
+        row = {
             "fisier": rel_path,
             "marime_bytes": size,
             "verificare_sursa": src_repr,
             "verificare_destinatie": dst_repr,
             "status": status,
             "eroare": error_msg,
-        })
+        }
+        if self._csv_writer is not None:
+            try:
+                self._csv_writer.writerow(row)
+            except Exception:
+                pass  # un rand de raport pierdut nu trebuie sa opreasca offload-ul
+
+        # Esantion plafonat pentru PDF (Regula PDF_SAMPLE_LIMIT): pastram
+        # TOATE erorile/nepotrivirile (sunt putine si important de vazut),
+        # plus primele PDF_SAMPLE_LIMIT randuri OK/SARIT ca proba - restul
+        # ramane doar in CSV, care e complet.
+        is_problem = status in ("EROARE", "NEPOTRIVIRE")
+        if is_problem or len(self._pdf_sample_rows) < PDF_SAMPLE_LIMIT:
+            self._pdf_sample_rows.append(row)
+
         line = f"[{os.path.basename(self.dest_root)}] {rel_path} -> {status}"
         self.log_queue.put(line)
 
@@ -553,25 +735,22 @@ class DestinationJob:
             self._last_speed_sample_bytes = self.bytes_done
 
     def _write_reports(self, target_root):
-        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        # CSV-ul a fost scris incremental pe tot parcursul run() - aici doar
+        # il inchidem (flush pe disc garantat).
+        if self._csv_file is not None:
+            try:
+                self._csv_file.close()
+            except Exception:
+                pass
+            self._csv_file = None
+            self._csv_writer = None
+
         model_label = VERIFICATION_MODELS.get(
             self.verification_model, VERIFICATION_MODELS[DEFAULT_VERIFICATION_MODEL]
         )["label"]
+        timestamp = getattr(self, "_report_timestamp", datetime.now().strftime("%Y-%m-%d_%H-%M-%S"))
 
-        csv_path = os.path.join(target_root, f"offload_report_{timestamp}.csv")
-        try:
-            with open(csv_path, "w", newline="", encoding="utf-8") as f:
-                writer = csv.DictWriter(
-                    f, fieldnames=["fisier", "marime_bytes", "verificare_sursa",
-                                   "verificare_destinatie", "status", "eroare"]
-                )
-                writer.writeheader()
-                for row in self.report_rows:
-                    writer.writerow(row)
-            self.report_csv_path = csv_path
-        except Exception as e:
-            self.log_queue.put(f"[EROARE] Nu am putut scrie CSV in {target_root}: {e}")
-
+        truncated = len(self._pdf_sample_rows) < (self.ok_count + self.skip_count + self.fail_count)
         try:
             from .pdf_report import generate_pdf_report
             pdf_path = os.path.join(target_root, f"offload_report_{timestamp}.pdf")
@@ -579,7 +758,7 @@ class DestinationJob:
                 output_path=pdf_path,
                 destination=self.dest_root,
                 folder_name=self.folder_name,
-                rows=self.report_rows,
+                rows=self._pdf_sample_rows,
                 started_at=self.started_at,
                 finished_at=self.finished_at,
                 ok_count=self.ok_count,
@@ -587,6 +766,10 @@ class DestinationJob:
                 fail_count=self.fail_count,
                 cancelled=self.cancelled,
                 verification_label=model_label,
+                truncated_note=(
+                    f"Lista completa ({self.ok_count + self.skip_count + self.fail_count} fisiere) "
+                    "e in CSV-ul alaturat - PDF-ul arata toate problemele plus un esantion."
+                ) if truncated else None,
             )
             self.report_pdf_path = pdf_path
         except Exception as e:

@@ -74,6 +74,43 @@ enum L {
         "status.ready": [.ro: "Gata de pornire", .en: "Ready to start", .es: "Listo para empezar"],
         "status.cancelling": [.ro: "Se anuleaza...", .en: "Cancelling...", .es: "Cancelando..."],
         "footer.filesWord": [.ro: "fisiere", .en: "files", .es: "archivos"],
+        "footer.pause": [.ro: "Pauza", .en: "Pause", .es: "Pausar"],
+        "footer.resume": [.ro: "Continua", .en: "Resume", .es: "Continuar"],
+        "footer.paused": [.ro: "Pauza — apasa Continua pentru a relua", .en: "Paused — press Resume to continue", .es: "En pausa — pulsa Continuar para seguir"],
+
+        // MARK: - I/O & Memorie
+        "io.title": [.ro: "I/O & Memorie", .en: "I/O & Memory", .es: "E/S y Memoria"],
+        "io.buffer": [.ro: "Buffer copiere", .en: "Copy buffer", .es: "Búfer de copia"],
+        "io.ramLimit": [.ro: "Limita RAM", .en: "RAM limit", .es: "Límite de RAM"],
+        "io.noLimit": [.ro: "Fara limita", .en: "No limit", .es: "Sin límite"],
+        "io.allocated": [.ro: "Buffer Alocat", .en: "Buffer Allocated", .es: "Búfer Asignado"],
+        "io.used": [.ro: "Utilizat", .en: "Used", .es: "Usado"],
+        "io.preset.eco": [.ro: "Eco / Sistem Slab", .en: "Eco / Low System", .es: "Eco / Sistema Bajo"],
+        "io.preset.standard": [.ro: "Standard", .en: "Standard", .es: "Estándar"],
+        "io.preset.high": [.ro: "Performanta Inalta", .en: "High Performance", .es: "Alto Rendimiento"],
+        "io.preset.extreme": [.ro: "Extrem / Productie RAW", .en: "Extreme / RAW Production", .es: "Extremo / Producción RAW"],
+
+        // MARK: - Duplicate/Reluare
+        "duplicate.title": [.ro: "Destinatie deja existenta", .en: "Destination already exists", .es: "El destino ya existe"],
+        "duplicate.message": [.ro: "Folderul de destinatie exista deja si contine fisiere. Ce vrei sa faci?", .en: "The destination folder already exists and contains files. What do you want to do?", .es: "La carpeta de destino ya existe y contiene archivos. ¿Qué quieres hacer?"],
+        "duplicate.resume": [.ro: "Completeaza / Reia transferul", .en: "Complete / Resume transfer", .es: "Completar / Reanudar transferencia"],
+        "duplicate.newFolder": [.ro: "Creeaza folder nou", .en: "Create new folder", .es: "Crear carpeta nueva"],
+        "duplicate.overwrite": [.ro: "Suprascrie complet", .en: "Overwrite completely", .es: "Sobrescribir completamente"],
+        "duplicate.cancel": [.ro: "Anuleaza", .en: "Cancel", .es: "Cancelar"],
+
+        // MARK: - Istoric (extins)
+        "history.source": [.ro: "Sursa", .en: "Source", .es: "Origen"],
+        "history.destination": [.ro: "Destinatie", .en: "Destination", .es: "Destino"],
+        "history.openSource": [.ro: "Deschide sursa", .en: "Open source", .es: "Abrir origen"],
+        "history.openDestination": [.ro: "Deschide destinatia", .en: "Open destination", .es: "Abrir destino"],
+
+        // MARK: - Profile de transfer
+        "profiles.title": [.ro: "Profile de transfer", .en: "Transfer profiles", .es: "Perfiles de transferencia"],
+        "profiles.save": [.ro: "Salveaza profil...", .en: "Save profile...", .es: "Guardar perfil..."],
+        "profiles.load": [.ro: "Incarca", .en: "Load", .es: "Cargar"],
+        "profiles.delete": [.ro: "Sterge", .en: "Delete", .es: "Eliminar"],
+        "profiles.namePrompt": [.ro: "Nume profil (ex. \"Backup RAW pe SSD\")", .en: "Profile name (e.g. \"RAW Backup to SSD\")", .es: "Nombre del perfil (ej. \"Backup RAW a SSD\")"],
+        "profiles.none": [.ro: "Niciun profil salvat", .en: "No saved profiles", .es: "Sin perfiles guardados"],
 
         // MARK: - Settings popover
         "settings.title": [.ro: "Setari copiere", .en: "Copy settings", .es: "Ajustes de copia"],

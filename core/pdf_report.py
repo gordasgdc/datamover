@@ -35,7 +35,14 @@ def _format_size(num_bytes):
 
 def generate_pdf_report(output_path, destination, folder_name, rows,
                          started_at, finished_at, ok_count, skip_count,
-                         fail_count, cancelled=False, verification_label=""):
+                         fail_count, cancelled=False, verification_label="",
+                         truncated_note=None):
+    """`rows` poate fi un ESANTION plafonat (nu neaparat toate fisierele -
+    vezi DestinationJob._pdf_sample_rows/PDF_SAMPLE_LIMIT din
+    offload_engine.py, care nu mai tine in RAM randul fiecarui fisier
+    dintr-un transfer de sute de mii de fisiere doar pentru acest PDF).
+    `truncated_note`, daca e dat, se afiseaza explicit ca userul sa stie
+    ca lista completa e in CSV, nu doar cele aratate aici."""
     styles = getSampleStyleSheet()
     title_style = ParagraphStyle(
         "TitleDataMover", parent=styles["Title"], fontSize=18, spaceAfter=4
@@ -76,7 +83,7 @@ def generate_pdf_report(output_path, destination, folder_name, rows,
         elements.append(Paragraph(line, meta_style))
     elements.append(Spacer(1, 8))
 
-    total = len(rows)
+    total = ok_count + skip_count + fail_count
     summary = (
         f"<b>Total fisiere:</b> {total} &nbsp;&nbsp; "
         f"<b>OK:</b> {ok_count} &nbsp;&nbsp; "
@@ -84,6 +91,8 @@ def generate_pdf_report(output_path, destination, folder_name, rows,
         f"<b>Probleme:</b> {fail_count}"
     )
     elements.append(Paragraph(summary, styles["Heading4"]))
+    if truncated_note:
+        elements.append(Paragraph(f"<i>{truncated_note}</i>", meta_style))
     elements.append(Spacer(1, 10))
 
     # tabel cu fisiere

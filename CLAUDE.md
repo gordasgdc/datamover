@@ -384,6 +384,80 @@ doar un link:
 
 **Status acest repo (2026-08-27): IMPLEMENTAT.** `mac-native/Sources/DataMoverMac/SelfUpdater.swift` — prima implementare din ecosistem, confirmată manual de Cristi. Windows: verifică `core/updater.py` (varianta Python veche) - dacă a fost portat pe orice client nativ nou, aliniază-l la fel.
 
+
+**21. Memory & I/O Performance — obligatoriu pentru orice aplicatie care
+proceseaza date/fisiere/fluxuri mari (2026-08-27).** Descoperit ca bug real
+pe DataMover: un transfer de 3 TB (SSD -> HDD) umplea RAM + swap pana la
+eroarea nativa macOS "Your system has run out of application memory".
+Cauza radacina reala pe Mac (Swift/DataMoverMac): bucla de citire/scriere
+in bucati (`FileHandle.read(upToCount:)`) rula pe un thread de fundal FARA
+`autoreleasepool` per iteratie — obiectele Objective-C (`NSData`) din
+spatele fiecarui `Data` bridge-uit nu se eliberau decat la finalul
+INTREGULUI job (GCD creeaza un autorelease pool per bloc dispatch-uit, nu
+per iteratie de bucla), deci memoria temporara se acumula neintrerupt pe
+toata durata copierii unui fisier urias sau a unui transfer intreg.
+Regula, valabila pentru orice aplicatie GDC (Mac/Windows) care citeste,
+scrie, copiaza sau proceseaza fisiere/fluxuri de retea/date mari:
+
+- **Zero acumulare in memorie / streaming intai.** Interzisa incarcarea
+  completa a unui fisier/array/raspuns de retea mare in RAM (fara
+  `Data(contentsOf:)`, `file.read()` fara argument, `shutil.copy2` pe
+  fisiere mari, liste Python/array-uri Swift care colecteaza TOATE
+  intrarile unei scanari mari). Orice citire/scriere/procesare foloseste
+  un buffer FIX, mic (8-32 MB implicit, configurabil - vezi mai jos), care
+  se citeste, se scrie si se elibereaza pe rand.
+- **Backpressure.** Daca rata de citire/procesare depaseste rata de
+  scriere/iesire (SSD -> HDD, retea lenta etc.), cititorul TREBUIE sa se
+  incetineasca (citire sincrona, secvential cu scrierea - fara buffer de
+  "read-ahead" care ar acumula date nescrise in RAM), NU sa stocheze
+  diferenta in memorie/swap. Daca aplicatia are un plafon de memorie
+  configurat (vezi mai jos) si il depaseste, face o pauza scurta intre
+  fisiere/blocuri pana cand memoria scade, in loc sa continue orbeste.
+- **UI & State Throttling.** Interzisa pastrarea in starea aplicatiei
+  (RAM) a TUTUROR obiectelor procesate pentru afisare — un istoric/log de
+  sute de mii de intrari intr-un `tk.Text`/`NSTextView`/array `@Published`
+  neplafonat e o scurgere de memorie reala, nu doar o "UI mare". UI-ul
+  primeste doar: contoare agregate (fisiere procesate, bytes transferati,
+  viteza curenta) si o fereastra plafonata cu ultimele N evenimente (ex.
+  200 de linii) — restul, daca trebuie pastrat, se scrie INCREMENTAL pe
+  disc (CSV/log file), nu se tine intr-o lista in memorie pana la final.
+  La fel, un raport final (PDF/CSV) nu tine in RAM randul fiecarui fisier
+  dintr-un transfer urias doar ca sa-l scrie o singura data la sfarsit -
+  CSV-ul se scrie incremental, iar un PDF/raport vizual pastreaza doar un
+  esantion plafonat (plus toate erorile).
+- **Scanare/recursivitate fara memorie acumulata.** La enumerarea
+  recursiva a unui folder mare, nu se construieste o lista/array cu TOATE
+  intrarile deodata daca sursa poate avea sute de mii/milioane de fisiere
+  — se foloseste un iterator/generator sau o scriere incrementala pe disc
+  (manifest), citit apoi in loturi (batch de 500-1000), ca memoria de varf
+  sa ramana plafonata indiferent de dimensiunea sursei.
+- **Auto-Release & eliberare explicita in bucle mari.** Pe macOS/Swift,
+  orice bucla `while`/`for` care citeste/scrie/proceseaza fisiere mari pe
+  un thread de fundal (`DispatchQueue.global`) foloseste `autoreleasepool { }`
+  EXPLICIT per iteratie — GCD NU dreneaza automat un pool intre iteratiile
+  unei bucle sincrone in interiorul unui singur bloc dispatch-uit. Pe
+  Python/alte platforme, echivalentul e eliberarea explicita a
+  buffer-elor/resurselor unmanaged (context manageri `with`, `close()`
+  explicit) - nu te baza pe garbage collection amanata pentru resurse care
+  cresc proportional cu volumul de date procesat.
+- **Resource Limits & configurabilitate.** Orice aplicatie care proceseaza
+  volume mari de date expune in Setari: (a) dimensiunea buffer-ului de
+  citire/scriere (ex. 4/8/16/32/64 MB, implicit 8 MB), si (b) un plafon
+  orientativ de memorie a aplicatiei (ex. 512 MB / 1 GB / 2 GB / 4 GB /
+  fara limita), peste care se aplica backpressure-ul descris mai sus.
+  Plafonul e o limita ORIENTATIVA la nivel de proces (nu un cgroup impus
+  de OS) - scopul e sa incetineasca sursa cand memoria creste anormal, nu
+  sa garanteze un maxim absolut.
+- **Implementare de referinta**: `DataMover` — `IOSettings.swift` +
+  fix-ul de `autoreleasepool` din `copyFileCancelable`/`genericHash`
+  (`OffloadEngine.swift`, Mac), si `core/io_settings.py` +
+  `scan_files_streaming`/`iter_manifest_batches` + raport CSV incremental
+  (`core/offload_engine.py`, Windows/Python). Orice aplicatie GDC noua sau
+  modificata care atinge fisiere/fluxuri mari respecta acest standard de
+  la urmatoarea ei actualizare, nu doar DataMover.
+
+**Status acest repo (2026-08-27): IMPLEMENTAT — repo de origine.** Mac: `IOSettings.swift` + `autoreleasepool` in `copyFileCancelable`/`genericHash` (`OffloadEngine.swift`), CSV scris incremental, esantion plafonat pentru PDF, Setari I/O & Memorie in popover-ul de Setari. Windows/Python: `core/io_settings.py`, `scan_files_streaming`/`iter_manifest_batches` (scanare lazy pe disc, nu lista completa in RAM), raport CSV incremental, panou de jurnal plafonat la 2000 de linii (`ui/windows/app.py`), setari de buffer/RAM in optiuni.
+
 ## [PARTEA 2: SPECIFICAȚII TEHNICE PROIECT]
 
 ## REGULĂ PERMANENTĂ: Locația proiectului pe disc (2026-08-25)
@@ -460,3 +534,21 @@ Verificat end-to-end (script Swift separat, nu doar citire de cod): API-ul real 
 **WARNING — implicație practică pentru anunțarea clienților**: self-update-ul NU se poate „auto-repara" pentru userii care au deja o versiune ≤ `2.5.3` instalată — acele binare pur și simplu nu conțin codul `SelfUpdater`, deci butonul lor din „Caută actualizări" va deschide mereu browserul, indiferent cât de nouă e versiunea de pe GitHub. E o problemă de bootstrap, nu un bug: fix-ul ajută abia din momentul în care cineva rulează un build care-l conține. Userii pe `2.5.4`+ nu mai au nevoie să viziteze site-ul — le ajunge „Caută actualizări" din aplicație.
 
 **3. Site-ul (`docs/index.html`) verificat, deja corect — nimic de reparat.** `initDirectDownload()` folosește deja `releases/latest/download/...` cu detecție de platformă (nu link generic către pagina de Releases). Verificat live: ambele fișiere HTTP 200, rezolvă la `v2.5.3`.
+
+## Etapa 2026-08-28 — Setari I/O granulare, Pauza/Reluare, deduplicare, Istoric extins, Profile de transfer (Mac)
+
+Cerinta lui Cristi, dupa un build local de test facut chiar de el pe versiunea cu fix-ul de memorie (etapa anterioara): cinci functionalitati noi, aplicate momentan pe **Mac (mac-native/)** — Windows/Python (`core/`, `ui/windows/`) ramane la fix-ul de memorie din etapa precedenta, portarea acestor 5 puncte pe Windows e TODO real, nemenționat ca "gata" pana nu se face.
+
+1. **Setari RAM & Buffer granulare + preset-uri + afisare live.** `IOSettings.chunkSizeChoicesMB` extins la `[1,2,4,8,16,32,64,128]` MB, `ramLimitChoicesMB` la `[0,512,1024,2048,4096,8192,16384,32768,65536]` MB (pana la 64 GB). `IOPerformancePreset.all` (Eco/Standard/High Performance/Extreme) seteaza simultan buffer+RAM dintr-un click, ramanand ajustabile manual dupa. Popover-ul de Setari arata acum aceste trepte (formatate "GB" peste 1024 MB, nu "65536 MB"), iar footer-ul, cat timp ruleaza un transfer, arata live "Buffer Alocat: X | Utilizat: Y" (`OffloadRunner.bufferAllocatedText`/`memoryUsedText`, actualizate la fiecare `advance()` din `IOSettings.currentResidentMemoryBytes()`).
+
+2. **Deduplicare la pornire + "Completeaza/Reia".** Inainte de `start()`, `ContentView.attemptStart()` verifica prin `OffloadRunner.existingNonEmptyDestinations(destinations:folderName:)` daca folderul tinta exista deja NEVID la vreo destinatie (ignorand fisiere proprii de raport/checkpoint) — daca da, arata un `confirmationDialog` cu 3 optiuni: **Completeaza/Reia** (`resume: true` pe folderul existent), **Creeaza folder nou** (`OffloadRunner.freeFolderName` gaseste automat " (2)", " (3)"...), **Suprascrie complet** (`clearExistingFolders` sterge continutul, apoi porneste curat). "Completeaza/Reia" a fost intarit sa functioneze si FARA checkpoint (nu doar la o reluare normala dupa Anuleaza): `DestinationJob.run()`, cand `resume==true`, verifica acum fisierul de la destinatie inainte sa-l recopieze — daca marimea coincide cu sursa, il verifica prin hash (modelul de verificare ales) si il numara ca deja transferat corect daca se potriveste, altfel il recopiaza normal. Acopera exact cazul cerut: sistemul se inchide neasteptat FARA sa apuce sa scrie un checkpoint, la o noua pornire reluarea tot functioneaza corect prin verificare directa marime+hash.
+
+3. **Pauza/Continua.** `PauseToken` (nou, in `OffloadEngine.swift`) — reversibil, spre deosebire de `CancelToken`: `DestinationJob.run()` verifica `pause.isPaused` INTRE fisiere (fisierul curent isi termina copierea/verificarea, nu se intrerupe la mijloc), blocand thread-ul job-ului cu `waitWhilePaused(cancel:)` pana la `resume()` sau Anulare. Buton nou in footer, langa Anuleaza, vizibil doar cat ruleaza un transfer (`OffloadRunner.togglePause()`).
+
+4. **Istoric extins + deschidere directa.** `HistoryEntry` capata `sourcePaths`/`destinationPaths`/`destinationTargetPaths` (cai complete, nu doar nume scurte de afisare — `decodeIfPresent` pastreaza compatibilitatea cu istoricul salvat anterior, fara aceste campuri). `HistoryView` arata acum sursa si destinatia complete pe randuri separate, plus doua butoane noi per sesiune: "Deschide sursa"/"Deschide destinatia" (`NSWorkspace.selectFile(inFileViewerRootedAtPath:)`, deschide radacina REALA creata — `destinationPath + folderName`, nu discul intreg).
+
+5. **Profile de transfer.** `TransferProfile` (nou, `TransferProfile.swift`) — struct Codable cu nume + cai sursa/destinatie + model de verificare + excluderi + buffer/RAM alese, persistat prin `TransferProfileStore` (JSON in Application Support, acelasi tipar ca `HistoryStore`). Sectiune noua in popover-ul de Setari: listeaza profilele salvate cu butoane Incarca/Sterge, plus un buton "+" care cere un nume si salveaza configuratia curenta completa (inclusiv treapta de buffer/RAM, nu doar cai/model ca "presetarile" vechi din Windows).
+
+**Verificare**: `swift build` (debug) trece curat dupa fiecare pas de mai sus - fara erori de compilare. **Nu s-a facut inca un test manual real** al celor 5 fluxuri (Pauza efectiv opreste/reia copierea unui fisier mare, dialogul de duplicate apare corect la o destinatie cu fisiere existente, profilul salvat chiar se reincarca identic) — Cristi urmeaza sa le testeze pe build-ul local inainte de a cere un release semnat/notarizat.
+
+**Rebuild local rapid** (fara semnare/notarizare, pentru testare): `cd mac-native && swift build && .build/debug/DataMoverMac`. **Build complet, .app impachetat** (semnat daca certificatul e in Keychain, altfel ad-hoc): `cd mac-native && ./build_app.sh`.

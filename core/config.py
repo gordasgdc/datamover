@@ -37,6 +37,14 @@ DEFAULTS = {
     # proiect/card (astea se schimba la fiecare card filmat, nu au ce cauta
     # intr-o presetare reutilizabila).
     "presets": {},
+    # Setari I/O & Memorie (2026-08-27) - vezi core/io_settings.py.
+    # chunk_size_mb: dimensiunea buffer-ului de citire/scriere per fisier
+    # (8MB implicit - potrivit si pentru HDD, si pentru SSD; userul poate
+    # urca la 64MB pe NVMe). ram_limit_mb: prag orientativ de memorie a
+    # procesului peste care aplicatia face pauza intre fisiere (backpressure)
+    # in loc sa lase RAM/swap sa creasca nestapanit - 0 = fara limita.
+    "chunk_size_mb": 8,
+    "ram_limit_mb": 1024,
 }
 
 

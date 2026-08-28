@@ -54,11 +54,13 @@ except ImportError:
     _BASE_CLASS = tk.Tk
 
 from core.offload_engine import (
-    list_all_files, list_mounted_volumes, get_free_space_bytes,
+    list_mounted_volumes, get_free_space_bytes,
     send_notification, DestinationJob, DEFAULT_EXCLUSIONS,
     VERIFICATION_MODELS, DEFAULT_VERIFICATION_MODEL, log_master,
+    scan_files_streaming, cleanup_manifest,
 )
 from core import config as cfg
+from core import io_settings
 from ui.common import theme
 from ui.common.tooltip import add_help_icon
 from core import checkpoint as ckpt
@@ -100,6 +102,11 @@ class DataMoverApp(_BASE_CLASS):
         )
         self.dark_mode_var = tk.BooleanVar(value=self.settings.get("dark_mode", False))
         self.eject_after_var = tk.BooleanVar(value=self.settings.get("eject_after", False))
+        # Setari I/O & Memorie (2026-08-27) - vezi core/io_settings.py.
+        self.chunk_size_var = tk.IntVar(
+            value=self.settings.get("chunk_size_mb", io_settings.DEFAULT_CHUNK_SIZE_MB)
+        )
+        self.ram_limit_var = tk.IntVar(value=self.settings.get("ram_limit_mb", 1024))
         self.language_var = tk.StringVar(
             value=self.settings.get("language", "ro") if self.settings.get("language") in SUPPORTED_LANGUAGES else "ro"
         )
@@ -119,6 +126,7 @@ class DataMoverApp(_BASE_CLASS):
         self.cancel_event = threading.Event()
         self._job_threads = []  # thread-urile de offload curente - vezi _poll_log_queue
         self.jobs = []
+        self._active_manifest_path = None  # manifest lazy al sesiunii curente - vezi _finish_session
         self.start_time = None
         self.dest_progress_rows = {}  # dest_path -> dict cu widget-uri (bar/labels)
 
@@ -352,6 +360,30 @@ class DataMoverApp(_BASE_CLASS):
             self._reg(ttk.Checkbutton(
                 eject_row, variable=self.eject_after_var,
             ), "opts_eject").pack(side="left")
+
+        # Setari I/O & Memorie (2026-08-27) - buffer de copiere + plafon de
+        # memorie, vezi core/io_settings.py. Motiv: transfer real de 3 TB
+        # care a umplut RAM/swap ("Your system has run out of application
+        # memory") - userul poate acum alege un buffer mai mic pe masini
+        # modeste sau un plafon de RAM la care aplicatia face pauza intre
+        # fisiere in loc sa lase memoria sa creasca nestapanit.
+        io_row = ttk.Frame(self.frame_opts)
+        io_row.grid(row=4, column=0, columnspan=3, padx=8, pady=(0, 8), sticky="w")
+        ttk.Label(io_row, text="Buffer copiere:").pack(side="left")
+        self.chunk_size_combo = ttk.Combobox(
+            io_row, state="readonly", width=8, textvariable=self.chunk_size_var,
+            values=[str(v) for v in io_settings.CHUNK_SIZE_CHOICES_MB],
+        )
+        self.chunk_size_combo.set(str(self.chunk_size_var.get()))
+        self.chunk_size_combo.pack(side="left", padx=(6, 4))
+        ttk.Label(io_row, text="MB      Limita RAM:").pack(side="left")
+        self.ram_limit_combo = ttk.Combobox(
+            io_row, state="readonly", width=8, textvariable=self.ram_limit_var,
+            values=[str(v) for v in io_settings.RAM_LIMIT_CHOICES_MB],
+        )
+        self.ram_limit_combo.set(str(self.ram_limit_var.get()))
+        self.ram_limit_combo.pack(side="left", padx=(6, 4))
+        ttk.Label(io_row, text="MB (0 = fara limita)").pack(side="left")
 
         # Destinatii
         self.frame_dest = self._reg(ttk.LabelFrame(content), "dest_label")
@@ -949,6 +981,16 @@ class DataMoverApp(_BASE_CLASS):
 
     # ---------------- Log / progres ----------------
 
+    # Numarul maxim de linii pastrate in panoul de jurnal - la un transfer
+    # de sute de mii de fisiere, un tk.Text la care se face doar insert()
+    # la nesfarsit acumuleaza nestapanit in RAM (fiecare linie + tag-ul ei
+    # de culoare raman in widget pentru totdeauna) - exact cazul real
+    # raportat de swap la maxim/"out of application memory" la 3 TB.
+    # CSV-ul complet ramane pe disc (Regula globala "Memory & I/O
+    # Performance" din CLAUDE.md) - panoul e doar o fereastra spre
+    # activitatea RECENTA, nu istoricul complet.
+    LOG_MAX_LINES = 2000
+
     def _append_log(self, text):
         self.log_text.config(state="normal")
         start = self.log_text.index("end-1c")
@@ -956,6 +998,11 @@ class DataMoverApp(_BASE_CLASS):
         tag = self._log_line_tag(text)
         if tag:
             self.log_text.tag_add(tag, start, self.log_text.index("end-1c"))
+        # trunchiaza de la inceput cand depasim plafonul, ca widget-ul sa
+        # nu creasca nemarginit intr-o sesiune lunga de copiere
+        total_lines = int(self.log_text.index("end-1c").split(".")[0])
+        if total_lines > self.LOG_MAX_LINES:
+            self.log_text.delete("1.0", f"{total_lines - self.LOG_MAX_LINES}.0")
         self.log_text.see("end")
         self.log_text.config(state="disabled")
 
@@ -1057,6 +1104,13 @@ class DataMoverApp(_BASE_CLASS):
         self.cancel_btn.config(state="disabled")
         self.progress_label.config(style="TLabel")
         self._play_finish_sound()
+
+        # manifestul lazy al scanarii (vezi scan_files_streaming) nu mai e
+        # necesar odata ce toate job-urile s-au oprit - il stergem, altfel
+        # ar ramane orfan in folderul temporar la fiecare sesiune
+        if self._active_manifest_path:
+            cleanup_manifest(self._active_manifest_path)
+            self._active_manifest_path = None
 
         any_cancelled = any(j.cancelled for j in self.jobs)
         total_ok = sum(j.ok_count for j in self.jobs)
@@ -1283,6 +1337,8 @@ class DataMoverApp(_BASE_CLASS):
             "dark_mode": self.dark_mode_var.get(),
             "eject_after": self.eject_after_var.get(),
             "presets": self.presets,
+            "chunk_size_mb": self.chunk_size_var.get(),
+            "ram_limit_mb": self.ram_limit_var.get(),
         })
 
     def _start_offload(self, resume=False):
@@ -1306,12 +1362,18 @@ class DataMoverApp(_BASE_CLASS):
         self._append_log(f"Model de verificare folosit: {current_label}")
         self._append_log(f"Se scaneaza sursa: {source} ...")
 
-        files = list_all_files(source, exclusions=exclusions)
-        if not files:
+        # Scanare "lazy": scrie fiecare fisier gasit direct intr-un manifest
+        # pe disc (JSON Lines), NU intr-o lista Python tinuta in RAM pe tot
+        # parcursul transferului - la 3+ TB / sute de mii de fisiere, acea
+        # lista ajungea sa fie unul dintre motivele de swap la maxim. Vezi
+        # core/offload_engine.scan_files_streaming + Regula globala
+        # "Memory & I/O Performance" din CLAUDE.md.
+        total_file_count, total_size, manifest_path = scan_files_streaming(source, exclusions=exclusions)
+        if not total_file_count:
             messagebox.showwarning(self.t("msg_warning_title"), self.t("msg_no_files"))
+            cleanup_manifest(manifest_path)
             return
-
-        total_size = sum(size for _f, _r, size in files)
+        self._active_manifest_path = manifest_path
 
         # verificare spatiu liber pe fiecare destinatie
         insufficient = []
@@ -1325,17 +1387,19 @@ class DataMoverApp(_BASE_CLASS):
                 self.t("msg_space_warning", details="\n".join(insufficient)),
             )
             if not proceed:
+                cleanup_manifest(manifest_path)
+                self._active_manifest_path = None
                 return
 
         self._append_log(
-            f"Am gasit {len(files)} fisiere ({format_size(total_size)}). "
+            f"Am gasit {total_file_count} fisiere ({format_size(total_size)}). "
             f"Se incepe copierea catre {len(self.destinations)} destinatie(i)"
             f"{' (reluare din checkpoint)' if resume else ''}..."
         )
 
         self._save_settings()
         log_master(
-            f"Sesiune offload pornita -> sursa={source}, fisiere={len(files)}, "
+            f"Sesiune offload pornita -> sursa={source}, fisiere={total_file_count}, "
             f"destinatii={len(self.destinations)}{' (reluare)' if resume else ''}"
         )
 
@@ -1343,7 +1407,7 @@ class DataMoverApp(_BASE_CLASS):
         self.bytes_counter = [0]
         self.copy_counter = [0]
         self.verify_counter = [0]
-        self.total_units = len(files) * len(self.destinations)
+        self.total_units = total_file_count * len(self.destinations)
         self.total_bytes = total_size * len(self.destinations)
         self.running = True
         self.start_time = datetime.now()
@@ -1357,15 +1421,18 @@ class DataMoverApp(_BASE_CLASS):
 
         self._build_dest_progress_rows()
 
+        io_cfg = cfg.load_config()
         self.jobs = [
             DestinationJob(
-                dest, folder_name, files, self.log_queue,
+                dest, folder_name, None, self.log_queue,
                 self.progress_counter, self.bytes_counter, self.progress_lock,
                 skip_existing_identical=self.skip_existing_var.get(),
                 cancel_event=self.cancel_event,
                 verification_model=self.verification_model_var.get(),
                 copy_counter=self.copy_counter, verify_counter=self.verify_counter,
                 resume=resume, source_root=source,
+                manifest_path=manifest_path, total_files=total_file_count,
+                total_bytes=total_size, io_cfg=io_cfg,
             )
             for dest in self.destinations
         ]
