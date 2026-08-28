@@ -13,13 +13,24 @@ using MessageBoxResult = System.Windows.MessageBoxResult;
 
 namespace DataMover.Client;
 
+/// Un disc/volum detectat, afisat in panoul "DISCURI DETECTATE".
+public sealed class DriveTile
+{
+    public string Path { get; init; } = "";
+    public string Label { get; init; } = "";
+    public string FreeSpaceText { get; init; } = "";
+}
+
 public partial class MainWindow : FluentWindow
 {
     private readonly OffloadRunner _runner = new();
     private readonly ObservableCollection<string> _sources = new();
     private readonly ObservableCollection<string> _destinations = new();
     private readonly ObservableCollection<string> _activity = new();
+    private readonly ObservableCollection<DriveTile> _drives = new();
     private readonly DispatcherTimer _uiTimer;
+    private readonly DispatcherTimer _drivesTimer;
+    private bool _wasRunning;
 
     public MainWindow()
     {
@@ -28,6 +39,7 @@ public partial class MainWindow : FluentWindow
         SourcesList.ItemsSource = _sources;
         DestinationsList.ItemsSource = _destinations;
         ActivityList.ItemsSource = _activity;
+        DrivesList.ItemsSource = _drives;
 
         VerificationCombo.ItemsSource = Enum.GetValues<VerificationModel>();
         VerificationCombo.SelectedItem = VerificationModel.Md5;
@@ -38,6 +50,7 @@ public partial class MainWindow : FluentWindow
         RamLimitCombo.SelectedItem = IOSettings.SizeLabel(1024);
 
         RefreshProfilesCombo();
+        RefreshDrives();
 
         _runner.ActivityLogged += line => Dispatcher.Invoke(() =>
         {
@@ -52,6 +65,87 @@ public partial class MainWindow : FluentWindow
         _uiTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(200) };
         _uiTimer.Tick += (_, _) => RefreshUiFromRunner();
         _uiTimer.Start();
+
+        // Reimprospatare periodica a discurilor detectate (2026-08-28) -
+        // ca un card SD conectat dupa deschiderea aplicatiei sa apara
+        // automat, la fel ca _refreshVolumes (Mac, la fiecare 4s).
+        _drivesTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(4) };
+        _drivesTimer.Tick += (_, _) => RefreshDrives();
+        _drivesTimer.Start();
+    }
+
+    // ---------------- Discuri detectate (2026-08-28) ----------------
+    // Raportat lipsa la testul real pe Windows: "nu detecteaza sursele, nu
+    // se vad hard discurile, cardurile video" - Mac are un grid de discuri
+    // (VolumeInfo.swift), Windows nu avea nimic echivalent.
+
+    private void RefreshDrives()
+    {
+        var tiles = new List<DriveTile>();
+        foreach (var drive in DriveInfo.GetDrives())
+        {
+            if (!drive.IsReady) continue;
+            string label;
+            try { label = string.IsNullOrEmpty(drive.VolumeLabel) ? drive.Name : $"{drive.VolumeLabel} ({drive.Name})"; }
+            catch { label = drive.Name; }
+            string freeText;
+            try { freeText = $"{FormatBytes(drive.AvailableFreeSpace)} liber din {FormatBytes(drive.TotalSize)}"; }
+            catch { freeText = ""; }
+            tiles.Add(new DriveTile { Path = drive.RootDirectory.FullName, Label = label, FreeSpaceText = freeText });
+        }
+
+        // pastram selectia curenta din UI intacta - inlocuim doar continutul
+        _drives.Clear();
+        foreach (var t in tiles) _drives.Add(t);
+    }
+
+    private static string FormatBytes(long bytes)
+    {
+        double b = bytes;
+        string[] units = { "B", "KB", "MB", "GB", "TB" };
+        int i = 0;
+        while (b >= 1024 && i < units.Length - 1) { b /= 1024; i++; }
+        return $"{b:0.#} {units[i]}";
+    }
+
+    private void OnAddDriveAsSourceClicked(object sender, RoutedEventArgs e)
+    {
+        if (((FrameworkElement)sender).Tag is string path && !_sources.Contains(path)) _sources.Add(path);
+    }
+
+    private void OnAddDriveAsDestinationClicked(object sender, RoutedEventArgs e)
+    {
+        if (((FrameworkElement)sender).Tag is string path && !_destinations.Contains(path)) _destinations.Add(path);
+    }
+
+    // ---------------- Drag & drop din Explorer (2026-08-28) ----------------
+    // Raportat lipsa la testul real: "nu functioneaza drag and drop, daca
+    // vreau sa trag un folder in sursa/destinatie, nu functioneaza".
+
+    private static void OnFolderDragOver(DragEventArgs e)
+    {
+        e.Effects = e.Data.GetDataPresent(DataFormats.FileDrop) ? DragDropEffects.Copy : DragDropEffects.None;
+        e.Handled = true;
+    }
+
+    private static IEnumerable<string> DroppedPaths(DragEventArgs e) =>
+        e.Data.GetDataPresent(DataFormats.FileDrop)
+            ? (string[])e.Data.GetData(DataFormats.FileDrop)!
+            : Array.Empty<string>();
+
+    private void OnSourcesDragOver(object sender, DragEventArgs e) => OnFolderDragOver(e);
+    private void OnDestinationsDragOver(object sender, DragEventArgs e) => OnFolderDragOver(e);
+
+    private void OnSourcesDrop(object sender, DragEventArgs e)
+    {
+        foreach (var path in DroppedPaths(e))
+            if (!_sources.Contains(path)) _sources.Add(path);
+    }
+
+    private void OnDestinationsDrop(object sender, DragEventArgs e)
+    {
+        foreach (var path in DroppedPaths(e))
+            if (Directory.Exists(path) && !_destinations.Contains(path)) _destinations.Add(path);
     }
 
     private void RefreshUiFromRunner()
@@ -65,6 +159,37 @@ public partial class MainWindow : FluentWindow
         CancelButton.IsEnabled = _runner.IsRunning;
         PauseButton.IsEnabled = _runner.IsRunning;
         PauseButton.Content = _runner.IsPaused ? "Continua" : "Pauza";
+
+        // Tranzitie running -> oprit: transferul tocmai s-a terminat.
+        // Raportat lipsa la testul real: "la sfarsit nu-mi da optiunea sa
+        // deschid folderul destinatie" - acum arata butonul dedicat, plus
+        // deschide automat daca userul a bifat optiunea.
+        if (_wasRunning && !_runner.IsRunning)
+        {
+            var anyResult = _runner.LastResults.FirstOrDefault();
+            if (anyResult != null)
+            {
+                OpenDestinationButton.Visibility = Visibility.Visible;
+                if (AutoOpenDestCheck.IsChecked == true) OpenLastDestinations();
+            }
+        }
+        _wasRunning = _runner.IsRunning;
+    }
+
+    private void OpenLastDestinations()
+    {
+        foreach (var job in _runner.Jobs)
+        {
+            var target = Path.Combine(job.DestRoot, job.FolderName);
+            if (Directory.Exists(target))
+                Process.Start(new ProcessStartInfo("explorer.exe", $"\"{target}\"") { UseShellExecute = true });
+        }
+    }
+
+    private void OnOpenLastDestinationClicked(object sender, RoutedEventArgs e)
+    {
+        OpenLastDestinations();
+        OpenDestinationButton.Visibility = Visibility.Collapsed;
     }
 
     // ---------------- Surse / Destinatii ----------------
@@ -227,6 +352,7 @@ public partial class MainWindow : FluentWindow
         _runner.ChunkSizeMB = SelectedChunkSizeMB();
         _runner.RamLimitMB = SelectedRamLimitMB();
         _activity.Clear();
+        OpenDestinationButton.Visibility = Visibility.Collapsed;
         _runner.Start(
             sources: _sources.ToList(),
             destinations: _destinations.ToList(),
