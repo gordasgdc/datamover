@@ -458,6 +458,45 @@ scrie, copiaza sau proceseaza fisiere/fluxuri de retea/date mari:
 
 **Status acest repo (2026-08-27): IMPLEMENTAT — repo de origine.** Mac: `IOSettings.swift` + `autoreleasepool` in `copyFileCancelable`/`genericHash` (`OffloadEngine.swift`), CSV scris incremental, esantion plafonat pentru PDF, Setari I/O & Memorie in popover-ul de Setari. Windows/Python: `core/io_settings.py`, `scan_files_streaming`/`iter_manifest_batches` (scanare lazy pe disc, nu lista completa in RAM), raport CSV incremental, panou de jurnal plafonat la 2000 de linii (`ui/windows/app.py`), setari de buffer/RAM in optiuni.
 
+**22. `PlatformTarget` explicit obligatoriu pentru orice proiect .NET/WPF cu
+pachete NuGet native (2026-08-28).** Gasit pe DataMover (client WPF): un
+`.csproj` implicit "Any CPU" ruleaza, pe host-ul Windows al lui Cristi
+(Parallels pe Mac Apple Silicon), ca `win-arm64` - iar biblioteci cu
+binare native (QuestPDF/Skia, si potential altele similare) NU au build
+pentru arhitectura asta, cazand tacut cu `DllNotFoundException`/
+`TypeInitializationException` doar la runtime, niciodata la `dotnet build`.
+Orice `.csproj` nou (sau existent, la prima dependinta nativa adaugata) din
+`GDCVaultWin`/`GDCPluginManagerWin`/`DataMover`/orice client Windows viitor
+seteaza explicit `<PlatformTarget>x64</PlatformTarget>` - Windows 11 ARM
+ruleaza procesul x64 prin emulatie nativa a OS-ului, deci functioneaza
+identic pe Windows x64 real si pe ARM64/Parallels. Nu te baza pe "Any CPU"
+doar pentru ca merge la compilare.
+
+**23. Garda obligatorie impotriva `dist/` detinut de root, in orice
+`build_app.sh` Mac (2026-08-28).** Bug real, repetat de mai multe ori pe
+DataMover in aceeasi sesiune (cauza exacta neconfirmata - posibil o
+instalare de test cu `sudo installer -pkg ... -target /` care a atins
+accidental folderul local): `dist/<App>.app` ramas detinut de `root:wheel`
+dintr-un build anterior face ca `rm -rf "dist"` de la inceputul scriptului
+sa esueze partial, tacut, cu o gramada de "Permission denied" greu de
+gasit in mijlocul unui log lung. Orice `build_app.sh` din ecosistem
+(DataMover, GDCVault, CursorPro, gdc-plugin-manager-catalog-vendor, orice
+build Mac viitor) verifica ACEST lucru explicit INAINTE de `rm -rf`, cu un
+mesaj clar si actionabil (`sudo rm -rf $(pwd)/dist`, de rulat manual O
+SINGURA DATA de Cristi - Claude nu poate rula `sudo`), in loc sa lase
+`rm -rf` sa esueze criptic:
+```bash
+if [ -d "dist" ] && ! [ -w "dist" ] || find dist -maxdepth 2 -user root -print -quit 2>/dev/null | grep -q .; then
+    echo "EROARE: 'dist/' contine fisiere detinute de root. Ruleaza manual:" >&2
+    echo "    sudo rm -rf $(pwd)/dist" >&2
+    exit 1
+fi
+```
+Practic, inaintea oricarui `release.sh`: `ls -la mac-native/dist` (listare
+COMPLETA, nu trunchiata cu `head`) - o listare trunchiata poate rata
+`<App>.app` daca sorteaza dupa alte fisiere (`.pkg`/`.zip`), dand o
+verificare falsa de "curat".
+
 ## [PARTEA 2: SPECIFICAȚII TEHNICE PROIECT]
 
 ## REGULĂ PERMANENTĂ: Locația proiectului pe disc (2026-08-25)
@@ -879,3 +918,13 @@ doar dupa ce pica.
 
 **Verificat**: `swift build` (Mac) - 0 erori. `dotnet build` (Windows,
 fix trial) - 0 erori.
+
+**[CONFIRMAT 2026-08-28] Publicat `v2.7.1`** - cele 3 fix-uri de mai sus
+live. `release.sh` a cazut o a doua oara pe ACEEASI eroare de `dist/`
+root-owned (vezi Regula 23, adaugata chiar din acest motiv) - Cristi a
+rulat manual `sudo rm -rf mac-native/dist`, apoi scriptul a rulat curat:
+Mac semnat+notarizat+stapled (`spctl`: Notarized Developer ID), CI
+`build-windows-wpf` verde, toate 3 artefactele (`DataMover-Mac.zip`,
+`DataMover-Windows.zip`, `DataMover-WPF-Windows.zip`) HTTP 200 pe tag-ul
+`v2.7.1`, API-ul de update confirmat pe `v2.7.1`. Release:
+https://github.com/gordasgdc/datamover/releases/tag/v2.7.1
