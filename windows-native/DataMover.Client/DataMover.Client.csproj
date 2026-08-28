@@ -12,6 +12,16 @@
     <Nullable>enable</Nullable>
     <RootNamespace>DataMover.Client</RootNamespace>
     <AssemblyName>DataMover</AssemblyName>
+    <!-- OBLIGATORIU pentru QuestPDF (raport PDF) - raportat de Cristi
+         2026-08-28 (TypeInitializationException, DllNotFoundException
+         'QuestPdfSkia'): pe Windows ARM64 (Parallels pe Mac Apple
+         Silicon), "Any CPU" (implicit) ruleaza procesul ca win-arm64, iar
+         QuestPDF NU are build nativ pentru arhitectura asta (doar
+         win-x86/win-x64/linux-*/osx-*) - mesajul chiar cere explicit
+         "Platform target = x64 sau x86, nu Any CPU". Fortand x64, Windows
+         11 ARM ruleaza aplicatia prin emulatie x64 (nativa, suportata de
+         OS) - functioneaza atat pe Windows x64 real cat si pe ARM64. -->
+    <PlatformTarget>x64</PlatformTarget>
     <!-- Rescriere WPF/Fluent (2026-08-28) - inlocuieste treptat ui/windows
          (Python/Tkinter). Versiune sincronizata cu varianta Mac/Python -
          vezi Regula 14 din CLAUDE.md. -->
