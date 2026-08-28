@@ -21,14 +21,42 @@ import time
 from . import config as _config
 
 MIN_CHUNK_SIZE_MB = 1
-MAX_CHUNK_SIZE_MB = 64
+MAX_CHUNK_SIZE_MB = 128
 DEFAULT_CHUNK_SIZE_MB = 8
 
-# Optiuni oferite in UI (Regula "Size-ul Buffer-ului de Copiere" din cerere).
-CHUNK_SIZE_CHOICES_MB = [4, 8, 16, 32, 64]
+# Trepte granulate (2026-08-28, cerinta explicita - "cat mai multe trepte
+# selecționabile") - portate identic din IOSettings.swift (Mac), de la
+# masini modeste pana la statii de productie RAW cu zeci de GB RAM.
+CHUNK_SIZE_CHOICES_MB = [1, 2, 4, 8, 16, 32, 64, 128]
 
-# 0 = fara limita (comportament vechi). Optiuni oferite in UI.
-RAM_LIMIT_CHOICES_MB = [0, 512, 1024, 2048, 4096]
+# 0 = fara limita (comportament vechi). Optiuni oferite in UI, pana la 64 GB.
+RAM_LIMIT_CHOICES_MB = [0, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536]
+
+
+class IOPerformancePreset:
+    """Preset rapid: buffer + plafon RAM setate simultan dintr-un click -
+    valorile individuale raman oricand ajustabile manual dupa. Identic cu
+    IOPerformancePreset (Mac, IOSettings.swift)."""
+
+    def __init__(self, id_, label, chunk_size_mb, ram_limit_mb):
+        self.id = id_
+        self.label = label
+        self.chunk_size_mb = chunk_size_mb
+        self.ram_limit_mb = ram_limit_mb
+
+
+PERFORMANCE_PRESETS = [
+    IOPerformancePreset("eco", "Eco / Sistem Slab", 4, 1024),
+    IOPerformancePreset("standard", "Standard", 8, 4096),
+    IOPerformancePreset("high", "Performanta Inalta", 32, 16384),
+    IOPerformancePreset("extreme", "Extrem / Productie RAW", 64, 32768),
+]
+
+
+def size_label_mb(mb):
+    """'512 MB' sub 1 GB, '8 GB' de la 1024 MB in sus - trepte pana la
+    64 GB+ raman lizibile, nu '65536 MB'."""
+    return f"{mb // 1024} GB" if mb >= 1024 else f"{mb} MB"
 
 
 def get_chunk_size_bytes(cfg=None):

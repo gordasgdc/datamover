@@ -384,7 +384,7 @@ class DestinationJob:
                  resume=False, source_root=None,
                  checkpoint_interval_files=10, checkpoint_interval_seconds=5.0,
                  manifest_path=None, total_files=None, total_bytes=None,
-                 chunk_size=None, io_cfg=None):
+                 chunk_size=None, io_cfg=None, pause_event=None):
         self.dest_root = dest_root
         self.folder_name = folder_name
         # Mod "clasic": lista completa in memorie (folosit de UI-uri mai
@@ -400,6 +400,11 @@ class DestinationJob:
         self.progress_lock = progress_lock
         self.skip_existing_identical = skip_existing_identical
         self.cancel_event = cancel_event
+        # Pauza (2026-08-28) - threading.Event partajat, la fel ca
+        # cancel_event, dar reversibil: set() = pauza, clear() = continua.
+        # Vezi Mac PauseToken (OffloadEngine.swift) - acelasi comportament,
+        # verificat INTRE fisiere, nu opreste un fisier la mijloc.
+        self.pause_event = pause_event
         self.verification_model = verification_model
         self.hashlib_name = VERIFICATION_MODELS.get(
             verification_model, VERIFICATION_MODELS[DEFAULT_VERIFICATION_MODEL]
@@ -546,6 +551,21 @@ class DestinationJob:
                 self.cancelled = True
                 break
 
+            # Pauza: blocheaza AICI, INTRE fisiere - fisierul anterior s-a
+            # terminat deja, deci nu se pierde niciun progres facut pana la
+            # apasarea Pauza. Verificam periodic cancel_event ca sa nu
+            # ramanem blocati definitiv daca userul anuleaza cat e pe pauza.
+            if self.pause_event is not None and self.pause_event.is_set():
+                self.log_queue.put(f"[{os.path.basename(self.dest_root)}] Pauza — transferul e oprit temporar.")
+                while self.pause_event.is_set():
+                    if self.cancel_event is not None and self.cancel_event.is_set():
+                        break
+                    time.sleep(0.2)
+                if self.cancel_event is not None and self.cancel_event.is_set():
+                    self.cancelled = True
+                    break
+                self.log_queue.put(f"[{os.path.basename(self.dest_root)}] Reluat din pauza.")
+
             # Backpressure: daca memoria procesului a depasit limita
             # configurata (Setari I/O & Memorie), asteapta putin inainte
             # sa continue - previne acumularea nestapanita in RAM/swap
@@ -573,7 +593,13 @@ class DestinationJob:
             error_msg = ""
 
             try:
-                if (self.skip_existing_identical and os.path.isfile(dest_path)
+                # "Completeaza/Reia" (2026-08-28): la o reluare (resume),
+                # verificam AUTOMAT fisierele deja existente la destinatie
+                # prin marime+hash, chiar daca userul n-a bifat separat
+                # "Sari peste identice" - altfel reluarea recopia orbeste
+                # tot ce nu era in checkpoint.json (ex. o inchidere bruscasa
+                # de sistem, fara sa apuce sa scrie checkpoint-ul).
+                if ((self.skip_existing_identical or self.resume) and os.path.isfile(dest_path)
                         and os.path.getsize(dest_path) == size):
                     self.phase_text = f"Verificare: {rel_path}"
                     same, src_repr, dst_repr = self._verify_pair(full_src, dest_path, size)

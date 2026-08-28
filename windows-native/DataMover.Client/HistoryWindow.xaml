@@ -1,0 +1,47 @@
+<ui:FluentWindow x:Class="DataMover.Client.HistoryWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+        Title="Istoric" Height="520" Width="720" WindowStartupLocation="CenterOwner">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <ui:TitleBar Grid.Row="0" Title="Istoric" ShowMaximize="False" />
+
+        <ListView x:Name="HistoryList" Grid.Row="1" Margin="16" SelectionMode="Single">
+            <ListView.ItemTemplate>
+                <DataTemplate>
+                    <Border Background="#161616" CornerRadius="6" Padding="10" Margin="0,0,0,6">
+                        <StackPanel>
+                            <TextBlock Text="{Binding FolderName}" FontWeight="Bold" FontSize="13" />
+                            <TextBlock Text="{Binding DateText}" Foreground="Gray" FontSize="11" />
+                            <TextBlock Foreground="Gray" FontSize="11">
+                                <Run Text="Sursa: " /><Run Text="{Binding SourcesSummary}" />
+                            </TextBlock>
+                            <TextBlock Foreground="Gray" FontSize="11">
+                                <Run Text="Destinatie: " /><Run Text="{Binding DestSummary}" />
+                            </TextBlock>
+                            <TextBlock FontSize="11">
+                                <Run Text="OK: " /><Run Text="{Binding OkCount}" />
+                                <Run Text="  Sarite: " /><Run Text="{Binding SkipCount}" />
+                                <Run Text="  Probleme: " /><Run Text="{Binding FailCount}" />
+                            </TextBlock>
+                            <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                                <Button Content="Deschide sursa" Click="OnOpenSourceClicked" Tag="{Binding}" Margin="0,0,10,0" />
+                                <Button Content="Deschide destinatia" Click="OnOpenDestinationClicked" Tag="{Binding}" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                </DataTemplate>
+            </ListView.ItemTemplate>
+        </ListView>
+
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="16">
+            <ui:Button Content="Sterge tot istoricul" Appearance="Danger" Click="OnClearAllClicked" Margin="0,0,8,0" />
+            <ui:Button Content="Inchide" Click="OnCloseClicked" />
+        </StackPanel>
+    </Grid>
+</ui:FluentWindow>
