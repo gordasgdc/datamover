@@ -9,7 +9,7 @@ import CoreText
 /// CSV + PDF. Format de folder si nume de fisiere identice cu Python,
 /// ca rapoartele sa fie recognoscibile langa cele generate de Windows.
 
-let offloadChunkSize = 1024 * 1024 // 1 MB, ca in Python
+let offloadChunkSize = 1024 * 1024 // 1 MB, fallback - vezi IOSettings.chunkSizeBytes pentru valoarea configurabila reala
 
 struct FileEntry {
     let fullPath: String
@@ -35,6 +35,35 @@ final class CancelToken: @unchecked Sendable {
 }
 
 struct OffloadCancelled: Error {}
+
+/// Token de PAUZA thread-safe (2026-08-28), partajat intre thread-ul UI si
+/// toate job-urile de destinatie - la fel ca CancelToken, dar reversibil:
+/// spre deosebire de Cancel (definitiv, opreste job-ul), Pause doar
+/// blocheaza bucla principala pana la resume(), FARA sa piarda progresul
+/// facut pana atunci (fisierul curent isi termina copierea in curs, nu se
+/// intrerupe la mijloc - pauza se aplica INTRE fisiere).
+final class PauseToken: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _paused = false
+
+    var isPaused: Bool {
+        lock.lock(); defer { lock.unlock() }
+        return _paused
+    }
+
+    func pause() { lock.lock(); _paused = true; lock.unlock() }
+    func resume() { lock.lock(); _paused = false; lock.unlock() }
+
+    /// Blocheaza thread-ul curent (job-ul de destinatie, NU thread-ul UI)
+    /// cat timp e in pauza, verificand periodic cancel-ul ca sa nu ramana
+    /// blocat definitiv daca userul apasa Anuleaza in timp ce e in pauza.
+    func waitWhilePaused(cancel: CancelToken) {
+        while isPaused {
+            if cancel.isCancelled { return }
+            Thread.sleep(forTimeInterval: 0.2)
+        }
+    }
+}
 
 // MARK: - Model de verificare
 
@@ -112,7 +141,7 @@ func listAllFiles(root: String, exclusions: [String] = []) -> [FileEntry] {
 /// variantele THROWING corecte, introduse tocmai pentru asta (macOS
 /// 10.15.4+) — orice eroare de I/O ajunge acum in catch-ul de mai jos, ca
 /// eroare normala de job.
-func copyFileCancelable(src: String, dst: String, cancel: CancelToken) throws {
+func copyFileCancelable(src: String, dst: String, cancel: CancelToken, chunkSize: Int = offloadChunkSize) throws {
     FileManager.default.createFile(atPath: dst, contents: nil)
     guard let input = FileHandle(forReadingAtPath: src),
           let output = FileHandle(forWritingAtPath: dst) else {
@@ -121,12 +150,33 @@ func copyFileCancelable(src: String, dst: String, cancel: CancelToken) throws {
     defer { try? input.close(); try? output.close() }
 
     do {
+        // FIX MEMORIE REAL (2026-08-27): fara `autoreleasepool` aici,
+        // fiecare `Data` intoarsa de `read(upToCount:)` e backed de un
+        // obiect Objective-C (NSData) ale carui autorelease-uri NU se
+        // elibereaza pana la drenarea urmatorului autorelease pool -
+        // pe un DispatchQueue.global de fundal, GCD creeaza un pool o
+        // singura data PER BLOC dispatch-uit, nu per iteratie a acestei
+        // bucle `while`. Pentru un singur fisier de zeci/sute de GB (sau
+        // un transfer total de 3 TB), asta insemna ca memoria Objective-C
+        // temporara a FIECAREI bucati citite se acumula neintrerupt pe
+        // toata durata copierii, in loc sa fie eliberata dupa fiecare
+        // bloc scris pe disc - exact simptomul raportat ("Your system has
+        // run out of application memory", swap la maxim). `autoreleasepool`
+        // explicit, per iteratie, dreneaza acele temporare imediat dupa
+        // scrierea pe disc a fiecarui bloc.
         while true {
             if cancel.isCancelled { throw OffloadCancelled() }
-            // `read(upToCount:)` intoarce nil sau Data goala la EOF (in
-            // functie de versiune) — verificam ambele, nu doar `.isEmpty`.
-            guard let chunk = try input.read(upToCount: offloadChunkSize), !chunk.isEmpty else { break }
-            try output.write(contentsOf: chunk)
+            var stop = false
+            try autoreleasepool {
+                // `read(upToCount:)` intoarce nil sau Data goala la EOF (in
+                // functie de versiune) — verificam ambele, nu doar `.isEmpty`.
+                guard let chunk = try input.read(upToCount: chunkSize), !chunk.isEmpty else {
+                    stop = true
+                    return
+                }
+                try output.write(contentsOf: chunk)
+            }
+            if stop { break }
         }
     } catch {
         try? FileManager.default.removeItem(atPath: dst) // nu lasam fisier partial
@@ -142,7 +192,7 @@ func copyFileCancelable(src: String, dst: String, cancel: CancelToken) throws {
 
 /// Hash generic pe bucati, pentru orice algoritm CryptoKit conform
 /// HashFunction (MD5/SHA1/SHA256/SHA512 partajate acelasi cod).
-private func genericHash<H: HashFunction>(path: String, using: H.Type, cancel: CancelToken) throws -> String {
+private func genericHash<H: HashFunction>(path: String, using: H.Type, cancel: CancelToken, chunkSize: Int) throws -> String {
     guard let handle = FileHandle(forReadingAtPath: path) else {
         throw NSError(domain: "DataMover", code: 2, userInfo: [NSLocalizedDescriptionKey: "Nu pot citi \(path)"])
     }
@@ -151,22 +201,33 @@ private func genericHash<H: HashFunction>(path: String, using: H.Type, cancel: C
     var hasher = H()
     while true {
         if cancel.isCancelled { throw OffloadCancelled() }
-        // Vezi WARNING-ul de la copyFileCancelable: `readData(ofLength:)`
-        // ridica o exceptie Objective-C necapturabila la o eroare reala de
-        // citire, in loc sa arunce o eroare Swift. Verificarea (hash-ul de
-        // dupa copiere) rula pe acelasi risc de crash ca si copierea.
-        guard let chunk = try handle.read(upToCount: offloadChunkSize), !chunk.isEmpty else { break }
-        hasher.update(data: chunk)
+        // Acelasi fix de memorie ca in copyFileCancelable: fara
+        // autoreleasepool per iteratie, Data-urile bridge-uite din
+        // Objective-C se acumuleaza pe toata durata hash-uirii unui
+        // fisier urias, nu doar cat o bucata.
+        var stop = false
+        try autoreleasepool {
+            // Vezi WARNING-ul de la copyFileCancelable: `readData(ofLength:)`
+            // ridica o exceptie Objective-C necapturabila la o eroare reala de
+            // citire, in loc sa arunce o eroare Swift. Verificarea (hash-ul de
+            // dupa copiere) rula pe acelasi risc de crash ca si copierea.
+            guard let chunk = try handle.read(upToCount: chunkSize), !chunk.isEmpty else {
+                stop = true
+                return
+            }
+            hasher.update(data: chunk)
+        }
+        if stop { break }
     }
     return hasher.finalize().map { String(format: "%02x", $0) }.joined()
 }
 
-func hashOfFile(path: String, model: VerificationModel, cancel: CancelToken) throws -> String {
+func hashOfFile(path: String, model: VerificationModel, cancel: CancelToken, chunkSize: Int = offloadChunkSize) throws -> String {
     switch model {
-    case .md5: return try genericHash(path: path, using: Insecure.MD5.self, cancel: cancel)
-    case .sha1: return try genericHash(path: path, using: Insecure.SHA1.self, cancel: cancel)
-    case .sha256: return try genericHash(path: path, using: SHA256.self, cancel: cancel)
-    case .sha512: return try genericHash(path: path, using: SHA512.self, cancel: cancel)
+    case .md5: return try genericHash(path: path, using: Insecure.MD5.self, cancel: cancel, chunkSize: chunkSize)
+    case .sha1: return try genericHash(path: path, using: Insecure.SHA1.self, cancel: cancel, chunkSize: chunkSize)
+    case .sha256: return try genericHash(path: path, using: SHA256.self, cancel: cancel, chunkSize: chunkSize)
+    case .sha512: return try genericHash(path: path, using: SHA512.self, cancel: cancel, chunkSize: chunkSize)
     case .sizeOnly: return ""
     }
 }
@@ -251,6 +312,7 @@ final class DestinationJob {
     let folderName: String
     let files: [FileEntry]
     let cancel: CancelToken
+    let pause: PauseToken
     let verificationModel: VerificationModel
     let resume: Bool
     let sourceRoot: String?
@@ -265,7 +327,15 @@ final class DestinationJob {
     /// asigurarea asta psihologica conteaza cel mai mult.
     let onActivity: (_ line: String) -> Void
 
-    private var reportRows: [ReportRow] = []
+    /// Esantion plafonat pentru raportul PDF (nu tot istoricul - vezi
+    /// pdfSampleLimit): toate erorile/nepotrivirile plus o mostra din
+    /// restul. CSV-ul complet e scris INCREMENTAL pe disc (csvHandle),
+    /// nu tinut in memorie - un transfer de sute de mii de fisiere nu mai
+    /// pastreaza randul fiecaruia in RAM pana la sfarsit.
+    private var pdfSampleRows: [ReportRow] = []
+    private let pdfSampleLimit = 500
+    private var csvHandle: FileHandle?
+    private var csvPath: String?
     private var okCount = 0, skipCount = 0, failCount = 0
     private var cancelled = false
     private var filesStatus: [String: String] = [:]
@@ -274,6 +344,7 @@ final class DestinationJob {
     private var startedAt = Date()
 
     init(destRoot: String, folderName: String, files: [FileEntry], cancel: CancelToken,
+         pause: PauseToken = PauseToken(),
          verificationModel: VerificationModel = .md5, resume: Bool = false, sourceRoot: String? = nil,
          onFileDone: @escaping (_ size: Int64) -> Void,
          onActivity: @escaping (_ line: String) -> Void = { _ in }) {
@@ -281,6 +352,7 @@ final class DestinationJob {
         self.folderName = folderName
         self.files = files
         self.cancel = cancel
+        self.pause = pause
         self.onActivity = onActivity
         self.verificationModel = verificationModel
         self.resume = resume
@@ -292,6 +364,8 @@ final class DestinationJob {
         startedAt = Date()
         let targetRoot = (destRoot as NSString).appendingPathComponent(folderName)
         try? FileManager.default.createDirectory(atPath: targetRoot, withIntermediateDirectories: true)
+        let chunkSize = IOSettings.chunkSizeBytes
+        openCSV(targetRoot: targetRoot)
 
         var alreadyDone: Set<String> = []
         if resume, let saved = CheckpointStore.load(targetRoot: targetRoot) {
@@ -301,6 +375,24 @@ final class DestinationJob {
 
         for entry in files {
             if cancel.isCancelled { cancelled = true; break }
+
+            // Pauza (2026-08-28): blocheaza AICI, INTRE fisiere - fisierul
+            // anterior si-a terminat deja copierea/verificarea, deci nu se
+            // pierde niciun progres facut pana la apasarea Pauza. La
+            // Resume, bucla continua exact de unde a ramas.
+            if pause.isPaused {
+                onActivity("Pauza — transferul e oprit temporar de utilizator.")
+                pause.waitWhilePaused(cancel: cancel)
+                if cancel.isCancelled { cancelled = true; break }
+                onActivity("Reluat din pauza.")
+            }
+
+            // Backpressure: daca memoria procesului a depasit limita
+            // configurata (Setari), asteapta putin inainte de urmatorul
+            // fisier - vezi IOSettings.waitIfOverRAMLimit.
+            IOSettings.waitIfOverRAMLimit(cancel: cancel) { [onActivity] warning in
+                onActivity(warning)
+            }
 
             if alreadyDone.contains(entry.relPath) {
                 skipCount += 1
@@ -317,10 +409,36 @@ final class DestinationJob {
             var srcRepr = "", dstRepr = "", errorMsg = ""
 
             do {
+                // "Completeaza/Reia" (2026-08-28): daca fisierul de la
+                // destinatie exista deja si are ACEEASI marime ca sursa,
+                // il verificam direct (fara sa-l recopiem) - daca hash-ul
+                // coincide, il numaram ca deja transferat corect. Acopera
+                // cazul unei reporniri neasteptate FARA checkpoint (ex.
+                // s-a inchis calculatorul brusc) - nu doar reluarea
+                // normala prin offload_checkpoint.json.
+                if resume, FileManager.default.fileExists(atPath: destPath),
+                   let existingSize = (try? FileManager.default.attributesOfItem(atPath: destPath)[.size] as? Int64) ?? nil,
+                   existingSize == entry.size {
+                    onActivity("Verificare fisier existent: \(entry.relPath)…")
+                    let (same, s, d) = try verifyPair(entry: entry, destPath: destPath, chunkSize: chunkSize)
+                    if same {
+                        status = "SARIT"
+                        srcRepr = s; dstRepr = d
+                        skipCount += 1
+                        filesStatus[entry.relPath] = "sarit"
+                        logRow(ReportRow(file: entry.relPath, sizeBytes: entry.size,
+                                          srcHash: s, dstHash: d, status: status, error: ""))
+                        onFileDone(entry.size)
+                        maybeWriteCheckpoint(targetRoot: targetRoot)
+                        continue
+                    }
+                    // marimea coincide dar continutul nu - recopiem normal mai jos
+                }
+
                 onActivity("Copiere: \(entry.relPath) (\(formatBytes(entry.size)))")
-                try copyFileCancelable(src: entry.fullPath, dst: destPath, cancel: cancel)
+                try copyFileCancelable(src: entry.fullPath, dst: destPath, cancel: cancel, chunkSize: chunkSize)
                 onActivity("Verificare checksum: \(entry.relPath)…")
-                let (same, s, d) = try verifyPair(entry: entry, destPath: destPath)
+                let (same, s, d) = try verifyPair(entry: entry, destPath: destPath, chunkSize: chunkSize)
                 srcRepr = s; dstRepr = d
                 if !same { status = "NEPOTRIVIRE" }
             } catch is OffloadCancelled {
@@ -336,28 +454,28 @@ final class DestinationJob {
             case "SARIT": skipCount += 1; filesStatus[entry.relPath] = "sarit"
             default: failCount += 1; filesStatus[entry.relPath] = "fail"
             }
-            reportRows.append(ReportRow(file: entry.relPath, sizeBytes: entry.size,
-                                          srcHash: srcRepr, dstHash: dstRepr,
-                                          status: status, error: errorMsg))
+            logRow(ReportRow(file: entry.relPath, sizeBytes: entry.size,
+                              srcHash: srcRepr, dstHash: dstRepr,
+                              status: status, error: errorMsg))
             onFileDone(entry.size)
             maybeWriteCheckpoint(targetRoot: targetRoot)
         }
 
         maybeWriteCheckpoint(targetRoot: targetRoot, force: true)
-        let (csvPath, pdfPath) = writeReports(targetRoot: targetRoot)
+        let (savedCSV, pdfPath) = writeReports(targetRoot: targetRoot)
         return DestinationResult(destRoot: destRoot, okCount: okCount, skipCount: skipCount,
                                   failCount: failCount, cancelled: cancelled,
-                                  csvPath: csvPath, pdfPath: pdfPath)
+                                  csvPath: savedCSV, pdfPath: pdfPath)
     }
 
-    private func verifyPair(entry: FileEntry, destPath: String) throws -> (same: Bool, srcRepr: String, dstRepr: String) {
+    private func verifyPair(entry: FileEntry, destPath: String, chunkSize: Int) throws -> (same: Bool, srcRepr: String, dstRepr: String) {
         if verificationModel == .sizeOnly {
             let dstSize = (try? FileManager.default.attributesOfItem(atPath: destPath)[.size] as? Int64) ?? nil
             let d = dstSize ?? -1
             return (d == entry.size, "marime=\(entry.size)", "marime=\(d)")
         }
-        let srcHash = try hashOfFile(path: entry.fullPath, model: verificationModel, cancel: cancel)
-        let dstHash = try hashOfFile(path: destPath, model: verificationModel, cancel: cancel)
+        let srcHash = try hashOfFile(path: entry.fullPath, model: verificationModel, cancel: cancel, chunkSize: chunkSize)
+        let dstHash = try hashOfFile(path: destPath, model: verificationModel, cancel: cancel, chunkSize: chunkSize)
         return (srcHash == dstHash, srcHash, dstHash)
     }
 
@@ -374,28 +492,62 @@ final class DestinationJob {
         lastCheckpointTime = now
     }
 
-    private func writeReports(targetRoot: String) -> (csv: String?, pdf: String?) {
+    /// Deschide CSV-ul de raport O SINGURA DATA, la inceputul run(), si il
+    /// tine deschis (csvHandle) pe toata durata copierii - fiecare rand se
+    /// scrie IMEDIAT (logRow), nu se acumuleaza intr-un array Swift pana
+    /// la final (regula "Log-uri si Stare UI": nu tinem in RAM istoricul
+    /// complet al unui transfer de sute de mii de fisiere).
+    private func openCSV(targetRoot: String) {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd_HH-mm-ss"
         let timestamp = formatter.string(from: Date())
+        let path = (targetRoot as NSString).appendingPathComponent("offload_report_\(timestamp).csv")
+        FileManager.default.createFile(atPath: path, contents: nil)
+        guard let handle = FileHandle(forWritingAtPath: path) else { return }
+        let header = "fisier,marime_bytes,verificare_sursa,verificare_destinatie,status,eroare\n"
+        handle.write(header.data(using: .utf8) ?? Data())
+        csvHandle = handle
+        csvPath = path
+    }
 
-        let csvPath = (targetRoot as NSString).appendingPathComponent("offload_report_\(timestamp).csv")
-        var csv = "fisier,marime_bytes,verificare_sursa,verificare_destinatie,status,eroare\n"
-        for row in reportRows {
+    private func logRow(_ row: ReportRow) {
+        if let handle = csvHandle {
             let fields = [row.file, String(row.sizeBytes), row.srcHash, row.dstHash, row.status, row.error]
-            csv += fields.map { csvEscape($0) }.joined(separator: ",") + "\n"
+            let line = fields.map { csvEscape($0) }.joined(separator: ",") + "\n"
+            autoreleasepool {
+                handle.write(line.data(using: .utf8) ?? Data())
+            }
         }
-        var savedCSV: String? = nil
-        do { try csv.write(toFile: csvPath, atomically: true, encoding: .utf8); savedCSV = csvPath } catch {}
 
+        // Esantion plafonat pentru PDF: toate erorile/nepotrivirile (putine,
+        // importante de vazut), plus primele pdfSampleLimit randuri - restul
+        // ramane doar in CSV, care e complet.
+        let isProblem = row.status == "EROARE" || row.status == "NEPOTRIVIRE"
+        if isProblem || pdfSampleRows.count < pdfSampleLimit {
+            pdfSampleRows.append(row)
+        }
+    }
+
+    private func writeReports(targetRoot: String) -> (csv: String?, pdf: String?) {
+        try? csvHandle?.close()
+        csvHandle = nil
+
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd_HH-mm-ss"
+        let timestamp = formatter.string(from: Date())
         let pdfPath = (targetRoot as NSString).appendingPathComponent("offload_report_\(timestamp).pdf")
+        let totalRows = okCount + skipCount + failCount
+        let truncatedNote = pdfSampleRows.count < totalRows
+            ? "Lista completa (\(totalRows) fisiere) e in CSV-ul alaturat - PDF-ul arata toate problemele plus un esantion."
+            : nil
         let savedPDF = writePDFReport(
-            path: pdfPath, destination: destRoot, folderName: folderName, rows: reportRows,
+            path: pdfPath, destination: destRoot, folderName: folderName, rows: pdfSampleRows,
             startedAt: startedAt, finishedAt: Date(), okCount: okCount, skipCount: skipCount,
-            failCount: failCount, cancelled: cancelled, verificationLabel: verificationModel.label
+            failCount: failCount, cancelled: cancelled, verificationLabel: verificationModel.label,
+            truncatedNote: truncatedNote
         ) ? pdfPath : nil
 
-        return (savedCSV, savedPDF)
+        return (csvPath, savedPDF)
     }
 
     private func csvEscape(_ field: String) -> String {
@@ -410,7 +562,8 @@ final class DestinationJob {
 
 private func writePDFReport(path: String, destination: String, folderName: String, rows: [ReportRow],
                              startedAt: Date, finishedAt: Date, okCount: Int, skipCount: Int,
-                             failCount: Int, cancelled: Bool, verificationLabel: String) -> Bool {
+                             failCount: Int, cancelled: Bool, verificationLabel: String,
+                             truncatedNote: String? = nil) -> Bool {
     let pageWidth: CGFloat = 595 // A4 @ 72dpi
     let pageHeight: CGFloat = 842
     let margin: CGFloat = 40
@@ -469,7 +622,12 @@ private func writePDFReport(path: String, destination: String, folderName: Strin
     draw("Model verificare: \(verificationLabel)", size: 10); y -= 16
     draw("OK: \(okCount)   Sarite: \(skipCount)   Probleme: \(failCount)" + (cancelled ? "   (ANULAT)" : ""),
          size: 10, bold: true, color: failCount > 0 || cancelled ? .systemRed : .systemGreen)
-    y -= 26
+    y -= 16
+    if let note = truncatedNote {
+        draw(note, size: 8, color: .darkGray)
+        y -= 10
+    }
+    y -= 16
 
     drawTableHeader()
     for (index, row) in rows.enumerated() {
@@ -515,14 +673,131 @@ final class OffloadRunner: ObservableObject {
     @Published private(set) var activityLines: [String] = []
     private let activityLogLimit = 200
 
+    // Pauza (2026-08-28) - vezi PauseToken. Butonul de Pauza din UI leaga
+    // direct de isPaused; job-urile de destinatie citesc acelasi token.
+    @Published var isPaused = false
+    private var pauseToken = PauseToken()
+
+    // Buffer/Memorie afisate live in UI (2026-08-28) - "Buffer Alocat: X |
+    // Utilizat: Y", actualizate la fiecare progres (advance()).
+    @Published var bufferAllocatedText = ""
+    @Published var memoryUsedText = ""
+
     private var cancelToken = CancelToken()
     private var startTime: Date?
     private var bytesDone: Int64 = 0
 
+    /// Numele folderului de destinatie pentru o pereche proiect/card - pur,
+    /// fara efecte laterale, ca ContentView sa poata verifica dinainte
+    /// daca exista deja o destinatie cu acest nume (vezi
+    /// existingNonEmptyDestinations) inainte sa porneasca efectiv start().
+    func folderName(project: String, card: String) -> String {
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "yyyy-MM-dd"
+        let dateStr = dateFormatter.string(from: Date())
+        let proj = project.trimmingCharacters(in: .whitespaces).isEmpty ? "Proiect" : project.trimmingCharacters(in: .whitespaces)
+        let crd = card.trimmingCharacters(in: .whitespaces).isEmpty ? "Card" : card.trimmingCharacters(in: .whitespaces)
+        return "\(dateStr)_\(proj)_\(crd)".replacingOccurrences(of: " ", with: "_")
+    }
+
+    /// Sanitizeaza proiect/card exact ca folderName(), fara data - folosit
+    /// ca sa gasim un folder EXISTENT (dintr-o zi anterioara) cu acelasi
+    /// proiect/card, nu doar cel al zilei curente.
+    private func sanitizedProjectCard(project: String, card: String) -> String {
+        let proj = project.trimmingCharacters(in: .whitespaces).isEmpty ? "Proiect" : project.trimmingCharacters(in: .whitespaces)
+        let crd = card.trimmingCharacters(in: .whitespaces).isEmpty ? "Card" : card.trimmingCharacters(in: .whitespaces)
+        return "\(proj)_\(crd)".replacingOccurrences(of: " ", with: "_")
+    }
+
+    /// Cauta un folder deja EXISTENT (creat oricand, nu neaparat azi) cu
+    /// acelasi proiect/card la oricare destinatie - bug real gasit
+    /// 2026-08-28: `folderName(project:card:)` include data zilei curente,
+    /// deci un transfer de 4 TB care trece peste miezul noptii (sau e
+    /// reluat a doua zi) calcula un nume de folder NOU, iar verificarea
+    /// de duplicate se uita gresit la folderul nou (inca inexistent), nu
+    /// la cel vechi cu sute de GB deja copiate - userul nu mai era
+    /// intrebat NIMIC si aplicatia pornea o copiere completa, paralela,
+    /// intr-un folder separat. Daca gaseste mai multe (ex. incercari din
+    /// zile diferite), alege cel mai RECENT (prefixul de data se sorteaza
+    /// lexicografic identic cu ordinea cronologica).
+    func findExistingFolderName(destinations: [String], project: String, card: String) -> String? {
+        let suffix = "_" + sanitizedProjectCard(project: project, card: card)
+        var candidates: [String] = []
+        for dest in destinations {
+            guard let items = try? FileManager.default.contentsOfDirectory(atPath: dest) else { continue }
+            candidates.append(contentsOf: items.filter { $0.hasSuffix(suffix) })
+        }
+        return candidates.sorted().last
+    }
+
+    /// Un nume de folder liber (neexistent inca la nicio destinatie),
+    /// pornind de la `base` si adaugand " (2)", " (3)"... - folosit de
+    /// optiunea "Creeaza folder nou" din dialogul de duplicate.
+    func freeFolderName(base: String, destinations: [String]) -> String {
+        var candidate = base
+        var suffix = 2
+        while !existingNonEmptyDestinations(destinations: destinations, folderName: candidate).isEmpty {
+            candidate = "\(base) (\(suffix))"
+            suffix += 1
+        }
+        return candidate
+    }
+
+    /// Destinatiile la care folderul `folderName` exista DEJA si contine
+    /// cel putin un fisier - semnal ca acest transfer ar suprascrie/
+    /// duplica date, nu ca porneste intr-un folder gol. Apelat de
+    /// ContentView INAINTE de start(), ca sa decida daca arata dialogul
+    /// "Reia / Folder nou / Suprascrie".
+    func existingNonEmptyDestinations(destinations: [String], folderName: String) -> [String] {
+        destinations.filter { dest in
+            let targetRoot = (dest as NSString).appendingPathComponent(folderName)
+            guard let contents = try? FileManager.default.contentsOfDirectory(atPath: targetRoot) else { return false }
+            // ignoram fisierele proprii de raport/checkpoint - un folder
+            // care contine DOAR un checkpoint dintr-o rulare intrerupta
+            // fara niciun fisier real copiat inca nu e "duplicat", e
+            // pur si simplu o reluare normala.
+            return contents.contains { !$0.hasPrefix("offload_checkpoint") && !$0.hasPrefix("offload_report_") }
+        }
+    }
+
+    /// Sterge continutul folderelor deja existente la `folderName`, pe
+    /// TOATE destinatiile date - folosit de optiunea "Suprascrie complet".
+    func clearExistingFolders(destinations: [String], folderName: String) {
+        for dest in destinations {
+            let targetRoot = (dest as NSString).appendingPathComponent(folderName)
+            guard let contents = try? FileManager.default.contentsOfDirectory(atPath: targetRoot) else { continue }
+            for item in contents {
+                try? FileManager.default.removeItem(atPath: (targetRoot as NSString).appendingPathComponent(item))
+            }
+        }
+    }
+
+    func togglePause() {
+        guard isRunning else { return }
+        if isPaused {
+            pauseToken.resume()
+            isPaused = false
+            statusText = L.t("footer.copying")
+        } else {
+            pauseToken.pause()
+            isPaused = true
+            statusText = L.t("footer.paused")
+        }
+    }
+
+    private func updateMemoryDisplay() {
+        let limit = IOSettings.ramLimitMB
+        bufferAllocatedText = limit == 0 ? "Fara limita" : formatBytes(Int64(limit) * 1024 * 1024)
+        if let used = IOSettings.currentResidentMemoryBytes() {
+            memoryUsedText = formatBytes(Int64(used))
+        }
+    }
+
     func start(sources: [String], destinations: [String],
                verificationModel: VerificationModel = .md5,
                exclusions: [String] = [], resume: Bool = true,
-               project: String = "", card: String = "") {
+               project: String = "", card: String = "",
+               folderNameOverride: String? = nil) {
         guard !isRunning else { return }
 
         var files: [FileEntry] = []
@@ -545,17 +820,15 @@ final class OffloadRunner: ObservableObject {
 
         // Numele folderului de destinatie: <data>_<Proiect>_<Card>, exact ca
         // in aplicatia Windows — implicit "Proiect"/"Card" daca lasi campurile
-        // goale. Diferit de timestamp-ul cu ora folosit pentru rapoarte
-        // (writeReports isi calculeaza propriul sau, mai jos).
-        let dateFormatter = DateFormatter()
-        dateFormatter.dateFormat = "yyyy-MM-dd"
-        let dateStr = dateFormatter.string(from: Date())
-        let proj = project.trimmingCharacters(in: .whitespaces).isEmpty ? "Proiect" : project.trimmingCharacters(in: .whitespaces)
-        let crd = card.trimmingCharacters(in: .whitespaces).isEmpty ? "Card" : card.trimmingCharacters(in: .whitespaces)
-        let folderName = "\(dateStr)_\(proj)_\(crd)".replacingOccurrences(of: " ", with: "_")
+        // goale. `folderNameOverride` vine de la optiunea "Creeaza folder
+        // nou" din dialogul de duplicate (ContentView), cand userul alege
+        // sa NU foloseasca numele implicit deja existent la destinatie.
+        let folderName = folderNameOverride ?? self.folderName(project: project, card: card)
         let sourceRoot = sources.first
 
         cancelToken = CancelToken()
+        pauseToken = PauseToken()
+        isPaused = false
         isRunning = true
         startTime = Date()
         bytesDone = 0
@@ -566,8 +839,10 @@ final class OffloadRunner: ObservableObject {
         speedText = ""
         lastResults = []
         activityLines = []
+        updateMemoryDisplay()
 
         let token = cancelToken
+        let pauseTok = pauseToken
         let group = DispatchGroup()
         var results: [DestinationResult] = []
         let resultsLock = NSLock()
@@ -577,6 +852,7 @@ final class OffloadRunner: ObservableObject {
             DispatchQueue.global(qos: .utility).async { [weak self] in
                 let job = DestinationJob(
                     destRoot: dest, folderName: folderName, files: files, cancel: token,
+                    pause: pauseTok,
                     verificationModel: verificationModel, resume: resume, sourceRoot: sourceRoot,
                     onFileDone: { size in
                         Task { @MainActor [weak self] in
@@ -628,6 +904,7 @@ final class OffloadRunner: ObservableObject {
                 speedText = formatBytes(Int64(Double(bytesDone) / elapsed)) + "/s"
             }
         }
+        updateMemoryDisplay()
     }
 
     private func finish(results: [DestinationResult], folderName: String, sources: [String], destinations: [String]) {

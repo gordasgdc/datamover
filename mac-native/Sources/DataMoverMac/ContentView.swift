@@ -30,8 +30,20 @@ struct ContentView: View {
     // la fiecare pornire): e o preferinta stabila a userului, nu ceva ce
     // vrei sa reintrodui manual la fiecare transfer.
     @AppStorage("dm_autoOpenDestFolder") private var autoOpenDestFolder = false
+    // Setari I/O & Memorie (2026-08-27) - aceleasi chei UserDefaults ca
+    // IOSettings.chunkSizeMB/ramLimitMB, ca engine-ul sa citeasca direct
+    // ce alege userul aici, fara alt strat de sincronizare.
+    @AppStorage("datamover_chunk_size_mb") private var chunkSizeMB = IOSettings.defaultChunkSizeMB
+    @AppStorage("datamover_ram_limit_mb") private var ramLimitMB = 1024
     @State private var showCompletionAlert = false
     @State private var resumeEnabled: Bool = true
+    // Duplicate/Reluare (2026-08-28) - vezi attemptStart()/startTransfer().
+    @State private var showDuplicateDialog = false
+    @State private var duplicateFolderName: String = ""
+    // Profile de transfer (2026-08-28) - vezi transferProfilesSection.
+    @ObservedObject private var profileStore = TransferProfileStore.shared
+    @State private var showSaveProfilePrompt = false
+    @State private var newProfileName: String = ""
     @State private var showSettings = false
     @State private var showHistory = false
     @State private var projectName: String = ""
@@ -524,6 +536,14 @@ struct ContentView: View {
                             .font(.system(size: 10))
                             .foregroundStyle(.secondary)
                     }
+                    // Buffer Alocat / Utilizat, live (2026-08-28) - cerinta
+                    // explicita: userul vede clar ce resurse sunt alocate,
+                    // nu doar un procent de progres.
+                    if runner.isRunning {
+                        Text("\(L.t("io.allocated")): \(runner.bufferAllocatedText)  |  \(L.t("io.used")): \(runner.memoryUsedText)")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.secondary)
+                    }
                 }
                 Spacer()
                 Button {
@@ -555,24 +575,81 @@ struct ContentView: View {
                 .popover(isPresented: $showSettings, arrowEdge: .top) {
                     settingsPopover
                 }
+                // Pauza/Continua (2026-08-28) - alaturi de Anuleaza, dar
+                // reversibil: opreste temporar transferul FARA sa piarda
+                // progresul, spre deosebire de Anuleaza (definitiv). Vezi
+                // PauseToken/OffloadRunner.togglePause.
+                if runner.isRunning {
+                    Button(runner.isPaused ? L.t("footer.resume") : L.t("footer.pause")) {
+                        runner.togglePause()
+                    }
+                    .buttonStyle(.bordered)
+                    .padding(.trailing, 12)
+                }
                 Button(L.t("footer.cancel")) { runner.cancel() }
                     .buttonStyle(.plain)
                     .foregroundStyle(.secondary)
                     .padding(.trailing, 12)
                     .disabled(!runner.isRunning)
                 Button(runner.isRunning ? L.t("footer.copying") : L.t("footer.start")) {
-                    let exclusions = exclusionsText.split(separator: ",").map(String.init)
-                    runner.start(sources: sourcePaths, destinations: destinationPaths,
-                                 verificationModel: verificationModel, exclusions: exclusions,
-                                 resume: resumeEnabled, project: projectName, card: cardName)
+                    attemptStart()
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(.green)
                 .disabled(runner.isRunning || sourcePaths.isEmpty || destinationPaths.isEmpty)
+                .confirmationDialog(L.t("duplicate.title"), isPresented: $showDuplicateDialog, titleVisibility: .visible) {
+                    Button(L.t("duplicate.resume")) {
+                        startTransfer(resume: true, folderNameOverride: duplicateFolderName)
+                    }
+                    Button(L.t("duplicate.newFolder")) {
+                        // Baza e numele "de azi" (nu cel vechi gasit),
+                        // ca un folder chiar nou sa nu mosteneasca data
+                        // veche a transferului anterior.
+                        let todayName = runner.folderName(project: projectName, card: cardName)
+                        let freeName = runner.freeFolderName(base: todayName, destinations: destinationPaths)
+                        startTransfer(resume: resumeEnabled, folderNameOverride: freeName)
+                    }
+                    Button(L.t("duplicate.overwrite"), role: .destructive) {
+                        runner.clearExistingFolders(destinations: destinationPaths, folderName: duplicateFolderName)
+                        startTransfer(resume: false, folderNameOverride: duplicateFolderName)
+                    }
+                    Button(L.t("duplicate.cancel"), role: .cancel) {}
+                } message: {
+                    Text(L.t("duplicate.message"))
+                }
             }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
+    }
+
+    /// Verifica dinainte daca folderul tinta exista deja, nevid, la vreo
+    /// destinatie (2026-08-28) - daca da, arata dialogul "Reia / Folder
+    /// nou / Suprascrie" in loc sa porneasca direct si sa suprascrie
+    /// tacut date existente sau sa creeze duplicate.
+    private func attemptStart() {
+        // Cautam INTAI un folder deja existent cu acelasi proiect/card,
+        // indiferent de data la care a fost creat (vezi
+        // findExistingFolderName - fix 2026-08-28 pentru transferuri care
+        // trec peste miezul noptii). Doar daca nu gasim niciunul, calculam
+        // numele "de azi", ca la un transfer chiar nou.
+        let folderName = runner.findExistingFolderName(destinations: destinationPaths, project: projectName, card: cardName)
+            ?? runner.folderName(project: projectName, card: cardName)
+        let existing = runner.existingNonEmptyDestinations(destinations: destinationPaths, folderName: folderName)
+        if existing.isEmpty {
+            startTransfer(resume: resumeEnabled, folderNameOverride: nil)
+        } else {
+            duplicateFolderName = folderName
+            showDuplicateDialog = true
+        }
+    }
+
+    private func startTransfer(resume: Bool, folderNameOverride: String?) {
+        let exclusions = exclusionsText.split(separator: ",").map(String.init)
+        runner.start(sources: sourcePaths, destinations: destinationPaths,
+                     verificationModel: verificationModel, exclusions: exclusions,
+                     resume: resume, project: projectName, card: cardName,
+                     folderNameOverride: folderNameOverride)
     }
 
     /// Flux de activitate stil Terminal, in footer, cat timp ruleaza un
@@ -649,6 +726,58 @@ struct ContentView: View {
             Toggle(L.t("settings.autoOpenDestFolder"), isOn: $autoOpenDestFolder)
                 .font(.system(size: 12))
 
+            Divider()
+
+            // I/O & Memorie (2026-08-27, extins 2026-08-28) - vezi
+            // IOSettings.swift. Motiv: caz real de swap la maxim / "out of
+            // application memory" la un transfer de 3 TB - userul poate
+            // alege acum un buffer mai mic (masini modeste) sau un plafon
+            // de RAM la care aplicatia face pauza intre fisiere in loc sa
+            // lase memoria sa creasca nestapanit (backpressure).
+            VStack(alignment: .leading, spacing: 6) {
+                Text(L.t("io.title")).font(.system(size: 11)).foregroundStyle(.secondary)
+
+                // Preset-uri rapide (2026-08-28, cerinta explicita):
+                // Eco/Standard/High Performance/Extreme - fiecare seteaza
+                // simultan buffer + plafon RAM, ramanand oricand ajustabile
+                // manual dupa.
+                HStack(spacing: 6) {
+                    ForEach(IOPerformancePreset.all) { preset in
+                        Button(L.t(preset.nameKey)) {
+                            chunkSizeMB = preset.chunkSizeMB
+                            ramLimitMB = preset.ramLimitMB
+                        }
+                        .buttonStyle(.bordered)
+                        .font(.system(size: 10))
+                    }
+                }
+
+                HStack {
+                    Text(L.t("io.buffer"))
+                    Picker("", selection: $chunkSizeMB) {
+                        ForEach(IOSettings.chunkSizeChoicesMB, id: \.self) { mb in
+                            Text(ioSizeLabel(mb)).tag(mb)
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(width: 90)
+                }
+                HStack {
+                    Text(L.t("io.ramLimit"))
+                    Picker("", selection: $ramLimitMB) {
+                        ForEach(IOSettings.ramLimitChoicesMB, id: \.self) { mb in
+                            Text(mb == 0 ? L.t("io.noLimit") : ioSizeLabel(mb)).tag(mb)
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(width: 90)
+                }
+            }
+            .font(.system(size: 12))
+
+            Divider()
+            transferProfilesSection
+
             if let last = runner.lastResults.first, let folder = last.csvPath.map({ ($0 as NSString).deletingLastPathComponent }) {
                 Divider()
                 Button(L.t("settings.openLastReport")) {
@@ -666,7 +795,81 @@ struct ContentView: View {
             .buttonStyle(.bordered)
         }
         .padding(16)
-        .frame(width: 340)
+        .frame(width: 360)
+    }
+
+    /// "512 MB" sub 1 GB, "8 GB" de la 1024 MB in sus - cerinta explicita
+    /// (trepte pana la 64 GB+ trebuie sa ramana lizibile, nu "65536 MB").
+    private func ioSizeLabel(_ mb: Int) -> String {
+        mb >= 1024 ? "\(mb / 1024) GB" : "\(mb) MB"
+    }
+
+    // MARK: - Profile de transfer (2026-08-28)
+
+    /// Salveaza/incarca o configuratie completa sub un nume ales de user
+    /// (cai sursa/destinatie, model de verificare, buffer/RAM) - cerinta
+    /// explicita: seteaza o singura data un backup recurent, refolosit
+    /// fara sa retastezi nimic data viitoare.
+    private var transferProfilesSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text(L.t("profiles.title")).font(.system(size: 11)).foregroundStyle(.secondary)
+                Spacer()
+                Button {
+                    showSaveProfilePrompt = true
+                } label: {
+                    Image(systemName: "plus.circle")
+                }
+                .buttonStyle(.plain)
+                .help(L.t("profiles.save"))
+            }
+
+            if profileStore.profiles.isEmpty {
+                Text(L.t("profiles.none")).font(.system(size: 11)).foregroundStyle(.secondary)
+            } else {
+                ForEach(profileStore.profiles) { profile in
+                    HStack {
+                        Text(profile.name).font(.system(size: 12)).lineLimit(1)
+                        Spacer()
+                        Button(L.t("profiles.load")) { applyProfile(profile) }
+                            .buttonStyle(.link).font(.system(size: 11))
+                        Button {
+                            profileStore.delete(profile)
+                        } label: {
+                            Image(systemName: "trash").font(.system(size: 11))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+        .alert(L.t("profiles.namePrompt"), isPresented: $showSaveProfilePrompt) {
+            TextField(L.t("profiles.namePrompt"), text: $newProfileName)
+            Button(L.t("profiles.save")) {
+                saveCurrentAsProfile()
+            }
+            Button(L.t("duplicate.cancel"), role: .cancel) { newProfileName = "" }
+        }
+    }
+
+    private func applyProfile(_ profile: TransferProfile) {
+        sourcePaths = profile.sourcePaths.filter { FileManager.default.fileExists(atPath: $0) }
+        destinationPaths = profile.destinationPaths.filter { FileManager.default.fileExists(atPath: $0) }
+        verificationModel = profile.verificationModel
+        exclusionsText = profile.exclusionsText
+        chunkSizeMB = profile.chunkSizeMB
+        ramLimitMB = profile.ramLimitMB
+    }
+
+    private func saveCurrentAsProfile() {
+        let name = newProfileName.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty else { return }
+        profileStore.upsert(TransferProfile(
+            name: name, sourcePaths: sourcePaths, destinationPaths: destinationPaths,
+            verificationModel: verificationModel, exclusionsText: exclusionsText,
+            chunkSizeMB: chunkSizeMB, ramLimitMB: ramLimitMB
+        ))
+        newProfileName = ""
     }
 
 

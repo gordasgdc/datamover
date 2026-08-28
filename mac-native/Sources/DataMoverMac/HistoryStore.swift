@@ -13,6 +13,51 @@ struct HistoryEntry: Codable, Identifiable {
     let okCount: Int
     let skipCount: Int
     let failCount: Int
+    // Cai complete (2026-08-28) - sourcesSummary/destSummary raman doar
+    // pentru afisare scurta; astea sunt necesare ca sa poti deschide
+    // direct sursa/destinatia din istoric (Finder). `decodeIfPresent`
+    // pastreaza compatibilitatea cu intrari vechi de istoric, salvate
+    // inainte de aceasta schimbare (fara aceste campuri).
+    var sourcePaths: [String] = []
+    var destinationPaths: [String] = []
+    /// Radacinile REALE create la fiecare destinatie (destinationPaths[i]
+    /// + folderName) - ce ar trebui deschis efectiv in Finder, nu discul
+    /// intreg.
+    var destinationTargetPaths: [String] = []
+
+    enum CodingKeys: String, CodingKey {
+        case dateText, folderName, sourcesSummary, destSummary, okCount, skipCount, failCount
+        case sourcePaths, destinationPaths, destinationTargetPaths
+    }
+
+    init(dateText: String, folderName: String, sourcesSummary: String, destSummary: String,
+         okCount: Int, skipCount: Int, failCount: Int,
+         sourcePaths: [String] = [], destinationPaths: [String] = [], destinationTargetPaths: [String] = []) {
+        self.dateText = dateText
+        self.folderName = folderName
+        self.sourcesSummary = sourcesSummary
+        self.destSummary = destSummary
+        self.okCount = okCount
+        self.skipCount = skipCount
+        self.failCount = failCount
+        self.sourcePaths = sourcePaths
+        self.destinationPaths = destinationPaths
+        self.destinationTargetPaths = destinationTargetPaths
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        dateText = try c.decode(String.self, forKey: .dateText)
+        folderName = try c.decode(String.self, forKey: .folderName)
+        sourcesSummary = try c.decode(String.self, forKey: .sourcesSummary)
+        destSummary = try c.decode(String.self, forKey: .destSummary)
+        okCount = try c.decode(Int.self, forKey: .okCount)
+        skipCount = try c.decode(Int.self, forKey: .skipCount)
+        failCount = try c.decode(Int.self, forKey: .failCount)
+        sourcePaths = try c.decodeIfPresent([String].self, forKey: .sourcePaths) ?? []
+        destinationPaths = try c.decodeIfPresent([String].self, forKey: .destinationPaths) ?? []
+        destinationTargetPaths = try c.decodeIfPresent([String].self, forKey: .destinationTargetPaths) ?? []
+    }
 }
 
 final class HistoryStore: ObservableObject {
@@ -50,7 +95,9 @@ final class HistoryStore: ObservableObject {
             folderName: folderName,
             sourcesSummary: sources.map { ($0 as NSString).lastPathComponent }.joined(separator: ", "),
             destSummary: destinations.map { ($0 as NSString).lastPathComponent }.joined(separator: ", "),
-            okCount: okCount, skipCount: skipCount, failCount: failCount
+            okCount: okCount, skipCount: skipCount, failCount: failCount,
+            sourcePaths: sources, destinationPaths: destinations,
+            destinationTargetPaths: destinations.map { ($0 as NSString).appendingPathComponent(folderName) }
         )
         entries.append(entry)
         if entries.count > 200 { entries.removeFirst(entries.count - 200) }
