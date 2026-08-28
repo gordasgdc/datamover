@@ -285,6 +285,19 @@ public sealed class DestinationJob
         catch (Exception ex)
         {
             OnActivity?.Invoke($"Nu s-a putut genera raportul PDF: {ex.Message}");
+            // Raportat de Cristi (2026-08-28): "nu vad PDF-ul" - fara sa fi
+            // vazut vreun mesaj de eroare in feed (usor de ratat/derulat).
+            // Scriem eroarea COMPLETA (tip + stack) intr-un fisier langa
+            // CSV, ca sa fie gasibila chiar daca feed-ul de activitate a
+            // fost ratat sau golit intre timp.
+            try
+            {
+                var errPath = Path.Combine(targetRoot, "offload_report_PDF_EROARE.txt");
+                File.WriteAllText(errPath,
+                    $"Generarea raportului PDF a esuat la {DateTime.Now:yyyy-MM-dd HH:mm:ss}.\n\n" +
+                    $"Tip exceptie: {ex.GetType().FullName}\nMesaj: {ex.Message}\n\nStack trace:\n{ex}");
+            }
+            catch { /* nici asta nu trebuie sa opreasca transferul */ }
         }
     }
 
