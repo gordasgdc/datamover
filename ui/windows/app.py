@@ -26,6 +26,7 @@ necesita in plus pystray + pillow, DOAR daca il folosesti.
 
 import os
 import sys
+import shutil
 import subprocess
 import threading
 import queue
@@ -124,6 +125,7 @@ class DataMoverApp(_BASE_CLASS):
         self.total_bytes = 0
         self.running = False
         self.cancel_event = threading.Event()
+        self.pause_event = threading.Event()  # set() = pauza - vezi _toggle_pause
         self._job_threads = []  # thread-urile de offload curente - vezi _poll_log_queue
         self.jobs = []
         self._active_manifest_path = None  # manifest lazy al sesiunii curente - vezi _finish_session
@@ -361,29 +363,56 @@ class DataMoverApp(_BASE_CLASS):
                 eject_row, variable=self.eject_after_var,
             ), "opts_eject").pack(side="left")
 
-        # Setari I/O & Memorie (2026-08-27) - buffer de copiere + plafon de
-        # memorie, vezi core/io_settings.py. Motiv: transfer real de 3 TB
-        # care a umplut RAM/swap ("Your system has run out of application
-        # memory") - userul poate acum alege un buffer mai mic pe masini
-        # modeste sau un plafon de RAM la care aplicatia face pauza intre
-        # fisiere in loc sa lase memoria sa creasca nestapanit.
+        # Setari I/O & Memorie (2026-08-27, extins 2026-08-28) - buffer de
+        # copiere + plafon de memorie, vezi core/io_settings.py. Motiv:
+        # transfer real de 3 TB care a umplut RAM/swap ("Your system has
+        # run out of application memory") - userul poate acum alege un
+        # buffer mai mic pe masini modeste sau un plafon de RAM la care
+        # aplicatia face pauza intre fisiere in loc sa lase memoria sa
+        # creasca nestapanit. Trepte granulate + preset-uri rapide +
+        # afisare live "Buffer Alocat/Utilizat", portate identic din
+        # varianta Mac (IOSettings.swift).
+        self._chunk_size_labels = {io_settings.size_label_mb(v): v for v in io_settings.CHUNK_SIZE_CHOICES_MB}
+        self._ram_limit_labels = {"Fara limita" if v == 0 else io_settings.size_label_mb(v): v
+                                   for v in io_settings.RAM_LIMIT_CHOICES_MB}
+
+        preset_io_row = ttk.Frame(self.frame_opts)
+        preset_io_row.grid(row=4, column=0, columnspan=3, padx=8, pady=(0, 4), sticky="w")
+        for preset in io_settings.PERFORMANCE_PRESETS:
+            ttk.Button(
+                preset_io_row, text=preset.label, width=18,
+                command=lambda p=preset: self._apply_io_preset(p),
+            ).pack(side="left", padx=(0, 4))
+
         io_row = ttk.Frame(self.frame_opts)
-        io_row.grid(row=4, column=0, columnspan=3, padx=8, pady=(0, 8), sticky="w")
+        io_row.grid(row=5, column=0, columnspan=3, padx=8, pady=(0, 4), sticky="w")
         ttk.Label(io_row, text="Buffer copiere:").pack(side="left")
         self.chunk_size_combo = ttk.Combobox(
-            io_row, state="readonly", width=8, textvariable=self.chunk_size_var,
-            values=[str(v) for v in io_settings.CHUNK_SIZE_CHOICES_MB],
+            io_row, state="readonly", width=8,
+            values=list(self._chunk_size_labels.keys()),
         )
-        self.chunk_size_combo.set(str(self.chunk_size_var.get()))
-        self.chunk_size_combo.pack(side="left", padx=(6, 4))
-        ttk.Label(io_row, text="MB      Limita RAM:").pack(side="left")
+        self.chunk_size_combo.set(io_settings.size_label_mb(self.chunk_size_var.get()))
+        self.chunk_size_combo.bind("<<ComboboxSelected>>", self._on_chunk_size_selected)
+        self.chunk_size_combo.pack(side="left", padx=(6, 12))
+        ttk.Label(io_row, text="Limita RAM:").pack(side="left")
         self.ram_limit_combo = ttk.Combobox(
-            io_row, state="readonly", width=8, textvariable=self.ram_limit_var,
-            values=[str(v) for v in io_settings.RAM_LIMIT_CHOICES_MB],
+            io_row, state="readonly", width=10,
+            values=list(self._ram_limit_labels.keys()),
         )
-        self.ram_limit_combo.set(str(self.ram_limit_var.get()))
+        self.ram_limit_combo.set(
+            "Fara limita" if self.ram_limit_var.get() == 0 else io_settings.size_label_mb(self.ram_limit_var.get())
+        )
+        self.ram_limit_combo.bind("<<ComboboxSelected>>", self._on_ram_limit_selected)
         self.ram_limit_combo.pack(side="left", padx=(6, 4))
-        ttk.Label(io_row, text="MB (0 = fara limita)").pack(side="left")
+
+        # Afisare live "Buffer Alocat / Utilizat" (2026-08-28, cerinta
+        # explicita) - actualizata din _poll_log_queue cat timp ruleaza
+        # un transfer, ca userul sa vada clar resursele alocate, nu doar
+        # un procent de progres.
+        io_usage_row = ttk.Frame(self.frame_opts)
+        io_usage_row.grid(row=6, column=0, columnspan=3, padx=8, pady=(0, 8), sticky="w")
+        self.io_usage_label = ttk.Label(io_usage_row, style="Muted.TLabel", text="")
+        self.io_usage_label.pack(side="left")
 
         # Destinatii
         self.frame_dest = self._reg(ttk.LabelFrame(content), "dest_label")
@@ -503,13 +532,18 @@ class DataMoverApp(_BASE_CLASS):
         action_row = ttk.Frame(content)
         action_row.pack(pady=(0, 6))
         self.start_btn = self._reg(
-            ttk.Button(action_row, command=self._start_offload, style="Accent.TButton"), "action_start"
+            ttk.Button(action_row, command=self._attempt_start, style="Accent.TButton"), "action_start"
         )
         self.start_btn.pack(side="left", padx=6)
         self.cancel_btn = self._reg(
             ttk.Button(action_row, command=self._cancel_offload, state="disabled"), "action_cancel"
         )
         self.cancel_btn.pack(side="left", padx=6)
+        # Pauza/Continua (2026-08-28) - alaturi de Anuleaza, dar reversibil:
+        # opreste temporar transferul FARA sa piarda progresul. Vezi
+        # self.pause_event / DestinationJob.pause_event.
+        self.pause_btn = ttk.Button(action_row, text="Pauza", command=self._toggle_pause, state="disabled")
+        self.pause_btn.pack(side="left", padx=6)
 
         # Log
         self.frame_log = self._reg(ttk.LabelFrame(content), "log_label")
@@ -712,7 +746,7 @@ class DataMoverApp(_BASE_CLASS):
                 tree.heading(col, text=headings[col])
                 tree.column(col, width=widths[col], anchor="w")
 
-            for entry in history:
+            for i, entry in enumerate(history):
                 dest_summary = ", ".join(
                     os.path.basename(d.rstrip("/\\")) or d for d in entry.get("destinations", [])
                 ) or "-"
@@ -720,7 +754,7 @@ class DataMoverApp(_BASE_CLASS):
                     result = self.t("history_result_cancelled", ok=entry.get("ok", 0))
                 else:
                     result = self.t("history_result", ok=entry.get("ok", 0), fail=entry.get("fail", 0))
-                tree.insert("", "end", values=(
+                tree.insert("", "end", iid=str(i), values=(
                     entry.get("date", ""), entry.get("project", ""), entry.get("card", ""),
                     dest_summary, entry.get("verification_model", ""), result,
                 ))
@@ -729,6 +763,44 @@ class DataMoverApp(_BASE_CLASS):
             tree.configure(yscrollcommand=scrollbar.set)
             tree.pack(side="left", fill="both", expand=True)
             scrollbar.pack(side="left", fill="y")
+
+            # Deschidere directa in Finder/Explorer (2026-08-28, cerinta
+            # explicita) - actioneaza pe randul selectat din tabel. Intrarile
+            # vechi de istoric (fara "source"/"folder_name" salvate) nu pot
+            # fi deschise retroactiv - mesaj clar in loc sa esueze tacut.
+            def _selected_entry():
+                sel = tree.selection()
+                if not sel:
+                    messagebox.showinfo(self.t("history_title"), "Selecteaza mai intai o sesiune din tabel.")
+                    return None
+                return history[int(sel[0])]
+
+            def _open_selected_source():
+                entry = _selected_entry()
+                if not entry:
+                    return
+                source = entry.get("source")
+                if not source:
+                    messagebox.showinfo(self.t("history_title"), "Aceasta sesiune veche nu are sursa salvata.")
+                    return
+                self._open_path(source)
+
+            def _open_selected_destinations():
+                entry = _selected_entry()
+                if not entry:
+                    return
+                folder_name = entry.get("folder_name")
+                destinations = entry.get("destinations", [])
+                if not folder_name or not destinations:
+                    messagebox.showinfo(self.t("history_title"), "Aceasta sesiune veche nu are destinatia salvata.")
+                    return
+                for dest in destinations:
+                    self._open_path(os.path.join(dest, folder_name))
+
+            open_row = ttk.Frame(win)
+            open_row.pack(pady=(0, 8))
+            ttk.Button(open_row, text="Deschide sursa", command=_open_selected_source).pack(side="left", padx=4)
+            ttk.Button(open_row, text="Deschide destinatia(iile)", command=_open_selected_destinations).pack(side="left", padx=4)
 
         ttk.Button(win, text=self.t("about_close"), command=win.destroy).pack(pady=(0, 12))
 
@@ -851,6 +923,35 @@ class DataMoverApp(_BASE_CLASS):
         key = self.verification_labels.get(label, DEFAULT_VERIFICATION_MODEL)
         self.verification_model_var.set(key)
 
+    # ---------------- Setari I/O & Memorie (2026-08-28) ----------------
+
+    def _on_chunk_size_selected(self, _event=None):
+        self.chunk_size_var.set(self._chunk_size_labels.get(self.chunk_size_combo.get(), io_settings.DEFAULT_CHUNK_SIZE_MB))
+
+    def _on_ram_limit_selected(self, _event=None):
+        self.ram_limit_var.set(self._ram_limit_labels.get(self.ram_limit_combo.get(), 1024))
+
+    def _apply_io_preset(self, preset):
+        """Preset rapid (Eco/Standard/High/Extreme) - seteaza buffer+RAM
+        simultan, ramanand oricand ajustabile manual dupa. Vezi
+        io_settings.PERFORMANCE_PRESETS / IOPerformancePreset (Mac)."""
+        self.chunk_size_var.set(preset.chunk_size_mb)
+        self.ram_limit_var.set(preset.ram_limit_mb)
+        self.chunk_size_combo.set(io_settings.size_label_mb(preset.chunk_size_mb))
+        self.ram_limit_combo.set(
+            "Fara limita" if preset.ram_limit_mb == 0 else io_settings.size_label_mb(preset.ram_limit_mb)
+        )
+
+    def _update_io_usage_label(self):
+        """Afisare live "Buffer Alocat: X | Utilizat: Y" - cerinta
+        explicita, apelata din _poll_log_queue cat timp ruleaza un
+        transfer (vezi io_settings.current_process_memory_bytes)."""
+        limit_mb = self.ram_limit_var.get()
+        allocated = "Fara limita" if limit_mb == 0 else io_settings.size_label_mb(limit_mb)
+        used_bytes = io_settings.current_process_memory_bytes()
+        used = format_size(used_bytes) if used_bytes is not None else "?"
+        self.io_usage_label.config(text=f"Buffer Alocat: {allocated}  |  Utilizat: {used}")
+
     def _choose_source(self):
         path = filedialog.askdirectory(title=self.t("source_manual"))
         if path:
@@ -943,6 +1044,25 @@ class DataMoverApp(_BASE_CLASS):
             self.verification_model_var.set(model_key)
             self._refresh_verification_combo()
 
+        # Treapta de Buffer/RAM (2026-08-28, cerinta explicita: profilul
+        # retine si asta, nu doar cai/model ca presetarile vechi) -
+        # .get(..., current) degradeaza elegant pentru presetarile salvate
+        # inainte de acest camp.
+        chunk_mb = preset.get("chunk_size_mb")
+        if chunk_mb in io_settings.CHUNK_SIZE_CHOICES_MB:
+            self.chunk_size_var.set(chunk_mb)
+            self.chunk_size_combo.set(io_settings.size_label_mb(chunk_mb))
+        ram_mb = preset.get("ram_limit_mb")
+        if ram_mb in io_settings.RAM_LIMIT_CHOICES_MB:
+            self.ram_limit_var.set(ram_mb)
+            self.ram_limit_combo.set("Fara limita" if ram_mb == 0 else io_settings.size_label_mb(ram_mb))
+
+        # Sursa (2026-08-28) - profilul retine si folderul sursa implicit,
+        # daca inca exista pe disc (poate fi un card demontat intre timp).
+        source = preset.get("source")
+        if source and os.path.isdir(source):
+            self.source_var.set(source)
+
         self._append_log(self.t("preset_applied", name=name))
         self._save_settings()
 
@@ -961,6 +1081,12 @@ class DataMoverApp(_BASE_CLASS):
             "destinations": list(self.destinations),
             "verification_model": self.verification_model_var.get(),
             "exclusions": self.exclusions_var.get(),
+            # Profil de transfer complet (2026-08-28): sursa + treapta de
+            # buffer/RAM, nu doar destinatii/model ca inainte - la fel ca
+            # TransferProfile (Mac, TransferProfile.swift).
+            "source": self.source_var.get().strip(),
+            "chunk_size_mb": self.chunk_size_var.get(),
+            "ram_limit_mb": self.ram_limit_var.get(),
         }
         self.preset_var.set(name)
         self._refresh_preset_combo()
@@ -1030,6 +1156,7 @@ class DataMoverApp(_BASE_CLASS):
             pass
 
         if self.running and self.total_units > 0:
+            self._update_io_usage_label()
             with self.progress_lock:
                 done = self.progress_counter[0]
                 bytes_done = self.bytes_counter[0]
@@ -1088,10 +1215,18 @@ class DataMoverApp(_BASE_CLASS):
         current_label = VERIFICATION_MODELS.get(
             self.verification_model_var.get(), VERIFICATION_MODELS[DEFAULT_VERIFICATION_MODEL]
         )["label"]
+        # source/folder_name (2026-08-28) - necesare ca sa poti deschide
+        # direct sursa/destinatia unei sesiuni din istoric (vezi
+        # _show_history_dialog). Intrarile vechi de istoric, salvate
+        # inainte de acest camp, nu-l au - .get(..., "") mai jos degradeaza
+        # elegant (butoanele de deschidere pur si simplu nu apar pentru ele).
+        folder_name = self.jobs[0].folder_name if self.jobs else ""
         cfg.append_history_entry({
             "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
             "project": self.project_var.get().strip(),
             "card": self.card_var.get().strip(),
+            "source": self.source_var.get().strip(),
+            "folder_name": folder_name,
             "destinations": list(self.destinations),
             "verification_model": current_label,
             "cancelled": cancelled,
@@ -1102,6 +1237,8 @@ class DataMoverApp(_BASE_CLASS):
         self.running = False
         self.start_btn.config(state="normal")
         self.cancel_btn.config(state="disabled")
+        self.pause_btn.config(state="disabled", text="Pauza")
+        self.pause_event.clear()
         self.progress_label.config(style="TLabel")
         self._play_finish_sound()
 
@@ -1225,6 +1362,151 @@ class DataMoverApp(_BASE_CLASS):
                 "status": status_label,
             }
 
+    def _open_path(self, path):
+        """Deschide un folder arbitrar in Finder/Explorer/file manager -
+        helper generic (2026-08-28), folosit de istoricul extins (Deschide
+        sursa/destinatia) - vezi si _open_destination, mai specific."""
+        if not path or not os.path.isdir(path):
+            messagebox.showerror(self.t("msg_error_title"), f"Folderul {path} nu exista.")
+            return
+        try:
+            if sys.platform == "darwin":
+                subprocess.run(["open", path])
+            elif sys.platform == "win32":
+                subprocess.run(["explorer", path])
+            else:
+                subprocess.run(["xdg-open", path])
+        except Exception as e:
+            messagebox.showerror(self.t("msg_error_title"), f"Nu am putut deschide folderul: {e}")
+
+    # ---------------- Deduplicare la pornire (2026-08-28) ----------------
+    # Fix real: numele folderului include data zilei curente
+    # (`yyyy-mm-dd_Proiect_Card`) - un transfer de multe ore/zile (ex. 4 TB)
+    # repornit a doua zi calcula un folder NOU, iar orice verificare de
+    # duplicate care s-ar fi uitat doar la numele "de azi" ar rata complet
+    # folderul vechi cu sute de GB deja copiate. Cautam intai un folder
+    # EXISTENT cu acelasi proiect/card, indiferent de data - la fel ca
+    # OffloadRunner.findExistingFolderName (Mac, OffloadEngine.swift).
+
+    def _folder_suffix(self, project, card):
+        return f"_{project}_{card}".replace(" ", "_")
+
+    def _find_existing_folder_name(self, project, card):
+        suffix = self._folder_suffix(project, card)
+        candidates = []
+        for dest in self.destinations:
+            try:
+                candidates.extend(name for name in os.listdir(dest) if name.endswith(suffix))
+            except OSError:
+                continue
+        return sorted(candidates)[-1] if candidates else None
+
+    def _folder_has_real_files(self, folder_name):
+        """True daca `folder_name` exista, NEVID, la vreo destinatie -
+        ignorand fisierele proprii de raport/checkpoint (un folder care are
+        DOAR un checkpoint dintr-o rulare intrerupta, fara niciun fisier
+        real copiat, nu e un "duplicat")."""
+        for dest in self.destinations:
+            target = os.path.join(dest, folder_name)
+            if not os.path.isdir(target):
+                continue
+            try:
+                items = os.listdir(target)
+            except OSError:
+                continue
+            if any(not (n.startswith("offload_checkpoint") or n.startswith("offload_report_")) for n in items):
+                return True
+        return False
+
+    def _free_folder_name(self, base):
+        candidate = base
+        i = 2
+        while self._folder_has_real_files(candidate):
+            candidate = f"{base} ({i})"
+            i += 1
+        return candidate
+
+    def _attempt_start(self):
+        """Punctul de intrare real al butonului Start (2026-08-28) -
+        verifica INTAI daca exista deja un folder (din orice zi) cu acelasi
+        proiect/card, nevid, la vreo destinatie; daca da, arata dialogul
+        Reia/Folder nou/Suprascrie inainte sa scaneze sursa si sa porneasca
+        efectiv (_start_offload)."""
+        source = self.source_var.get().strip()
+        if not source or not os.path.isdir(source):
+            messagebox.showerror(self.t("msg_error_title"), self.t("msg_source_error"))
+            return
+        if not self.destinations:
+            messagebox.showerror(self.t("msg_error_title"), self.t("msg_dest_error"))
+            return
+
+        project = self.project_var.get().strip() or "Proiect"
+        card = self.card_var.get().strip() or "Card"
+        today_folder_name = f"{datetime.now().strftime('%Y-%m-%d')}_{project}_{card}".replace(" ", "_")
+        existing_name = self._find_existing_folder_name(project, card) or today_folder_name
+
+        if self._folder_has_real_files(existing_name):
+            self._show_duplicate_dialog(existing_name, today_folder_name)
+        else:
+            self._start_offload(resume=False)
+
+    def _show_duplicate_dialog(self, existing_name, today_folder_name):
+        palette = theme.DARK if self.dark_mode_var.get() else theme.LIGHT
+        win = tk.Toplevel(self)
+        win.title("Destinatie deja existenta")
+        win.configure(background=palette["bg"])
+        win.transient(self)
+        win.resizable(False, False)
+
+        tk.Label(
+            win, text=f"Folderul \"{existing_name}\" exista deja si contine fisiere.\nCe vrei sa faci?",
+            background=palette["bg"], foreground=palette["fg"], justify="left", padx=20, pady=16,
+        ).pack()
+
+        btn_row = ttk.Frame(win)
+        btn_row.pack(pady=(0, 16), padx=20)
+
+        def choose_resume():
+            win.destroy()
+            self._start_offload(resume=True, folder_name_override=existing_name)
+
+        def choose_new_folder():
+            win.destroy()
+            free_name = self._free_folder_name(today_folder_name)
+            self._start_offload(resume=False, folder_name_override=free_name)
+
+        def choose_overwrite():
+            win.destroy()
+            if not messagebox.askyesno(
+                "Suprascrie complet",
+                f"Sigur vrei sa stergi tot continutul din \"{existing_name}\" la toate destinatiile si sa copiezi din nou?",
+            ):
+                return
+            for dest in self.destinations:
+                target = os.path.join(dest, existing_name)
+                if os.path.isdir(target):
+                    for item in os.listdir(target):
+                        path = os.path.join(target, item)
+                        try:
+                            if os.path.isdir(path):
+                                shutil.rmtree(path)
+                            else:
+                                os.remove(path)
+                        except OSError:
+                            pass
+            self._start_offload(resume=False, folder_name_override=existing_name)
+
+        ttk.Button(btn_row, text="Completeaza / Reia transferul", command=choose_resume).pack(side="left", padx=4)
+        ttk.Button(btn_row, text="Creeaza folder nou", command=choose_new_folder).pack(side="left", padx=4)
+        ttk.Button(btn_row, text="Suprascrie complet", command=choose_overwrite).pack(side="left", padx=4)
+        ttk.Button(btn_row, text="Anuleaza", command=win.destroy).pack(side="left", padx=4)
+
+        win.update_idletasks()
+        x = self.winfo_rootx() + (self.winfo_width() - win.winfo_width()) // 2
+        y = self.winfo_rooty() + (self.winfo_height() - win.winfo_height()) // 2
+        win.geometry(f"+{max(x, 0)}+{max(y, 0)}")
+        win.grab_set()
+
     def _open_destination(self, dest):
         """Deschide in Finder/Explorer folderul exact creat pentru offload
         (dest/folder_name), nu doar radacina destinatiei - daca job-ul
@@ -1318,7 +1600,13 @@ class DataMoverApp(_BASE_CLASS):
             self.t("msg_resume_title"), self.t("msg_resume_details", details=details)
         )
         if proceed:
-            self._start_offload(resume=True)
+            # FIX 2026-08-28: _start_offload recalcula folder_name cu DATA
+            # DE AZI daca nu i se da un override - inainte de acest fix,
+            # reluarea gasea corect checkpoint-ul vechi (found[0]) dar
+            # pornea totusi o copiere intr-un folder NOU (azi), ratand
+            # complet reluarea reala. Folosim folder_name-ul gasit efectiv.
+            _dest, found_folder_name, _root, _remaining = found[0]
+            self._start_offload(resume=True, folder_name_override=found_folder_name)
 
     # ---------------- Logica principala ----------------
 
@@ -1341,7 +1629,7 @@ class DataMoverApp(_BASE_CLASS):
             "ram_limit_mb": self.ram_limit_var.get(),
         })
 
-    def _start_offload(self, resume=False):
+    def _start_offload(self, resume=False, folder_name_override=None):
         source = self.source_var.get().strip()
         if not source or not os.path.isdir(source):
             messagebox.showerror(self.t("msg_error_title"), self.t("msg_source_error"))
@@ -1352,8 +1640,11 @@ class DataMoverApp(_BASE_CLASS):
 
         project = self.project_var.get().strip() or "Proiect"
         card = self.card_var.get().strip() or "Card"
-        date_str = datetime.now().strftime("%Y-%m-%d")
-        folder_name = f"{date_str}_{project}_{card}".replace(" ", "_")
+        if folder_name_override:
+            folder_name = folder_name_override
+        else:
+            date_str = datetime.now().strftime("%Y-%m-%d")
+            folder_name = f"{date_str}_{project}_{card}".replace(" ", "_")
 
         exclusions = self._parse_exclusions()
         current_label = VERIFICATION_MODELS.get(
@@ -1417,7 +1708,9 @@ class DataMoverApp(_BASE_CLASS):
         self.phase_label.config(text=self._phase_text(0, 0))
         self.start_btn.config(state="disabled")
         self.cancel_btn.config(state="normal")
+        self.pause_btn.config(state="normal", text="Pauza")
         self.cancel_event = threading.Event()
+        self.pause_event.clear()
 
         self._build_dest_progress_rows()
 
@@ -1433,6 +1726,7 @@ class DataMoverApp(_BASE_CLASS):
                 resume=resume, source_root=source,
                 manifest_path=manifest_path, total_files=total_file_count,
                 total_bytes=total_size, io_cfg=io_cfg,
+                pause_event=self.pause_event,
             )
             for dest in self.destinations
         ]
@@ -1447,8 +1741,20 @@ class DataMoverApp(_BASE_CLASS):
             confirmed = messagebox.askyesno(self.t("action_cancel"), self.t("msg_confirm_cancel"))
             if confirmed:
                 self.cancel_event.set()
+                self.pause_event.clear()
                 self._append_log(">>> Se anuleaza...")
                 self.cancel_btn.config(state="disabled")
+                self.pause_btn.config(state="disabled")
+
+    def _toggle_pause(self):
+        if not self.running:
+            return
+        if self.pause_event.is_set():
+            self.pause_event.clear()
+            self.pause_btn.config(text="Pauza")
+        else:
+            self.pause_event.set()
+            self.pause_btn.config(text="Continua")
 
     # ---------------- Modul Monitorizare ----------------
 

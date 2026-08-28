@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <!-- Permite dotnet restore/build sa rezolve TFM-ul windows si de pe
+         macOS (verificare reala a C#-ului, nu doar citire de cod) - vezi
+         acelasi comentariu in GDCVaultWin/GDCPluginManagerWin. Nu
+         inlocuieste un test real pe Windows. -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>DataMover.Core</RootNamespace>
+  </PropertyGroup>
+
+</Project>

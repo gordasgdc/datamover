@@ -552,3 +552,79 @@ Cerinta lui Cristi, dupa un build local de test facut chiar de el pe versiunea c
 **Verificare**: `swift build` (debug) trece curat dupa fiecare pas de mai sus - fara erori de compilare. **Nu s-a facut inca un test manual real** al celor 5 fluxuri (Pauza efectiv opreste/reia copierea unui fisier mare, dialogul de duplicate apare corect la o destinatie cu fisiere existente, profilul salvat chiar se reincarca identic) — Cristi urmeaza sa le testeze pe build-ul local inainte de a cere un release semnat/notarizat.
 
 **Rebuild local rapid** (fara semnare/notarizare, pentru testare): `cd mac-native && swift build && .build/debug/DataMoverMac`. **Build complet, .app impachetat** (semnat daca certificatul e in Keychain, altfel ad-hoc): `cd mac-native && ./build_app.sh`.
+
+## Etapa 2026-08-28 (2) — Client Windows nou, WPF + Wpf.Ui (rescriere de la zero)
+
+Cerinta explicita a lui Cristi, dupa ce a vazut design-ul mult mai modern
+al variantei Mac (SwiftUI) fata de clientul Windows existent (Python/
+Tkinter, "design cam foarte primitiv"): o rescriere completa a clientului
+Windows, de la Python/Tkinter la **WPF (.NET 8) + Wpf.Ui** (Fluent Design),
+acelasi tipar deja folosit de `GDCVaultWin`/`GDCPluginManagerWin` in
+ecosistem. Discutat explicit cu Cristi: viteza de COPIERE nu se schimba
+(ambele limbaje fac acelasi apel de sistem, disc-ul e limita reala) - ce
+se castiga e responsivitate UI, memorie/pornire mai buna, consistenta cu
+restul ecosistemului.
+
+**Locatie**: `windows-native/` (nou, paralel cu `mac-native/`) - NU
+inlocuieste inca `ui/windows/app.py`/`core/` (Python) - cele doua clienti
+Windows coexista pana cand cel nou e testat real si confirmat de Cristi,
+la fel cum s-a intamplat cu `mac-native/` vs `ui/mac/app.py` pe Mac.
+
+**Structura** (2 proiecte, `dotnet build` verificat cu succes de pe Mac -
+inclusiv compilare XAML->BAML reala, nu doar C#):
+- `DataMover.Core` (`net8.0-windows`, `EnableWindowsTargeting`) - port 1:1
+  al motorului Python/Swift: `Models/FileEntry.cs` (FileEntry/ReportRow/
+  DestinationResult), `Services/OffloadEngine.cs` (CancelToken, PauseToken,
+  FileScanner, DestinationJob - copiere in bucati configurabile,
+  verificare MD5/SHA1/SHA256/SHA512/marime, checkpoint/reluare, raport CSV
+  scris INCREMENTAL - Regula 21), `Services/IOSettings.cs` (trepte
+  granulate identice cu Mac/Python + preset-uri Eco/Standard/High/Extreme +
+  citire memorie proces via `Process.WorkingSet64`), `Services/
+  HistoryStore.cs` + `Services/TransferProfileStore.cs` (JSON in
+  `%AppData%\DataMover\`, acelasi tipar ca HistoryStore.swift/
+  TransferProfile.swift), `Services/OffloadRunner.cs` (orchestrare
+  paralela pe `Task.Run`, `INotifyPropertyChanged` pentru binding WPF -
+  include deduplicarea date-independenta: `FindExistingFolderName`/
+  `FolderHasRealFiles`/`FreeFolderName`/`ClearExistingFolders`, port 1:1 al
+  fix-ului de pe Mac).
+- `DataMover.Client` (`WinExe`, `Wpf.Ui` 3.0.5) - `MainWindow.xaml`
+  (`ui:FluentWindow` + `ui:TitleBar` OBLIGATORIU - fara el fereastra ramane
+  fixa, bug deja documentat pe GDCVaultWin; layout in 3 coloane Surse |
+  centru (proiect/card, optiuni, I/O & Memorie cu preset-uri, profile,
+  feed de activitate stil terminal) | Destinatii, footer cu progres/
+  Start/Pauza/Anuleaza/Istoric), `DuplicateDialog.xaml` (Reia/Folder nou/
+  Suprascrie - port 1:1 al dialogului Mac), `HistoryWindow.xaml` (istoric
+  extins cu deschidere directa in Explorer per sursa/destinatie).
+
+**Ce e deja functional** (cele 5 cerinte din etapele anterioare, acum si
+pe Windows, in noul client): setari I/O granulare + preset-uri + afisare
+live Buffer Alocat/Utilizat; deduplicare la Start cu cele 3 optiuni;
+Pauza/Continua fara pierdere de progres; istoric extins cu deschidere
+Explorer; profile de transfer complete (cai + model + buffer/RAM).
+
+**TODO real, NU e gata de distribuit inca** (spus explicit, nu ascuns):
+1. **Niciun test real pe Windows** - doar `dotnet build` de pe Mac (verifica
+   C# + XAML->BAML, NU comportamentul la runtime: drag-uri, ferestre,
+   dialoguri native Windows).
+2. **Licentiere lipsa** - LicenseCore/MachineID (Regula 3) nu a fost inca
+   portat in acest client nou; ruleaza momentan fara gating de licenta.
+3. **Self-Updater lipsa** (Regula 20) - de portat dupa modelul
+   `SelfUpdater.cs` din GDCVaultWin/GDCPluginManagerWin.
+4. **Fara installer Inno Setup** inca pentru acest client nou (cel vechi,
+   Python/PyInstaller, ramane `installer.iss` existent - un installer nou
+   trebuie scris separat pentru output-ul `dotnet publish` al acestui
+   proiect, dupa modelul GDCVaultWin).
+5. **Fara raport PDF** - CSV-ul e complet (streaming, Regula 21), dar
+   echivalentul `pdf_report.py`/`writePDFReport` (Mac) nu a fost portat -
+   ar necesita o biblioteca PDF pentru .NET (ex. QuestPDF) sau generare
+   manuala prin `System.Printing`/`System.Windows.Documents`.
+6. **Fara drag&drop de discuri** ca pe Mac (grid cu tile-uri de volume,
+   drag manual peste Surse/Destinatii) - v1 foloseste simplu "Adauga
+   sursa/destinatie..." cu `OpenFolderDialog`, ca varianta Python veche.
+7. **Versiune sincronizata la 2.6.0** in `.csproj` (Regula 14) - dar acest
+   client NU e inca livrat clientilor, deci Regula 17 (nume cu versiune)
+   nu se aplica pana la primul release real al lui.
+
+**Nu declara acest client "gata" pana cand Cristi nu-l testeaza REAL pe o
+masina Windows** - vezi WARNING-ul standard din Regula 20/celelalte etape:
+Claude nu poate verifica interactiuni native Windows de pe Mac.

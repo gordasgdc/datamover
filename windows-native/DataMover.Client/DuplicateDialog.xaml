@@ -1,0 +1,22 @@
+<ui:FluentWindow x:Class="DataMover.Client.DuplicateDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+        Title="Destinatie deja existenta" Height="220" Width="440"
+        WindowStartupLocation="CenterOwner" ResizeMode="NoResize">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+        <ui:TitleBar Grid.Row="0" Title="Destinatie deja existenta" CanMaximize="False" ShowMinimize="False" ShowMaximize="False" />
+        <StackPanel Grid.Row="1" Margin="20">
+            <TextBlock x:Name="MessageText" TextWrapping="Wrap" Margin="0,0,0,16"
+                       Text="Folderul tinta exista deja si contine fisiere. Ce vrei sa faci?" />
+            <ui:Button Content="Completeaza / Reia transferul" Click="OnResumeClicked" HorizontalAlignment="Stretch" Appearance="Primary" Margin="0,0,0,6" />
+            <ui:Button Content="Creeaza folder nou" Click="OnNewFolderClicked" HorizontalAlignment="Stretch" Margin="0,0,0,6" />
+            <ui:Button Content="Suprascrie complet" Click="OnOverwriteClicked" HorizontalAlignment="Stretch" Appearance="Danger" Margin="0,0,0,6" />
+            <ui:Button Content="Anuleaza" Click="OnCancelClicked" HorizontalAlignment="Stretch" Appearance="Secondary" />
+        </StackPanel>
+    </Grid>
+</ui:FluentWindow>
