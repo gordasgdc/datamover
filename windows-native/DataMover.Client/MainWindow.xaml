@@ -46,7 +46,10 @@
                     <DataTemplate>
                         <Border Background="#1C1C1C" CornerRadius="6" Padding="10" Margin="0,0,8,8" Width="180">
                             <StackPanel>
-                                <TextBlock Text="{Binding Label}" FontWeight="Bold" FontSize="12" TextTrimming="CharacterEllipsis" />
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                    <Image Source="{Binding IconSource}" Width="24" Height="24" Margin="0,0,6,0" />
+                                    <TextBlock Text="{Binding Label}" FontWeight="Bold" FontSize="12" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                                </StackPanel>
                                 <TextBlock Text="{Binding FreeSpaceText}" Foreground="Gray" FontSize="11" Margin="0,0,0,6" />
                                 <StackPanel Orientation="Horizontal">
                                     <Button Content="+ Sursa" Tag="{Binding Path}" Click="OnAddDriveAsSourceClicked" Margin="0,0,6,0" Padding="6,2" FontSize="11" />
@@ -87,54 +90,57 @@
                 <StackPanel>
                     <ui:CardControl Icon="{ui:SymbolIcon DocumentFolder24}" Margin="0,0,0,8">
                         <ui:CardControl.Header>
-                            <StackPanel Orientation="Horizontal">
+                            <!-- WrapPanel (2026-08-28, responsivitate) - la o fereastra ingusta,
+                                 campurile trec pe randul urmator in loc sa se taie/suprapuna
+                                 peste marginea cardului (raportat de Cristi). -->
+                            <WrapPanel>
                                 <TextBlock Text="Proiect:" VerticalAlignment="Center" Margin="0,0,6,0" />
-                                <ui:TextBox x:Name="ProjectBox" Width="130" Margin="0,0,16,0" />
+                                <ui:TextBox x:Name="ProjectBox" Width="130" Margin="0,0,16,4" />
                                 <TextBlock Text="Card:" VerticalAlignment="Center" Margin="0,0,6,0" />
-                                <ui:TextBox x:Name="CardBox" Width="130" />
-                            </StackPanel>
+                                <ui:TextBox x:Name="CardBox" Width="130" Margin="0,0,0,4" />
+                            </WrapPanel>
                         </ui:CardControl.Header>
                     </ui:CardControl>
 
                     <ui:CardExpander Header="Optiuni de copiere" IsExpanded="True" Margin="0,0,0,8">
                         <StackPanel Margin="0,8,0,0">
-                            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                                <TextBlock Text="Model verificare:" VerticalAlignment="Center" Margin="0,0,8,0" />
-                                <ComboBox x:Name="VerificationCombo" Width="160" />
-                            </StackPanel>
-                            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                                <TextBlock Text="Excluderi:" VerticalAlignment="Center" Margin="0,0,8,0" />
-                                <ui:TextBox x:Name="ExclusionsBox" Width="260" Text=".DS_Store, .tmp, Thumbs.db" />
-                            </StackPanel>
+                            <WrapPanel Margin="0,0,0,8">
+                                <TextBlock Text="Model verificare:" VerticalAlignment="Center" Margin="0,0,8,4" />
+                                <ComboBox x:Name="VerificationCombo" Width="160" Margin="0,0,0,4" />
+                            </WrapPanel>
+                            <WrapPanel Margin="0,0,0,8">
+                                <TextBlock Text="Excluderi:" VerticalAlignment="Center" Margin="0,0,8,4" />
+                                <ui:TextBox x:Name="ExclusionsBox" Width="260" Text=".DS_Store, .tmp, Thumbs.db" Margin="0,0,0,4" />
+                            </WrapPanel>
                             <CheckBox x:Name="SkipExistingCheck" Content="Sari peste fisiere identice deja existente" />
                         </StackPanel>
                     </ui:CardExpander>
 
                     <ui:CardExpander Header="I/O &amp; Memorie" IsExpanded="True" Margin="0,0,0,8">
                         <StackPanel Margin="0,8,0,0">
-                            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                                <ui:Button x:Name="PresetEcoBtn" Content="Eco / Sistem Slab" Margin="0,0,4,0" Click="OnPresetClicked" />
-                                <ui:Button x:Name="PresetStandardBtn" Content="Standard" Margin="0,0,4,0" Click="OnPresetClicked" />
-                                <ui:Button x:Name="PresetHighBtn" Content="Performanta Inalta" Margin="0,0,4,0" Click="OnPresetClicked" />
-                                <ui:Button x:Name="PresetExtremeBtn" Content="Extrem / Productie RAW" Click="OnPresetClicked" />
-                            </StackPanel>
-                            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                                <TextBlock Text="Buffer copiere:" VerticalAlignment="Center" Margin="0,0,8,0" />
-                                <ComboBox x:Name="ChunkSizeCombo" Width="100" Margin="0,0,20,0" />
-                                <TextBlock Text="Limita RAM:" VerticalAlignment="Center" Margin="0,0,8,0" />
-                                <ComboBox x:Name="RamLimitCombo" Width="120" />
-                            </StackPanel>
-                            <TextBlock x:Name="IoUsageText" Foreground="Gray" FontSize="11" />
+                            <WrapPanel Margin="0,0,0,8">
+                                <ui:Button x:Name="PresetEcoBtn" Content="Eco / Sistem Slab" Margin="0,0,4,4" Click="OnPresetClicked" />
+                                <ui:Button x:Name="PresetStandardBtn" Content="Standard" Margin="0,0,4,4" Click="OnPresetClicked" />
+                                <ui:Button x:Name="PresetHighBtn" Content="Performanta Inalta" Margin="0,0,4,4" Click="OnPresetClicked" />
+                                <ui:Button x:Name="PresetExtremeBtn" Content="Extrem / Productie RAW" Margin="0,0,0,4" Click="OnPresetClicked" />
+                            </WrapPanel>
+                            <WrapPanel Margin="0,0,0,8">
+                                <TextBlock Text="Buffer copiere:" VerticalAlignment="Center" Margin="0,0,8,4" />
+                                <ComboBox x:Name="ChunkSizeCombo" Width="100" Margin="0,0,20,4" />
+                                <TextBlock Text="Limita RAM:" VerticalAlignment="Center" Margin="0,0,8,4" />
+                                <ComboBox x:Name="RamLimitCombo" Width="120" Margin="0,0,0,4" />
+                            </WrapPanel>
+                            <TextBlock x:Name="IoUsageText" Foreground="Gray" FontSize="11" TextWrapping="Wrap" />
                         </StackPanel>
                     </ui:CardExpander>
 
                     <ui:CardExpander Header="Profile de transfer" Margin="0,0,0,8">
                         <StackPanel Margin="0,8,0,0">
-                            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                                <ComboBox x:Name="ProfilesCombo" Width="200" Margin="0,0,8,0" />
-                                <ui:Button Content="Incarca" Click="OnLoadProfileClicked" Margin="0,0,4,0" />
-                                <ui:Button Content="Sterge" Click="OnDeleteProfileClicked" Appearance="Secondary" />
-                            </StackPanel>
+                            <WrapPanel Margin="0,0,0,8">
+                                <ComboBox x:Name="ProfilesCombo" Width="200" Margin="0,0,8,4" />
+                                <ui:Button Content="Incarca" Click="OnLoadProfileClicked" Margin="0,0,4,4" />
+                                <ui:Button Content="Sterge" Click="OnDeleteProfileClicked" Appearance="Secondary" Margin="0,0,0,4" />
+                            </WrapPanel>
                             <ui:Button Content="Salveaza configuratia curenta ca profil..." Click="OnSaveProfileClicked" HorizontalAlignment="Left" />
                         </StackPanel>
                     </ui:CardExpander>
@@ -167,38 +173,40 @@
         </Grid>
 
         <!-- ===================== FOOTER ===================== -->
+        <!-- Footer refacut responsiv (2026-08-28, raportat de Cristi:
+             "sa nu se urce una peste alta") - status/butoane pe randuri
+             SEPARATE (nu doua coloane Grid, care se taiau/iesau din
+             fereastra la latimi mici), butoanele intr-un WrapPanel aliniat
+             dreapta care trece pe randul urmator daca nu mai incape. -->
         <Grid Grid.Row="3" Margin="16,0,16,12">
             <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
             <ProgressBar x:Name="ProgressBar" Grid.Row="0" Height="6" Margin="0,0,0,6" Minimum="0" Maximum="100" />
 
-            <Grid Grid.Row="1">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
+            <StackPanel Grid.Row="1" Margin="0,0,0,6">
+                <TextBlock x:Name="StatusText" Text="Gata de pornire" FontSize="12" Foreground="Gray" TextWrapping="Wrap" />
+                <TextBlock x:Name="SpeedAndUsageText" FontSize="11" Foreground="Gray" TextWrapping="Wrap" />
+                <TextBlock x:Name="VersionText" FontSize="10" Foreground="DimGray" Margin="0,2,0,0" />
+                <CheckBox x:Name="AutoOpenDestCheck" Content="Deschide automat destinatia la final" FontSize="11" Margin="0,4,0,0" />
+            </StackPanel>
 
-                <StackPanel Grid.Column="0">
-                    <TextBlock x:Name="StatusText" Text="Gata de pornire" FontSize="12" Foreground="Gray" />
-                    <TextBlock x:Name="SpeedAndUsageText" FontSize="11" Foreground="Gray" />
-                    <CheckBox x:Name="AutoOpenDestCheck" Content="Deschide automat destinatia la final" FontSize="11" Margin="0,4,0,0" />
-                </StackPanel>
-
-                <StackPanel Grid.Column="1" Orientation="Horizontal">
-                    <!-- Raportat lipsa la testul real (2026-08-28): "la sfarsit
-                         nu-mi da optiunea sa deschid folderul destinatie" -
-                         buton vizibil doar dupa un transfer finalizat. -->
-                    <ui:Button x:Name="OpenDestinationButton" Content="Deschide destinatia" Icon="{ui:SymbolIcon FolderOpen24}"
-                               Click="OnOpenLastDestinationClicked" Visibility="Collapsed" Margin="0,0,6,0" />
-                    <ui:Button Content="Istoric" Icon="{ui:SymbolIcon History24}" Click="OnShowHistoryClicked" Margin="0,0,6,0" />
-                    <ui:Button x:Name="PauseButton" Content="Pauza" Click="OnPauseClicked" IsEnabled="False" Margin="0,0,6,0" />
-                    <ui:Button x:Name="CancelButton" Content="Anuleaza" Click="OnCancelClicked" IsEnabled="False" Appearance="Secondary" Margin="0,0,6,0" />
-                    <ui:Button x:Name="StartButton" Content="Start" Click="OnStartClicked" Appearance="Primary" />
-                </StackPanel>
-            </Grid>
+            <WrapPanel Grid.Row="2" HorizontalAlignment="Right">
+                <!-- Raportat lipsa la testul real (2026-08-28): "la sfarsit
+                     nu-mi da optiunea sa deschid folderul destinatie" -
+                     buton vizibil doar dupa un transfer finalizat. -->
+                <ui:Button x:Name="OpenDestinationButton" Content="Deschide destinatia" Icon="{ui:SymbolIcon FolderOpen24}"
+                           Click="OnOpenLastDestinationClicked" Visibility="Collapsed" Margin="0,0,6,4" />
+                <ui:Button Content="Actualizari" Icon="{ui:SymbolIcon ArrowSync24}" Click="OnCheckUpdatesClicked" Margin="0,0,6,4" />
+                <ui:Button Content="Profil" Icon="{ui:SymbolIcon Person24}" Click="OnShowProfileClicked" Margin="0,0,6,4" />
+                <ui:Button Content="Istoric" Icon="{ui:SymbolIcon History24}" Click="OnShowHistoryClicked" Margin="0,0,6,4" />
+                <ui:Button x:Name="PauseButton" Content="Pauza" Click="OnPauseClicked" IsEnabled="False" Margin="0,0,6,4" />
+                <ui:Button x:Name="CancelButton" Content="Anuleaza" Click="OnCancelClicked" IsEnabled="False" Appearance="Secondary" Margin="0,0,6,4" />
+                <ui:Button x:Name="StartButton" Content="Start" Click="OnStartClicked" Appearance="Primary" Margin="0,0,0,4" />
+            </WrapPanel>
         </Grid>
     </Grid>
 </ui:FluentWindow>

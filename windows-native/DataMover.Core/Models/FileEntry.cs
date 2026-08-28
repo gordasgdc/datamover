@@ -36,4 +36,5 @@ public sealed class DestinationResult
     public int FailCount { get; init; }
     public bool Cancelled { get; init; }
     public string? CsvPath { get; init; }
+    public string? PdfPath { get; init; }
 }
