@@ -85,7 +85,15 @@
   /* ── Hero / checksum scan ──────────────────────────────────── */
 
   .hero {
-    min-height: 78svh;
+    /* Plafon absolut (2026-08-29, raportat de Cristi: "prea mult loc
+       liber" pe monitoare mari) - 78svh pe un ecran 1440p+ tot lasa
+       sute de px goi deasupra/dedesubtul continutului scurt (scanner +
+       titlu + subtitlu), pentru ca svh scaleaza liniar cu inaltimea
+       fizica a ecranului, nu cu inaltimea reala a continutului. min()
+       plafoneaza hero-ul la o inaltime fixa rezonabila, indiferent cat
+       de mare e monitorul - pe ecrane mici/mobil ramane comportamentul
+       vechi (78svh, de obicei mai mic decat plafonul). */
+    min-height: min(78svh, 680px);
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -119,6 +127,57 @@
 
   @keyframes scanline {
     to { left: 130%; }
+  }
+
+  /* ── Animatie transfer: Card -> linie neon -> Hard Disk ───────
+     Cerut explicit (2026-08-29): reprezentare vizuala a transferului
+     de date (card video -> destinatie), separata de animatia de
+     verificare (hash-line) de mai jos - cele doua reprezinta cele
+     doua beneficii centrale ale aplicatiei (copiere + verificare). */
+  .transfer-anim {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 4px;
+  }
+
+  .tf-icon { flex-shrink: 0; display: block; }
+
+  .tf-line {
+    position: relative;
+    flex: 1;
+    min-width: 90px;
+    height: 3px;
+    border-radius: 2px;
+    background: linear-gradient(90deg, var(--accent-copy), var(--accent-verify));
+    box-shadow: 0 0 10px 0 rgba(232,150,60,0.35), 0 0 10px 0 rgba(79,209,139,0.35);
+  }
+
+  .tf-pulse {
+    position: absolute;
+    top: 50%;
+    width: 7px;
+    height: 7px;
+    margin-top: -3.5px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 0 10px 2px rgba(255,255,255,0.85);
+    animation: tfFlow 2.2s linear infinite;
+    opacity: 0;
+  }
+
+  .tf-pulse.p2 { animation-delay: 0.7s; }
+  .tf-pulse.p3 { animation-delay: 1.4s; }
+
+  @keyframes tfFlow {
+    0% { left: 0%; opacity: 0; }
+    8% { opacity: 1; }
+    92% { opacity: 1; }
+    100% { left: 100%; opacity: 0; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .tf-pulse { animation: none; opacity: 0.9; left: 50%; }
   }
 
   .hash-line {
@@ -498,6 +557,25 @@
 
 <section class="hero">
   <div class="scanner" aria-hidden="true">
+    <div class="transfer-anim">
+      <svg class="tf-icon" width="46" height="34" viewBox="0 0 46 34" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M6 2h20l10 10v18a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Z" stroke="var(--accent-copy)" stroke-width="2" stroke-linejoin="round"/>
+        <path d="M26 2v10h10" stroke="var(--accent-copy)" stroke-width="2" stroke-linejoin="round"/>
+        <path d="M11 22v6M17 22v6M23 22v6" stroke="var(--accent-copy)" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+      <div class="tf-line">
+        <span class="tf-pulse p1"></span>
+        <span class="tf-pulse p2"></span>
+        <span class="tf-pulse p3"></span>
+      </div>
+      <svg class="tf-icon" width="46" height="34" viewBox="0 0 46 34" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect x="2" y="4" width="42" height="26" rx="4" stroke="var(--accent-verify)" stroke-width="2"/>
+        <circle cx="16" cy="17" r="7" stroke="var(--accent-verify)" stroke-width="2"/>
+        <circle cx="16" cy="17" r="1.6" fill="var(--accent-verify)"/>
+        <rect x="30" y="12" width="9" height="3" rx="1.5" fill="var(--accent-verify)" opacity="0.6"/>
+        <rect x="30" y="18" width="9" height="3" rx="1.5" fill="var(--accent-verify)" opacity="0.6"/>
+      </svg>
+    </div>
     <div class="hash-line" id="hashLine">a3f9c1e0b7d24856f0a1c9e3b6d7f402</div>
     <div class="verify-badge" id="verifyBadge">&#10003; <span data-i18n="hero.verified">VERIFICAT</span></div>
   </div>

@@ -26,7 +26,7 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <ui:TitleBar Grid.Row="0" Title="DataMover 2.6.0" />
+        <ui:TitleBar x:Name="MainTitleBar" Grid.Row="0" Title="DataMover" />
 
         <!-- ===================== DISCURI DETECTATE ===================== -->
         <!-- Raportat de Cristi (2026-08-28, test real pe Windows/Parallels):
@@ -44,7 +44,7 @@
                 </ItemsControl.ItemsPanel>
                 <ItemsControl.ItemTemplate>
                     <DataTemplate>
-                        <Border Background="#1C1C1C" CornerRadius="6" Padding="10" Margin="0,0,8,8" Width="180">
+                        <Border Background="{DynamicResource ControlFillColorDefaultBrush}" CornerRadius="6" Padding="10" Margin="0,0,8,8" Width="180">
                             <StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
                                     <Image Source="{Binding IconSource}" Width="24" Height="24" Margin="0,0,6,0" />
@@ -102,48 +102,59 @@
                         </ui:CardControl.Header>
                     </ui:CardControl>
 
-                    <ui:CardExpander Header="Optiuni de copiere" IsExpanded="True" Margin="0,0,0,8">
-                        <StackPanel Margin="0,8,0,0">
-                            <WrapPanel Margin="0,0,0,8">
-                                <TextBlock Text="Model verificare:" VerticalAlignment="Center" Margin="0,0,8,4" />
-                                <ComboBox x:Name="VerificationCombo" Width="160" Margin="0,0,0,4" />
-                            </WrapPanel>
-                            <WrapPanel Margin="0,0,0,8">
-                                <TextBlock Text="Excluderi:" VerticalAlignment="Center" Margin="0,0,8,4" />
-                                <ui:TextBox x:Name="ExclusionsBox" Width="260" Text=".DS_Store, .tmp, Thumbs.db" Margin="0,0,0,4" />
-                            </WrapPanel>
-                            <CheckBox x:Name="SkipExistingCheck" Content="Sari peste fisiere identice deja existente" />
-                        </StackPanel>
-                    </ui:CardExpander>
+                    <!-- Panou unificat "Setari copiere" (2026-08-29, parity cu popover-ul
+                         Mac v2.7.1: un singur gear-icon in loc de 3 carduri mereu
+                         desfasurate care ocupau tot centrul ferestrei - raportat de
+                         Cristi ca aglomerare vizuala/"prea mult loc"). Controalele
+                         raman EXACT aceleasi (x:Name identice), doar re-parentate
+                         intr-un Popup - codebehind-ul (MainWindow.xaml.cs) nu s-a
+                         schimbat. -->
+                    <ui:Button x:Name="SettingsGearButton" Content="Setari copiere" Icon="{ui:SymbolIcon Settings24}"
+                               Click="OnToggleSettingsPopup" HorizontalAlignment="Left" Margin="0,0,0,8" />
+                    <Popup x:Name="SettingsPopup" PlacementTarget="{Binding ElementName=SettingsGearButton}"
+                           Placement="Bottom" StaysOpen="False" AllowsTransparency="True" PopupAnimation="Fade">
+                        <Border Background="{DynamicResource ApplicationBackgroundBrush}"
+                                BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}" BorderThickness="1"
+                                CornerRadius="6" Padding="12" Width="360" MaxHeight="480">
+                            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                <StackPanel>
+                                    <TextBlock Text="Optiuni de copiere" FontWeight="Bold" Margin="0,0,0,6" />
+                                    <WrapPanel Margin="0,0,0,8">
+                                        <TextBlock Text="Model verificare:" VerticalAlignment="Center" Margin="0,0,8,4" />
+                                        <ComboBox x:Name="VerificationCombo" Width="160" Margin="0,0,0,4" />
+                                    </WrapPanel>
+                                    <WrapPanel Margin="0,0,0,8">
+                                        <TextBlock Text="Excluderi:" VerticalAlignment="Center" Margin="0,0,8,4" />
+                                        <ui:TextBox x:Name="ExclusionsBox" Width="260" Text=".DS_Store, .tmp, Thumbs.db" Margin="0,0,0,4" />
+                                    </WrapPanel>
+                                    <CheckBox x:Name="SkipExistingCheck" Content="Sari peste fisiere identice deja existente" Margin="0,0,0,12" />
 
-                    <ui:CardExpander Header="I/O &amp; Memorie" IsExpanded="True" Margin="0,0,0,8">
-                        <StackPanel Margin="0,8,0,0">
-                            <WrapPanel Margin="0,0,0,8">
-                                <ui:Button x:Name="PresetEcoBtn" Content="Eco / Sistem Slab" Margin="0,0,4,4" Click="OnPresetClicked" />
-                                <ui:Button x:Name="PresetStandardBtn" Content="Standard" Margin="0,0,4,4" Click="OnPresetClicked" />
-                                <ui:Button x:Name="PresetHighBtn" Content="Performanta Inalta" Margin="0,0,4,4" Click="OnPresetClicked" />
-                                <ui:Button x:Name="PresetExtremeBtn" Content="Extrem / Productie RAW" Margin="0,0,0,4" Click="OnPresetClicked" />
-                            </WrapPanel>
-                            <WrapPanel Margin="0,0,0,8">
-                                <TextBlock Text="Buffer copiere:" VerticalAlignment="Center" Margin="0,0,8,4" />
-                                <ComboBox x:Name="ChunkSizeCombo" Width="100" Margin="0,0,20,4" />
-                                <TextBlock Text="Limita RAM:" VerticalAlignment="Center" Margin="0,0,8,4" />
-                                <ComboBox x:Name="RamLimitCombo" Width="120" Margin="0,0,0,4" />
-                            </WrapPanel>
-                            <TextBlock x:Name="IoUsageText" Foreground="Gray" FontSize="11" TextWrapping="Wrap" />
-                        </StackPanel>
-                    </ui:CardExpander>
+                                    <TextBlock Text="I/O &amp; Memorie" FontWeight="Bold" Margin="0,0,0,6" />
+                                    <WrapPanel Margin="0,0,0,8">
+                                        <ui:Button x:Name="PresetEcoBtn" Content="Eco / Sistem Slab" Margin="0,0,4,4" Click="OnPresetClicked" />
+                                        <ui:Button x:Name="PresetStandardBtn" Content="Standard" Margin="0,0,4,4" Click="OnPresetClicked" />
+                                        <ui:Button x:Name="PresetHighBtn" Content="Performanta Inalta" Margin="0,0,4,4" Click="OnPresetClicked" />
+                                        <ui:Button x:Name="PresetExtremeBtn" Content="Extrem / Productie RAW" Margin="0,0,0,4" Click="OnPresetClicked" />
+                                    </WrapPanel>
+                                    <WrapPanel Margin="0,0,0,8">
+                                        <TextBlock Text="Buffer copiere:" VerticalAlignment="Center" Margin="0,0,8,4" />
+                                        <ComboBox x:Name="ChunkSizeCombo" Width="100" Margin="0,0,20,4" />
+                                        <TextBlock Text="Limita RAM:" VerticalAlignment="Center" Margin="0,0,8,4" />
+                                        <ComboBox x:Name="RamLimitCombo" Width="120" Margin="0,0,0,4" />
+                                    </WrapPanel>
+                                    <TextBlock x:Name="IoUsageText" Foreground="Gray" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,12" />
 
-                    <ui:CardExpander Header="Profile de transfer" Margin="0,0,0,8">
-                        <StackPanel Margin="0,8,0,0">
-                            <WrapPanel Margin="0,0,0,8">
-                                <ComboBox x:Name="ProfilesCombo" Width="200" Margin="0,0,8,4" />
-                                <ui:Button Content="Incarca" Click="OnLoadProfileClicked" Margin="0,0,4,4" />
-                                <ui:Button Content="Sterge" Click="OnDeleteProfileClicked" Appearance="Secondary" Margin="0,0,0,4" />
-                            </WrapPanel>
-                            <ui:Button Content="Salveaza configuratia curenta ca profil..." Click="OnSaveProfileClicked" HorizontalAlignment="Left" />
-                        </StackPanel>
-                    </ui:CardExpander>
+                                    <TextBlock Text="Profile de transfer" FontWeight="Bold" Margin="0,0,0,6" />
+                                    <WrapPanel Margin="0,0,0,8">
+                                        <ComboBox x:Name="ProfilesCombo" Width="200" Margin="0,0,8,4" />
+                                        <ui:Button Content="Incarca" Click="OnLoadProfileClicked" Margin="0,0,4,4" />
+                                        <ui:Button Content="Sterge" Click="OnDeleteProfileClicked" Appearance="Secondary" Margin="0,0,0,4" />
+                                    </WrapPanel>
+                                    <ui:Button Content="Salveaza configuratia curenta ca profil..." Click="OnSaveProfileClicked" HorizontalAlignment="Left" />
+                                </StackPanel>
+                            </ScrollViewer>
+                        </Border>
+                    </Popup>
 
                     <!-- Feed de activitate stil terminal - vezi terminalActivityFeed (Mac). -->
                     <Border Background="#0A0A0A" CornerRadius="6" Padding="8" Height="140">
@@ -201,6 +212,10 @@
                 <ui:Button x:Name="OpenDestinationButton" Content="Deschide destinatia" Icon="{ui:SymbolIcon FolderOpen24}"
                            Click="OnOpenLastDestinationClicked" Visibility="Collapsed" Margin="0,0,6,4" />
                 <ui:Button Content="Actualizari" Icon="{ui:SymbolIcon ArrowSync24}" Click="OnCheckUpdatesClicked" Margin="0,0,6,4" />
+                <!-- Indicator global de dependinte (Regula 4, CLAUDE.md) - rosu doar daca
+                     lipseste o dependinta OBLIGATORIE (vezi SystemDependencyChecker.cs);
+                     detaliile + butonul de instalare sunt in fereastra Profil. -->
+                <Ellipse x:Name="DependencyDot" Width="8" Height="8" Fill="MediumSeaGreen" Margin="0,0,4,4" VerticalAlignment="Center" />
                 <ui:Button Content="Profil" Icon="{ui:SymbolIcon Person24}" Click="OnShowProfileClicked" Margin="0,0,6,4" />
                 <ui:Button Content="Istoric" Icon="{ui:SymbolIcon History24}" Click="OnShowHistoryClicked" Margin="0,0,6,4" />
                 <ui:Button x:Name="PauseButton" Content="Pauza" Click="OnPauseClicked" IsEnabled="False" Margin="0,0,6,4" />

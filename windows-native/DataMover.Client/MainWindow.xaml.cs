@@ -33,9 +33,17 @@ public partial class MainWindow : FluentWindow
     private readonly DispatcherTimer _drivesTimer;
     private bool _wasRunning;
 
+    private void OnToggleSettingsPopup(object sender, RoutedEventArgs e) =>
+        SettingsPopup.IsOpen = !SettingsPopup.IsOpen;
+
     public MainWindow()
     {
         InitializeComponent();
+        MainTitleBar.Title = $"DataMover {UpdateChecker.CurrentVersion}";
+        ThemeSettings.ApplySaved();
+        DependencyDot.Fill = SystemDependencyChecker.AllRequiredPresent(SystemDependencyChecker.CheckAll())
+            ? System.Windows.Media.Brushes.MediumSeaGreen
+            : System.Windows.Media.Brushes.OrangeRed;
 
         SourcesList.ItemsSource = _sources;
         DestinationsList.ItemsSource = _destinations;
