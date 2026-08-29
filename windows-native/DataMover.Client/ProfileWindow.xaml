@@ -28,12 +28,28 @@
         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="16">
             <StackPanel>
                 <TextBlock Text="Dependințe sistem" Style="{StaticResource SectionHeader}" Margin="0,0,0,6" />
-                <Border Background="#1C1C1C" CornerRadius="6" Padding="10">
-                    <StackPanel Orientation="Horizontal">
-                        <Ellipse x:Name="DependencyDot" Width="10" Height="10" Fill="#4CD964" Margin="0,0,8,0" VerticalAlignment="Center" />
-                        <TextBlock x:Name="DependencyText" Text="Toate componentele necesare sunt prezente (.NET 8 runtime inclus)." TextWrapping="Wrap" VerticalAlignment="Center" />
-                    </StackPanel>
-                </Border>
+                <ItemsControl x:Name="DependencyList">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Border Background="{DynamicResource ControlFillColorDefaultBrush}" CornerRadius="6" Padding="10" Margin="0,0,0,6">
+                                <StackPanel>
+                                    <StackPanel Orientation="Horizontal">
+                                        <Ellipse Width="10" Height="10" Margin="0,0,8,0" VerticalAlignment="Center">
+                                            <Ellipse.Fill>
+                                                <SolidColorBrush Color="{Binding StatusColor}" />
+                                            </Ellipse.Fill>
+                                        </Ellipse>
+                                        <TextBlock Text="{Binding Name}" FontWeight="Bold" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                    <TextBlock Text="{Binding Detail}" TextWrapping="Wrap" FontSize="11" Foreground="Gray" Margin="18,4,0,0" />
+                                    <ui:Button Content="Instalează" Tag="{Binding DownloadUrl}" Click="OnInstallDependencyClicked"
+                                               Visibility="{Binding NeedsInstallVisibility}" Margin="18,6,0,0" HorizontalAlignment="Left" FontSize="11" Padding="8,2" />
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <ui:Button Content="Reverifică" Click="OnRecheckDependenciesClicked" HorizontalAlignment="Left" Appearance="Secondary" Margin="0,0,0,4" />
 
                 <TextBlock Text="Profil utilizator" Style="{StaticResource SectionHeader}" />
                 <TextBlock Text="Nume (opțional):" Margin="0,0,0,4" />
@@ -54,6 +70,14 @@
                     <ui:Button Content="Activează" Click="OnActivateClicked" Margin="0,0,8,0" />
                     <ui:Button Content="Cere cod pe WhatsApp" Click="OnRequestCodeClicked" Appearance="Secondary" />
                 </StackPanel>
+
+                <TextBlock Text="Aspect" Style="{StaticResource SectionHeader}" />
+                <ComboBox x:Name="ThemeCombo" HorizontalAlignment="Left" Width="160" Margin="0,0,0,8"
+                          SelectionChanged="OnThemeChanged">
+                    <ComboBoxItem Content="Sistem" Tag="System" />
+                    <ComboBoxItem Content="Luminos" Tag="Light" />
+                    <ComboBoxItem Content="Întunecat" Tag="Dark" />
+                </ComboBox>
 
                 <TextBlock Text="Actualizări" Style="{StaticResource SectionHeader}" />
                 <TextBlock x:Name="VersionInfoText" Margin="0,0,0,8" />

@@ -6,6 +6,10 @@ struct DataMoverMacApp: App {
     @ObservedObject private var langStore = LanguageStore.shared
     @Environment(\.openWindow) private var openWindow
 
+    init() {
+        AppMover.promptIfNeeded()
+    }
+
     var body: some Scene {
         WindowGroup {
             ContentView()

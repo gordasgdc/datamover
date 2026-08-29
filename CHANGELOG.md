@@ -4,6 +4,29 @@ Format: fiecare intrare listează versiunea, platformele afectate, și — pentr
 funcționalități noi — dacă are paritate completă Mac/Windows sau e "doar pe
 o platformă, portare pe cealaltă e TODO".
 
+## v2.7.2 — Windows WPF (2026-08-29)
+- Fix: titlul ferestrei arăta static "DataMover 2.6.0" (neschimbat de la
+  Etapa 2026-08-28 (2)), deși aplicația era deja la 2.7.1 — acum citește
+  versiunea reală din `UpdateChecker.CurrentVersion`.
+- Nou: selector Sistem/Luminos/Întunecat (Regula 18, lipsea complet pe
+  Windows) — `ThemeSettings.cs`, persistat în `%AppData%\DataMover\theme.json`,
+  aplicat instant prin `Wpf.Ui.Appearance.ApplicationThemeManager`, expus
+  în fereastra Profil (secțiune nouă "Aspect").
+- Fix: 2 fundaluri hardcodate `#1C1C1C` (tile-uri disc, panou dependințe)
+  rămâneau negre și pe tema Luminos — înlocuite cu resursa de temă
+  `ControlFillColorDefaultBrush`.
+- Nou: panoul "Optiuni de copiere"/"I/O & Memorie"/"Profile de transfer"
+  (mereu desfășurate, ocupau tot centrul ferestrei) consolidate într-un
+  singur buton "Setări copiere" cu popover, parity vizual cu gear-icon-ul
+  Mac v2.7.1.
+- Nou: Manager Modular de Dependințe (Regula 4) — panoul static "toate
+  prezente" din fereastra Profil e acum o listă reală (`SystemDependencyChecker.cs`),
+  cu prima dependință verificată headless: Visual C++ Redistributable
+  (necesar de SkiaSharp/QuestPDF pentru raportul PDF al transferurilor) —
+  🔴 dacă lipsește, cu buton "Instalează" direct spre link-ul oficial
+  Microsoft, plus buton "Reverifică". Punct roșu global lângă butonul
+  Profil din footer.
+
 ## v2.5.5 (2026-08-26)
 Versiune de test, fără schimbări funcționale — publicată doar ca țintă pentru validarea manuală a self-updater-ului nou din v2.5.4 (vezi mai jos). Confirmat: instalare + relansare automată, funcționează cap-coadă pe mașina reală.
 
