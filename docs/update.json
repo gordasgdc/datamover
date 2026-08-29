@@ -1,7 +1,7 @@
 {
-  "version": "2.7.1",
-  "release_date": "2026-08-28",
-  "changes": "Fix real: proba gratuita era 7 zile pe Mac dar gresit 15 pe Windows - acum identic pe ambele. Mac: panou nou Profil & Licenta in Setari (Nume/Email, Machine ID, cod de licenta salvat cu copiere rapida). Site: butonul de download Windows trece la clientul WPF nou.",
+  "version": "2.7.2",
+  "release_date": "2026-08-29",
+  "changes": "Windows: panou unificat Setari copiere + tema Sistem/Luminos/Intunecat + Manager de Dependinte real (Visual C++ Redistributable) + fix titlu versiune stale. Ghidurile PDF (RO/EN/ES) redesenate cu coperta, capturi reale, culori de brand. Site web: hero optimizat pentru monitoare mari + animatie noua card->linie neon->hard disk (transfer).",
   "download_url": {
     "windows": "https://github.com/gordasgdc/datamover/releases/latest/download/DataMover-Windows.zip",
     "mac": "https://github.com/gordasgdc/datamover/releases/latest/download/DataMover-Mac.zip",
