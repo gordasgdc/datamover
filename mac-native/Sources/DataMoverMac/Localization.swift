@@ -114,6 +114,7 @@ enum L {
 
         // MARK: - Settings popover
         "settings.title": [.ro: "Setari copiere", .en: "Copy settings", .es: "Ajustes de copia"],
+        "settings.appearance": [.ro: "Aspect", .en: "Appearance", .es: "Apariencia"],
         "settings.verificationModel": [.ro: "Model de verificare", .en: "Verification model", .es: "Modelo de verificación"],
         "settings.exclusions": [.ro: "Excluderi (nume exact sau .extensie, separate prin virgula)", .en: "Exclusions (exact name or .extension, comma-separated)", .es: "Exclusiones (nombre exacto o .extensión, separadas por comas)"],
         "settings.resume": [.ro: "Reia automat dintr-un checkpoint existent", .en: "Resume automatically from an existing checkpoint", .es: "Reanudar automáticamente desde un punto de control"],

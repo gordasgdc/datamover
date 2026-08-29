@@ -46,6 +46,7 @@ struct ContentView: View {
     @State private var duplicateFolderName: String = ""
     // Profile de transfer (2026-08-28) - vezi transferProfilesSection.
     @ObservedObject private var profileStore = TransferProfileStore.shared
+    @ObservedObject private var themeManager = ThemeManager.shared
     @State private var showSaveProfilePrompt = false
     @State private var newProfileName: String = ""
     @State private var showSettings = false
@@ -705,6 +706,23 @@ struct ContentView: View {
                 }
                 .labelsHidden()
                 .frame(width: 110)
+            }
+
+            // Selector Sistem/Luminos/Intunecat (Regula 18) - lipsea complet,
+            // aplicatia urma orb tema macOS. Vezi AppTheme.swift.
+            HStack {
+                Text(L.t("settings.appearance")).font(.system(size: 11)).foregroundStyle(.secondary)
+                Spacer()
+                Picker("", selection: Binding(
+                    get: { themeManager.current },
+                    set: { themeManager.set($0) }
+                )) {
+                    ForEach(AppTheme.allCases) { theme in
+                        Text(theme.label).tag(theme)
+                    }
+                }
+                .labelsHidden()
+                .frame(width: 130)
             }
 
             VStack(alignment: .leading, spacing: 4) {
