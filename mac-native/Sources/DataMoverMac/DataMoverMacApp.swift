@@ -8,6 +8,7 @@ struct DataMoverMacApp: App {
 
     init() {
         AppMover.promptIfNeeded()
+        ThemeManager.shared.applyNow()
     }
 
     var body: some Scene {
