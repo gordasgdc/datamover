@@ -214,7 +214,7 @@ struct ContentView: View {
                 .font(.system(size: 10))
                 .foregroundStyle(.tertiary)
             Button {
-                openWindow(id: "help")
+                GuidePDF.open()
             } label: {
                 Image(systemName: "questionmark.circle")
             }
