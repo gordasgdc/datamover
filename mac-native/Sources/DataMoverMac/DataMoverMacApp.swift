@@ -27,8 +27,7 @@ struct DataMoverMacApp: App {
             }
             CommandGroup(replacing: .help) {
                 Button(L.t("menu.help")) {
-                    NSApp.activate(ignoringOtherApps: true)
-                    openWindow(id: "help")
+                    GuidePDF.open()
                 }
                 Button(L.t("menu.whatsapp")) {
                     NSWorkspace.shared.open(WhatsAppLink.url())

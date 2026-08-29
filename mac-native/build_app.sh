@@ -44,6 +44,18 @@ cp ".build/release/$BIN_NAME" "$APP_PATH/Contents/MacOS/$BIN_NAME"
 cp "Info.plist" "$APP_PATH/Contents/Info.plist"
 cp "AppIcon.icns" "$APP_PATH/Contents/Resources/AppIcon.icns"
 
+# Ghidurile PDF (RO/EN/ES) - bundle-uite direct in app (2026-08-29, cerut
+# explicit: "cand apas pe help, sa mi se deschida PDF-urile alea mari" -
+# vezi GuidePDF.swift, care le deschide cu NSWorkspace dupa limba curenta).
+for f in DataMover_Ghid_RO DataMover_Guide_EN DataMover_Guia_ES; do
+    src="../docs/guides/$f.pdf"
+    if [ -f "$src" ]; then
+        cp "$src" "$APP_PATH/Contents/Resources/$f.pdf"
+    else
+        echo "AVERTISMENT: lipseste $src - ghidul $f nu va fi disponibil din Help." >&2
+    fi
+done
+
 echo "==> Curat atributele extinse..."
 xattr -cr "$APP_PATH"
 
