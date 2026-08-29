@@ -15,7 +15,7 @@
 ; CI-ul (.github/workflows/build-windows-wpf.yml) face toti pasii automat.
 
 #define MyAppName "DataMover"
-#define MyAppVersion "2.7.2"
+#define MyAppVersion "2.7.3"
 #define MyAppPublisher "Cristi Gordas"
 #define MyAppExeName "DataMover.exe"
 #define MyAppURL "https://gordas.dev/datamover"
