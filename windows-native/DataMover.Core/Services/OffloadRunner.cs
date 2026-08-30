@@ -282,7 +282,7 @@ public sealed class OffloadRunner : INotifyPropertyChanged
             job.OnActivity = line => LogActivity(line);
             if (trimmedRemote.Length > 0)
             {
-                job.CloudUploadQueue = new CloudUploadQueue(trimmedRemote, cloudRemoteFolder, line => LogActivity(line));
+                job.CloudUploadQueue = new CloudUploadQueue(trimmedRemote, cloudRemoteFolder, Path.Combine(dest, folderName), line => LogActivity(line));
             }
             return job;
         }).ToList();

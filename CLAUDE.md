@@ -1172,3 +1172,51 @@ schimba nimic - doar o licenta reala scoate plafonul.
 Mac) - 0 erori. **Nu s-a testat inca real** un transfer efectiv peste 2 GB
 in versiune neactivata pe fiecare platforma - Cristi urmeaza sa confirme
 manual ca dialogul apare si blocheaza corect Start-ul.
+
+## Etapa 2026-08-30 (3) — Upload Cloud lent, cauza reala + fix (v2.10.1)
+
+Raportat direct de Cristi, dupa primul test real cu rclone activat: "mi se
+pare exagerat de mult ca dureaza transferul". Cauza REALA, gasita in cod
+(nu presupusa): `CloudUploadQueue.enqueue()` pornea un proces `rclone
+copyto` NOU, complet separat, pentru FIECARE fisier terminat local, unul
+dupa altul (coada seriala) - la multe fisiere, overhead-ul de
+pornire+autentificare al fiecarui proces domina timpul, nu banda reala.
+
+**Fix (ambele platforme, port 1:1)**: `CloudSyncService.uploadBatch()`
+(inlocuieste `uploadFile`/`copyto`) - `rclone copy <localRoot> remote:
+--files-from -` (lista de cai pe stdin), cu
+`--transfers 8 --checkers 16 --drive-chunk-size 64M --fast-list`.
+`CloudUploadQueue` acumuleaza acum fisierele intr-un LOT (25 fisiere sau 3
+secunde de la primul fisier neurcat, ce vine primul), golit printr-un
+SINGUR proces `rclone` per lot - rclone insusi paralelizeaza transferurile
+din lot, in loc de un proces per fisier.
+
+**Descoperire separata, mult mai mare ca impact**: masurat direct
+(`nettop` pe procesul `rclone` activ) ca viteza REALA pe conexiunea lui
+Cristi (confirmata cu `networkQuality -s`: 753 Mbps upload) era totusi
+doar ~2.5 Mbit/s pe un singur fisier mare - net sub capacitatea reala.
+Cauza: Google limiteaza agresiv clientul OAuth PARTAJAT al rclone-ului
+(acelasi ID pentru toti utilizatorii rclone din lume), independent de
+batching. Fix REAL: client OAuth propriu (Google Cloud Console, Desktop
+app) - configurat manual pe remote-ul de test (`rclone config update
+<remote> client_id ... client_secret ...` + `rclone config reconnect`),
+masurat direct: **~18x mai rapid** (2.5 Mbit/s -> ~47 Mbit/s, acelasi cont,
+acelasi fisier). Acest client OAuth propriu a fost apoi EMBEDDED direct in
+`MacMasterControlPro` (nu in DataMover - vezi CLAUDE.md-ul acelui repo,
+`GDCOAuthClients`), ca orice cont Google Drive nou adaugat prin Cloud
+Manager sa-l foloseasca automat, fara ca clientul final sa treaca prin
+Google Cloud Console. DataMover beneficiaza indirect - remote-urile sunt
+partajate prin acelasi `rclone.conf` global (Regula de arhitectura Cloud,
+Etapa 2026-08-30).
+
+**Pagina web** (`docs/index.html`) - prețul fix (23 €) scos din tot textul
+(RO/EN/ES) - suma exacta apare doar in aplicatie, la Activare (Regula 27,
+pret dinamic) - decizie separata a lui Cristi: paginile web NU mai trebuie
+sincronizate manual la fiecare schimbare de pret/oferta.
+
+**Verificat**: `swift build` (Mac) si `dotnet build` (Windows.Core +
+Windows.Client, de pe Mac) - 0 erori pe toate. Testat REAL, live, de
+Cristi: batching-ul confirmat activ (`ps`/`pgrep` arata comanda `rclone`
+noua cu flag-urile corecte), viteza masurata live cu `nettop` a crescut de
+la ~2.5 Mbit/s la ~27 Mbit/s pe transferul lui real (dupa configurarea
+clientului OAuth propriu) - **confirmat funcțional, nu doar compilat**.

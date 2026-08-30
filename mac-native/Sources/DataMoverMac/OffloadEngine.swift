@@ -433,7 +433,7 @@ final class DestinationJob {
                         filesStatus[entry.relPath] = "sarit"
                         logRow(ReportRow(file: entry.relPath, sizeBytes: entry.size,
                                           srcHash: s, dstHash: d, status: status, error: ""))
-                        cloudUploadQueue?.enqueue(localPath: destPath, relPath: entry.relPath)
+                        cloudUploadQueue?.enqueue(relPath: entry.relPath)
                         onFileDone(entry.size)
                         maybeWriteCheckpoint(targetRoot: targetRoot)
                         continue
@@ -467,7 +467,7 @@ final class DestinationJob {
             // local (OK/SARIT) - un fisier cu NEPOTRIVIRE/EROARE local nu se
             // urca, la fel cum nu s-ar considera "transferat" nici pe disc.
             if status == "OK" || status == "SARIT" {
-                cloudUploadQueue?.enqueue(localPath: destPath, relPath: entry.relPath)
+                cloudUploadQueue?.enqueue(relPath: entry.relPath)
             }
             onFileDone(entry.size)
             maybeWriteCheckpoint(targetRoot: targetRoot)
@@ -919,6 +919,7 @@ final class OffloadRunner: ObservableObject {
             group.enter()
             let cloudQueue: CloudUploadQueue? = trimmedRemote.isEmpty ? nil : CloudUploadQueue(
                 remote: trimmedRemote, remoteFolder: cloudRemoteFolder,
+                localRoot: (dest as NSString).appendingPathComponent(folderName),
                 onLine: { [weak self] line in
                     Task { @MainActor [weak self] in self?.logActivity(line) }
                 }
