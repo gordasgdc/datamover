@@ -1,7 +1,7 @@
 {
-  "version": "2.8.1",
+  "version": "2.9.0",
   "release_date": "2026-08-30",
-  "changes": "Mac: diagnostic real pentru PDF-ul de raport lipsa - motivul exact apare acum in feed + offload_report_PDF_EROARE.txt.",
+  "changes": "Plafon de 2 GB per transfer in versiunea de proba, legat de licenta reala nu de zilele ramase.",
   "download_url": {
     "windows": "https://github.com/gordasgdc/datamover/releases/latest/download/DataMover-Windows.zip",
     "mac": "https://github.com/gordasgdc/datamover/releases/latest/download/DataMover-Mac.zip",
