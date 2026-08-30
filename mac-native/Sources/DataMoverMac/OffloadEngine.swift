@@ -559,12 +559,22 @@ final class DestinationJob {
         let truncatedNote = pdfSampleRows.count < totalRows
             ? "Lista completa (\(totalRows) fisiere) e in CSV-ul alaturat - PDF-ul arata toate problemele plus un esantion."
             : nil
-        let savedPDF = writePDFReport(
+        let pdfResult = writePDFReport(
             path: pdfPath, destination: destRoot, folderName: folderName, rows: pdfSampleRows,
             startedAt: startedAt, finishedAt: Date(), okCount: okCount, skipCount: skipCount,
             failCount: failCount, cancelled: cancelled, verificationLabel: verificationModel.label,
             truncatedNote: truncatedNote
-        ) ? pdfPath : nil
+        )
+        let savedPDF: String? = pdfResult.ok ? pdfPath : nil
+        if !pdfResult.ok {
+            let reason = pdfResult.error ?? "motiv necunoscut"
+            onActivity("Nu s-a putut genera raportul PDF: \(reason)")
+            // Fisier de fallback langa CSV, la fel ca pe Windows (v2.7.0) -
+            // gasibil chiar daca feed-ul de activitate a fost ratat/golit.
+            let errPath = (targetRoot as NSString).appendingPathComponent("offload_report_PDF_EROARE.txt")
+            let content = "Generarea raportului PDF a esuat la \(Date()).\n\nMotiv: \(reason)\n"
+            try? content.write(toFile: errPath, atomically: true, encoding: .utf8)
+        }
 
         return (csvPath, savedPDF)
     }
@@ -582,14 +592,27 @@ final class DestinationJob {
 private func writePDFReport(path: String, destination: String, folderName: String, rows: [ReportRow],
                              startedAt: Date, finishedAt: Date, okCount: Int, skipCount: Int,
                              failCount: Int, cancelled: Bool, verificationLabel: String,
-                             truncatedNote: String? = nil) -> Bool {
+                             truncatedNote: String? = nil) -> (ok: Bool, error: String?) {
     let pageWidth: CGFloat = 595 // A4 @ 72dpi
     let pageHeight: CGFloat = 842
     let margin: CGFloat = 40
     var mediaBox = CGRect(x: 0, y: 0, width: pageWidth, height: pageHeight)
 
-    guard let consumer = CGDataConsumer(url: URL(fileURLWithPath: path) as CFURL),
-          let ctx = CGContext(consumer: consumer, mediaBox: &mediaBox, nil) else { return false }
+    // FIX VIZIBILITATE (2026-08-30, raportat de Cristi: "PDF-ul nu se
+    // creeaza") - pana acum, daca CGDataConsumer/CGContext esuau, functia
+    // intorcea `false` FARA niciun motiv, la fel ca bug-ul deja documentat
+    // si reparat pe Windows (QuestPDF/ARM64, v2.7.0) - CSV-ul (scris cu
+    // FileHandle simplu) reuseste mereu, deci userul vede doar checkpoint +
+    // CSV si crede ca PDF-ul "nu porneste", fara niciun indiciu de ce.
+    // Motive reale posibile aici: folder de destinatie sters/deconectat
+    // intre timp (disc extern), spatiu insuficient pe disc, sau un
+    // caracter din cale pe care CFURL nu il accepta.
+    guard let consumer = CGDataConsumer(url: URL(fileURLWithPath: path) as CFURL) else {
+        return (false, "CGDataConsumer nu a putut fi creat pentru \"\(path)\" - verifica daca folderul de destinatie mai exista si daca discul nu e plin.")
+    }
+    guard let ctx = CGContext(consumer: consumer, mediaBox: &mediaBox, nil) else {
+        return (false, "CGContext nu a putut fi creat pentru raportul PDF (dupa ce fisierul consumer a fost deschis cu succes) - cauza necunoscuta, posibil memorie insuficienta.")
+    }
 
     var y: CGFloat = pageHeight - margin
 
@@ -669,7 +692,7 @@ private func writePDFReport(path: String, destination: String, folderName: Strin
     }
     ctx.endPDFPage()
     ctx.closePDF()
-    return true
+    return (true, nil)
 }
 
 // MARK: - OffloadRunner (orchestrare, expus catre SwiftUI)
