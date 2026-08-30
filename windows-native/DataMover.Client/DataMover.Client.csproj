@@ -25,7 +25,7 @@
     <!-- Rescriere WPF/Fluent (2026-08-28) - inlocuieste treptat ui/windows
          (Python/Tkinter). Versiune sincronizata cu varianta Mac/Python -
          vezi Regula 14 din CLAUDE.md. -->
-    <Version>2.10.0</Version>
+    <Version>2.10.1</Version>
     <ApplicationIcon>app.ico</ApplicationIcon>
   </PropertyGroup>
 
