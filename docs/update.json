@@ -1,7 +1,7 @@
 {
-  "version": "2.10.0",
+  "version": "2.10.1",
   "release_date": "2026-08-30",
-  "changes": "Mac: pret dinamic (Pricing Manager) - Black Friday/oferte fara recompilare, citit din pricing.json.",
+  "changes": "Cloud: upload in loturi mult mai rapid (nu mai porneste un proces rclone per fisier), site fara pret fix.",
   "download_url": {
     "windows": "https://github.com/gordasgdc/datamover/releases/latest/download/DataMover-Windows.zip",
     "mac": "https://github.com/gordasgdc/datamover/releases/latest/download/DataMover-Mac.zip",
