@@ -486,6 +486,18 @@ public partial class MainWindow : FluentWindow
             folderNameOverride: folderNameOverride,
             cloudRemote: SelectedCloudRemote(),
             cloudRemoteFolder: SelectedCloudFolder());
+
+        // Plafon de proba depasit (2026-08-30) - vezi LicenseManager.
+        // TrialMaxTransferBytes / OffloadRunner.TrialLimitExceededBytes.
+        if (_runner.TrialLimitExceededBytes is long totalBytes)
+        {
+            var sizeText = IOSettings.SizeLabel((int)(totalBytes / (1024 * 1024)));
+            var result = MessageBox.Show(
+                $"Acest transfer ({sizeText}) depășește plafonul de 2 GB per transfer al versiunii de probă.\n\n" +
+                "Activează licența pentru acces complet, fără limită de dimensiune.",
+                "Plafon de probă depășit", MessageBoxButton.OKCancel, MessageBoxImage.Warning);
+            if (result == MessageBoxResult.OK) new ProfileWindow { Owner = this }.ShowDialog();
+        }
     }
 
     private void OnPauseClicked(object sender, RoutedEventArgs e) => _runner.TogglePause();

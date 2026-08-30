@@ -11,6 +11,15 @@ final class LicenseManager: ObservableObject {
     static let shared = LicenseManager()
     static let productID = "gdc-datamover"
     static let trialDurationDays = 7
+    /// Plafon de marime per transfer in versiunea neactivata (2026-08-30,
+    /// cerut de Cristi: testeri care dezinstaleaza/reinstaleaza repetat ca
+    /// sa resetaze proba). Gating-ul foloseste STRICT `isLicensed`, nu
+    /// `isTrialActive` - un plafon legat doar de zilele de proba ar fi
+    /// ocolit exact de acelasi abuz (dezinstalare -> reinstalare -> proba
+    /// noua); legat de `isLicensed`, plafonul ramane activ indiferent
+    /// cate ori se reseteaza fereastra de 7 zile - doar o licenta reala
+    /// il ridica.
+    static let trialMaxTransferBytes: Int64 = 2 * 1024 * 1024 * 1024 // 2 GB
 
     @Published private(set) var isLicensed = false
     @Published private(set) var licenseExpiresAt: Int64 = 0 // 0 = perpetual

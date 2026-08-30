@@ -709,6 +709,10 @@ final class OffloadRunner: ObservableObject {
     @Published var statusText = L.t("status.ready")
     @Published var speedText = ""
     @Published var lastResults: [DestinationResult] = []
+    /// Plafon de proba depasit (2026-08-30) - vezi LicenseManager.
+    /// trialMaxTransferBytes. ContentView asculta asta si arata un alert
+    /// cu buton de activare, in loc sa lase Start-ul sa esueze tacut.
+    @Published var trialLimitExceededBytes: Int64? = nil
     /// Feed-ul stil Terminal din footer (vezi DestinationJob.onActivity).
     /// Capat la `activityLogLimit` — nu tinem tot istoricul unui transfer
     /// de mii de fisiere in memorie/UI, doar ce s-a intamplat recent.
@@ -860,6 +864,21 @@ final class OffloadRunner: ObservableObject {
             statusText = L.t("footer.noFiles")
             return
         }
+
+        // Plafon de proba (2026-08-30) - vezi LicenseManager.
+        // trialMaxTransferBytes. Verificat pe DIMENSIUNEA TOTALA a
+        // transferului (suma tuturor fisierelor sursa), o singura data,
+        // inainte de a porni orice copiere - nu un plafon per fisier, ca
+        // sa nu poata fi ocolit trimitand multe fisiere mici.
+        if !LicenseManager.shared.isLicensed {
+            let totalBytes = files.reduce(Int64(0)) { $0 + $1.size }
+            if totalBytes > LicenseManager.trialMaxTransferBytes {
+                trialLimitExceededBytes = totalBytes
+                statusText = L.t("trial.sizeLimitStatus")
+                return
+            }
+        }
+        trialLimitExceededBytes = nil
 
         // Numele folderului de destinatie: <data>_<Proiect>_<Card>, exact ca
         // in aplicatia Windows — implicit "Proiect"/"Card" daca lasi campurile
