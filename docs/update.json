@@ -1,7 +1,7 @@
 {
-  "version": "2.9.0",
+  "version": "2.10.0",
   "release_date": "2026-08-30",
-  "changes": "Plafon de 2 GB per transfer in versiunea de proba, legat de licenta reala nu de zilele ramase.",
+  "changes": "Mac: pret dinamic (Pricing Manager) - Black Friday/oferte fara recompilare, citit din pricing.json.",
   "download_url": {
     "windows": "https://github.com/gordasgdc/datamover/releases/latest/download/DataMover-Windows.zip",
     "mac": "https://github.com/gordasgdc/datamover/releases/latest/download/DataMover-Mac.zip",
