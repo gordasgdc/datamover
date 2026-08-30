@@ -4,6 +4,29 @@ Format: fiecare intrare listează versiunea, platformele afectate, și — pentr
 funcționalități noi — dacă are paritate completă Mac/Windows sau e "doar pe
 o platformă, portare pe cealaltă e TODO".
 
+## v2.8.0 — Destinație secundară Cloud, powered by Rclone (2026-08-30, paritate Mac/Windows)
+Cerință explicită a lui Cristi: copierea locală (SSD/HDD/card) poate acum
+urca simultan fiecare fișier și pe un cont Cloud, fără nicio "legătură"
+separată de configurat — `rclone` ține toate conturile într-un singur
+`rclone.conf` global, deja partajat cu Cloud Manager-ul din Master Control
+Studio Pro (Mac/Windows).
+- **Setări › Destinație secundară Cloud**: dropdown cu conturile deja
+  configurate (`rclone listremotes`) + subfolder opțional pe cont.
+  "Dezactivat" implicit — comportamentul existent rămâne neschimbat dacă
+  nu se alege niciun cont.
+- Fiecare fișier copiat local cu succes (OK/SARIT) se urcă automat, în
+  fundal, imediat după verificare, printr-o coadă SERIALĂ per destinație
+  (`CloudUploadQueue`) — evită mai multe procese `rclone` concurente pe
+  aceeași bandă de rețea (Regula 21). Progresul apare linie cu linie în
+  feed-ul de activitate deja existent.
+- Profilele de transfer salvează acum și alegerea Cloud (cont + subfolder).
+- Dacă `rclone` nu e instalat, secțiunea arată un avertisment cu
+  îndrumare către Master Control Studio Pro (Dependențe), în loc de un
+  dropdown gol care ar eșua tăcut.
+- Implementare: `CloudSyncService.swift`/`.cs` (nou, ambele platforme),
+  extins în `OffloadEngine.swift`/`.cs` (`DestinationJob.cloudUploadQueue`)
+  și `TransferProfile`/`TransferProfileStore`.
+
 ## v2.7.2 — Windows WPF (2026-08-29)
 - Fix: titlul ferestrei arăta static "DataMover 2.6.0" (neschimbat de la
   Etapa 2026-08-28 (2)), deși aplicația era deja la 2.7.1 — acum citește

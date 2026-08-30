@@ -127,6 +127,9 @@ public sealed class DestinationJob
     public string? SourceRoot { get; }
     public int ChunkSizeBytes { get; }
     public int RamLimitMb { get; }
+    /// Destinatie secundara Cloud (2026-08-30, vezi CloudSyncService) -
+    /// optionala; daca null, comportamentul e identic cu inainte.
+    public CloudUploadQueue? CloudUploadQueue { get; set; }
 
     public Action<long>? OnFileDone { get; set; }
     public Action<string>? OnActivity { get; set; }
@@ -225,6 +228,7 @@ public sealed class DestinationJob
                         SkipCount++;
                         _filesStatus[entry.RelPath] = "sarit";
                         LogRow(new ReportRow { File = entry.RelPath, SizeBytes = entry.Size, SrcHash = s0, DstHash = d0, Status = status });
+                        CloudUploadQueue?.Enqueue(destPath, entry.RelPath);
                         OnFileDone?.Invoke(entry.Size);
                         MaybeWriteCheckpoint(targetRoot);
                         continue;
@@ -256,10 +260,18 @@ public sealed class DestinationJob
                 default: FailCount++; _filesStatus[entry.RelPath] = "fail"; break;
             }
             LogRow(new ReportRow { File = entry.RelPath, SizeBytes = entry.Size, SrcHash = srcRepr, DstHash = dstRepr, Status = status, Error = errorMsg });
+            // Urcare Cloud: doar fisierele copiate cu succes local (OK/SARIT).
+            if (status is "OK" or "SARIT") CloudUploadQueue?.Enqueue(destPath, entry.RelPath);
             OnFileDone?.Invoke(entry.Size);
             MaybeWriteCheckpoint(targetRoot);
         }
 
+        // Asteapta upload-urile Cloud deja puse in coada inainte de raport.
+        if (CloudUploadQueue != null)
+        {
+            OnActivity?.Invoke("Cloud: se așteaptă finalizarea urcărilor rămase…");
+            CloudUploadQueue.WaitUntilDrained();
+        }
         MaybeWriteCheckpoint(targetRoot, force: true);
         CloseCsv();
         WritePdf(targetRoot);

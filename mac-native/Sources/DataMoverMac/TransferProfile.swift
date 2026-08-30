@@ -15,6 +15,12 @@ struct TransferProfile: Codable, Identifiable, Equatable {
     var exclusionsText: String
     var chunkSizeMB: Int
     var ramLimitMB: Int
+    /// Destinatie secundara Cloud (2026-08-30, optionala - vezi
+    /// CloudSyncService). `Optional` cu decodare implicita `nil` pentru
+    /// profilele salvate INAINTE de aceasta versiune, care nu au aceste
+    /// chei in JSON-ul deja scris pe disc.
+    var cloudRemote: String? = nil
+    var cloudRemoteFolder: String? = nil
 }
 
 final class TransferProfileStore: ObservableObject {

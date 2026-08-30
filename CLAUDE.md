@@ -1024,3 +1024,46 @@ Mac semnat+notarizat+stapled (`spctl`: Notarized Developer ID), CI
 `DataMover-Windows.zip`, `DataMover-WPF-Windows.zip`) HTTP 200 pe tag-ul
 `v2.7.1`, API-ul de update confirmat pe `v2.7.1`. Release:
 https://github.com/gordasgdc/datamover/releases/tag/v2.7.1
+
+## Etapa 2026-08-30 — Destinatie secundara Cloud, powered by Rclone (paritate Mac/Windows, v2.8.0)
+
+Cerinta explicita a lui Cristi, dupa ce Master Control Studio Pro a capatat
+un Cloud Manager complet (Rclone): "vreau sa copiez ceva, dar in acelasi
+timp sa il si urc direct pe unul dintre serviciile facute cu Rclone". Nu a
+fost nevoie de nicio "legatura" intre cele doua aplicatii - `rclone` tine
+toate conturile intr-un singur `rclone.conf` GLOBAL (`~/.config/rclone/`
+Mac, `%AppData%\rclone\` Windows), ne-izolat per aplicatie, deci orice cont
+configurat prin Cloud Manager e deja vizibil aici, doar de folosit acelasi
+binar.
+
+**Implementare (ambele platforme, port 1:1):**
+- `CloudSyncService.swift`/`.cs` (nou) - `isAvailable()`/`listRemotes()`
+  (`rclone listremotes`, PATH augmentat pe Mac cu `/opt/homebrew/bin`, PATH
+  proaspat din Registry pe Windows - acelasi fix deja documentat in
+  MacMasterControlPro/Win pentru exact aceeasi problema), `uploadFile()`
+  (`rclone copyto` fisier->fisier, nu re-scaneaza tot folderul remote la
+  fiecare fisier - Regula 21).
+- `CloudUploadQueue` (nou, `@unchecked Sendable`/thread-safe) - o coada
+  SERIALA de upload-uri per `DestinationJob`, ca sa nu multiplice procese
+  `rclone` in paralel (memorie/banda) - "in acelasi timp" inseamna in
+  fundal fata de copierea locala, nu neaparat N procese simultane pe
+  aceeasi destinatie.
+- `DestinationJob` (`OffloadEngine.swift`/`.cs`) - dupa fiecare fisier
+  copiat local cu succes (status OK/SARIT, NICIODATA la NEPOTRIVIRE/EROARE),
+  enqueue catre coada Cloud. La finalul job-ului, `waitUntilDrained()`
+  inainte de raportul final - altfel raportul ar aparea "complet" cat timp
+  inca se mai urca fisiere in fundal.
+- UI (`ContentView.swift` / `MainWindow.xaml(.cs)`) - sectiune noua in
+  popover-ul/popup-ul de Setari: dropdown cu conturile deja configurate +
+  camp opțional de subfolder, ascunse daca `rclone` nu e instalat (mesaj
+  explicit de indrumare catre Master Control Studio Pro › Dependente, in
+  loc de dropdown gol care ar esua tacut la prima incercare).
+- `TransferProfile`/`TransferProfileStore` - salveaza acum si alegerea
+  Cloud; campurile noi sunt `Optional`/au valoare implicita, deci profilele
+  salvate INAINTE de aceasta versiune raman valide (decodare `nil`/"").
+
+**Verificat**: `swift build` (Mac) si `dotnet build` (Windows.Client, de pe
+Mac) - 0 erori, 0 avertismente, ambele platforme. **Nu s-a testat inca
+real** un upload efectiv catre un cont Cloud real (necesita un cont
+configurat + o rulare completa pe fiecare platforma) - Cristi urmeaza sa
+confirme manual dupa publicarea versiunii.

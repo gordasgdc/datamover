@@ -33,8 +33,56 @@ public partial class MainWindow : FluentWindow
     private readonly DispatcherTimer _drivesTimer;
     private bool _wasRunning;
 
-    private void OnToggleSettingsPopup(object sender, RoutedEventArgs e) =>
+    private void OnToggleSettingsPopup(object sender, RoutedEventArgs e)
+    {
         SettingsPopup.IsOpen = !SettingsPopup.IsOpen;
+        if (SettingsPopup.IsOpen) RefreshCloudRemotes();
+    }
+
+    private const string CloudDisabledLabel = "Dezactivat";
+
+    /// Reimprospateaza lista de conturi Cloud (rclone listremotes), headless,
+    /// pe un thread de fundal - la fel ca DependencyDot de mai sus (Regula 4).
+    private void RefreshCloudRemotes()
+    {
+        var previouslySelected = CloudRemoteCombo.SelectedItem as string ?? CloudDisabledLabel;
+        Task.Run(() =>
+        {
+            var available = CloudSyncService.IsAvailable();
+            var remotes = available ? CloudSyncService.ListRemotes() : new List<string>();
+            Dispatcher.Invoke(() =>
+            {
+                CloudUnavailableText.Visibility = available ? Visibility.Collapsed : Visibility.Visible;
+                CloudRemotePanel.Visibility = available ? Visibility.Visible : Visibility.Collapsed;
+                var items = new List<string> { CloudDisabledLabel }.Concat(remotes).ToList();
+                CloudRemoteCombo.ItemsSource = items;
+                CloudRemoteCombo.SelectedItem = items.Contains(previouslySelected) ? previouslySelected : CloudDisabledLabel;
+            });
+        });
+    }
+
+    private void OnCloudRemoteChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        var hasRemote = CloudRemoteCombo.SelectedItem is string s && s != CloudDisabledLabel;
+        CloudFolderPanel.Visibility = hasRemote ? Visibility.Visible : Visibility.Collapsed;
+        CloudHintText.Visibility = hasRemote ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private string SelectedCloudRemote()
+    {
+        var s = CloudRemoteCombo.SelectedItem as string ?? CloudDisabledLabel;
+        return s == CloudDisabledLabel ? "" : s;
+    }
+
+    private string SelectedCloudFolder() => CloudFolderBox.Text.Trim();
+
+    private void ApplyCloudSelection(string remote, string folder)
+    {
+        var target = string.IsNullOrEmpty(remote) ? CloudDisabledLabel : remote;
+        if (((List<string>?)CloudRemoteCombo.ItemsSource)?.Contains(target) == true)
+            CloudRemoteCombo.SelectedItem = target;
+        CloudFolderBox.Text = folder;
+    }
 
     public MainWindow()
     {
@@ -57,6 +105,9 @@ public partial class MainWindow : FluentWindow
         ChunkSizeCombo.SelectedItem = IOSettings.SizeLabel(IOSettings.DefaultChunkSizeMB);
         RamLimitCombo.ItemsSource = IOSettings.RamLimitChoicesMB.Select(v => v == 0 ? "Fara limita" : IOSettings.SizeLabel(v)).ToList();
         RamLimitCombo.SelectedItem = IOSettings.SizeLabel(1024);
+
+        CloudRemoteCombo.ItemsSource = new List<string> { CloudDisabledLabel };
+        CloudRemoteCombo.SelectedItem = CloudDisabledLabel;
 
         RefreshProfilesCombo();
         RefreshDrives();
@@ -339,6 +390,8 @@ public partial class MainWindow : FluentWindow
             ExclusionsText = ExclusionsBox.Text,
             ChunkSizeMB = SelectedChunkSizeMB(),
             RamLimitMB = SelectedRamLimitMB(),
+            CloudRemote = SelectedCloudRemote(),
+            CloudRemoteFolder = SelectedCloudFolder(),
         });
         RefreshProfilesCombo();
         ProfilesCombo.SelectedItem = name.Trim();
@@ -358,6 +411,7 @@ public partial class MainWindow : FluentWindow
         ExclusionsBox.Text = profile.ExclusionsText;
         ChunkSizeCombo.SelectedItem = IOSettings.SizeLabel(profile.ChunkSizeMB);
         RamLimitCombo.SelectedItem = profile.RamLimitMB == 0 ? "Fara limita" : IOSettings.SizeLabel(profile.RamLimitMB);
+        ApplyCloudSelection(profile.CloudRemote, profile.CloudRemoteFolder);
     }
 
     private void OnDeleteProfileClicked(object sender, RoutedEventArgs e)
@@ -429,7 +483,9 @@ public partial class MainWindow : FluentWindow
             resume: resume,
             project: ProjectBox.Text.Trim(),
             card: CardBox.Text.Trim(),
-            folderNameOverride: folderNameOverride);
+            folderNameOverride: folderNameOverride,
+            cloudRemote: SelectedCloudRemote(),
+            cloudRemoteFolder: SelectedCloudFolder());
     }
 
     private void OnPauseClicked(object sender, RoutedEventArgs e) => _runner.TogglePause();
