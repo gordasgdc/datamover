@@ -162,6 +162,21 @@ struct ContentView: View {
             } message: {
                 Text(footerStatusText)
             }
+            // Plafon de proba depasit (2026-08-30) - vezi LicenseManager.
+            // trialMaxTransferBytes / OffloadRunner.trialLimitExceededBytes.
+            .alert(
+                L.t("trial.sizeLimitTitle"),
+                isPresented: Binding(
+                    get: { runner.trialLimitExceededBytes != nil },
+                    set: { if !$0 { runner.trialLimitExceededBytes = nil } }
+                )
+            ) {
+                Button(L.t("trial.activate")) { showActivation = true }
+                Button(L.t("completion.ok"), role: .cancel) {}
+            } message: {
+                Text(String(format: L.t("trial.sizeLimitMessage"),
+                            ByteCountFormatter.string(fromByteCount: runner.trialLimitExceededBytes ?? 0, countStyle: .file)))
+            }
 
             // eticheta "fantoma" care urmareste cursorul cat timp tragi un disc
             if let path = draggingDiskPath {

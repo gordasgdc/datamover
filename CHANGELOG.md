@@ -4,6 +4,25 @@ Format: fiecare intrare listează versiunea, platformele afectate, și — pentr
 funcționalități noi — dacă are paritate completă Mac/Windows sau e "doar pe
 o platformă, portare pe cealaltă e TODO".
 
+## v2.9.0 — Plafon de 2 GB per transfer în versiunea de probă (2026-08-30, paritate Mac/Windows)
+Cerință explicită a lui Cristi: testerii dezinstalează/reinstalează
+aplicația repetat ca să resetez proba de 7 zile și să o folosească la
+nesfârșit. Plafonul e legat STRICT de `isLicensed`/`IsLicensed`, nu de
+zilele de probă rămase — dezinstalarea/reinstalarea resetează contorul de
+zile, dar NU ridică niciodată plafonul; doar o licență activată reală o
+face.
+- Orice transfer a cărui dimensiune totală depășește 2 GB e blocat ÎNAINTE
+  de a porni copierea (nu doar avertizat) dacă aplicația nu e licențiată —
+  apare un dialog cu buton „Activează licența".
+- Verificarea e pe dimensiunea TOTALĂ a transferului (suma tuturor
+  fișierelor), nu per fișier — nu poate fi ocolită trimițând multe fișiere
+  mici.
+- **Găsit la implementare**: până acum, pe ambele platforme, nu exista
+  NICIUN gating real după expirarea probei — `isUnlocked`/`IsUnlocked` era
+  calculat dar nefolosit nicăieri pentru a bloca ceva; Start-ul funcționa
+  identic indiferent de starea licenței. Plafonul de 2 GB e prima
+  restricție reală introdusă vreodată în acest sens.
+
 ## v2.8.1 — Mac: diagnostic real pentru PDF-ul de raport lipsă (2026-08-30)
 Raportat de Cristi: `offload_checkpoint.json` și CSV-ul se creau normal,
 dar PDF-ul de raport lipsea complet, fără nicio indicație. Cauza: spre

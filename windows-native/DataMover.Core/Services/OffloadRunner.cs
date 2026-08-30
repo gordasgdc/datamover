@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.IO;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using DataMover.Core.Models;
 
@@ -47,6 +48,12 @@ public sealed class OffloadRunner : INotifyPropertyChanged
     public string MemoryUsedText { get => _memoryUsedText; private set => Set(ref _memoryUsedText, value); }
 
     public List<DestinationResult> LastResults { get; private set; } = new();
+
+    /// Plafon de proba depasit (2026-08-30) - vezi LicenseManager.
+    /// TrialMaxTransferBytes. MainWindow verifica asta dupa Start() si
+    /// arata un MessageBox cu buton de activare, in loc sa lase Start-ul
+    /// sa esueze tacut.
+    public long? TrialLimitExceededBytes { get; private set; }
 
     /// Feed-ul de activitate, plafonat la 200 linii (Regula 21 - nu tinem
     /// tot istoricul unui transfer de mii de fisiere in memorie/UI).
@@ -222,6 +229,23 @@ public sealed class OffloadRunner : INotifyPropertyChanged
             StatusText = "Nu am gasit niciun fisier de copiat.";
             return;
         }
+
+        // Plafon de proba (2026-08-30) - vezi LicenseManager.
+        // TrialMaxTransferBytes. Verificat pe dimensiunea TOTALA a
+        // transferului, o singura data, inainte de a porni orice copiere -
+        // nu un plafon per fisier, ca sa nu poata fi ocolit trimitand
+        // multe fisiere mici.
+        if (!LicenseManager.Shared.IsLicensed)
+        {
+            long totalBytes = files.Sum(f => f.Size);
+            if (totalBytes > LicenseManager.TrialMaxTransferBytes)
+            {
+                TrialLimitExceededBytes = totalBytes;
+                StatusText = "Transfer blocat — depășește plafonul de 2 GB al probei.";
+                return;
+            }
+        }
+        TrialLimitExceededBytes = null;
 
         var folderName = folderNameOverride ?? FolderName(project, card);
         var sourceRoot = sources.FirstOrDefault();

@@ -16,6 +16,13 @@ public sealed class LicenseManager
     // ecosistemului), dar DataMover Mac foloseste explicit 7 zile -
     // gasit la audit 2026-08-28, dupa observatia lui Cristi despre profil.
     public const int TrialDurationDays = 7;
+    /// Plafon de marime per transfer in versiunea neactivata (2026-08-30,
+    /// port 1:1 al LicenseManager.swift - Mac). Gating STRICT pe
+    /// `IsLicensed`, nu pe `IsTrialActive` - un plafon legat doar de
+    /// zilele de proba ar fi ocolit exact de abuzul semnalat (dezinstalare
+    /// -> reinstalare -> proba noua); legat de `IsLicensed`, plafonul
+    /// ramane activ indiferent cate ori se reseteaza fereastra de 7 zile.
+    public const long TrialMaxTransferBytes = 2L * 1024 * 1024 * 1024; // 2 GB
 
     public bool IsLicensed { get; private set; }
     public long LicenseExpiresAt { get; private set; }

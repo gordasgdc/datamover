@@ -37,6 +37,9 @@ enum L {
         // MARK: - Trial bar
         "trial.daysLeft": [.ro: "Proba gratuita — %d zile ramase", .en: "Free trial — %d days left", .es: "Prueba gratuita — %d días restantes"],
         "trial.activate": [.ro: "Activeaza licenta", .en: "Activate license", .es: "Activar licencia"],
+        "trial.sizeLimitTitle": [.ro: "Plafon de probă depășit", .en: "Trial size limit exceeded", .es: "Límite de la prueba superado"],
+        "trial.sizeLimitMessage": [.ro: "Acest transfer (%@) depășește plafonul de 2 GB per transfer al versiunii de probă. Activează licența pentru acces complet, fără limită de dimensiune.", .en: "This transfer (%@) exceeds the trial version's 2 GB per-transfer limit. Activate your license for full access, with no size limit.", .es: "Esta transferencia (%@) supera el límite de 2 GB por transferencia de la versión de prueba. Activa tu licencia para acceso completo, sin límite de tamaño."],
+        "trial.sizeLimitStatus": [.ro: "Transfer blocat — depășește plafonul de 2 GB al probei.", .en: "Transfer blocked — exceeds the trial's 2 GB limit.", .es: "Transferencia bloqueada — supera el límite de 2 GB de la prueba."],
 
         // MARK: - Meta bar (Proiect/Card)
         "meta.project": [.ro: "Proiect", .en: "Project", .es: "Proyecto"],

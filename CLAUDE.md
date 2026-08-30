@@ -1067,3 +1067,49 @@ Mac) - 0 erori, 0 avertismente, ambele platforme. **Nu s-a testat inca
 real** un upload efectiv catre un cont Cloud real (necesita un cont
 configurat + o rulare completa pe fiecare platforma) - Cristi urmeaza sa
 confirme manual dupa publicarea versiunii.
+
+## Etapa 2026-08-30 (2) — Plafon de 2 GB per transfer in versiunea de proba (paritate Mac/Windows, v2.9.0)
+
+Cerinta explicita a lui Cristi, raportata de testerii lui: proba de 7 zile
+se ocoleste trivial - dezinstalare, folosire, reinstalare, proba noua, la
+nesfarsit. Solutia ceruta explicit NU e o reparare a persistentei
+trial-ului (ar necesita ancorare server-side pe Machine ID, mult mai
+complex), ci un plafon de dimensiune per transfer in versiunea neactivata:
+**2 GB maxim**, suficient pentru testare, insuficient pentru folosire
+productiva reala.
+
+**Descoperire importanta la implementare**: pe ambele platforme, comentariul
+existent din `LicenseManager.cs` ("DECIZIE DE PRODUS (identica cu Mac): NU
+exista niciun gating dur pe Start") era literalmente adevarat verificat -
+`isUnlocked`/`IsUnlocked` (calculat din `isLicensed || isTrialActive`) NU
+era folosit NICAIERI in `ContentView.swift`/`MainWindow.xaml.cs` pentru a
+bloca ceva. Aplicatia functiona identic de proba SAU licentiata, mereu -
+singurul lucru vizibil era un banner "X zile ramase", niciodata aplicat ca
+restrictie reala. Plafonul de 2 GB e prima restrictie functionala introdusa
+vreodata pe acest produs.
+
+**De ce plafonul e legat de `isLicensed`, NU de `isTrialActive`**: un
+plafon calculat din zilele de proba ramase ar fi fost ocolit de EXACT
+acelasi abuz semnalat (dezinstalare -> reinstalare -> contor de zile
+resetat -> plafon "ridicat" din nou). Legat strict de `isLicensed`
+(activare cu cod Ed25519 valid), dezinstalarea/reinstalarea repetata nu
+schimba nimic - doar o licenta reala scoate plafonul.
+
+**Implementare (ambele platforme, port 1:1):**
+- `LicenseManager.swift`/`.cs` - `trialMaxTransferBytes`/
+  `TrialMaxTransferBytes = 2 GB` (constanta).
+- `OffloadRunner.start()`/`.Start()` - dupa ce lista de fisiere e
+  construita (inainte de a porni orice job), daca `!isLicensed`, suma
+  TOTALA a dimensiunilor (nu per fisier - altfel usor de ocolit trimitand
+  multe fisiere mici) e comparata cu plafonul; daca-l depaseste,
+  transferul NU porneste (`isRunning` ramane `false`), iar
+  `trialLimitExceededBytes`/`TrialLimitExceededBytes` retine dimensiunea
+  pentru UI.
+- UI: Mac arata un `.alert` cu buton "Activeaza licenta" (deschide
+  `ActivationSheet`); Windows arata un `MessageBox` cu acelasi mesaj,
+  OK deschide `ProfileWindow` (unde se introduce codul).
+
+**Verificat**: `swift build` (Mac) si `dotnet build` (Windows.Client, de pe
+Mac) - 0 erori. **Nu s-a testat inca real** un transfer efectiv peste 2 GB
+in versiune neactivata pe fiecare platforma - Cristi urmeaza sa confirme
+manual ca dialogul apare si blocheaza corect Start-ul.
