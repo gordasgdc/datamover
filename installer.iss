@@ -22,7 +22,7 @@
 ; Mac; nu exista un echivalent pentru Inno Setup).
 
 #define MyAppName "DataMover"
-#define MyAppVersion "2.9.0"
+#define MyAppVersion "2.10.0"
 #define MyAppPublisher "Cristi Gordas"
 #define MyAppExeName "DataMover.exe"
 #define MyAppMonitorExeName "DataMover Monitor.exe"
