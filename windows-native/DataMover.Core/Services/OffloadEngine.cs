@@ -228,7 +228,7 @@ public sealed class DestinationJob
                         SkipCount++;
                         _filesStatus[entry.RelPath] = "sarit";
                         LogRow(new ReportRow { File = entry.RelPath, SizeBytes = entry.Size, SrcHash = s0, DstHash = d0, Status = status });
-                        CloudUploadQueue?.Enqueue(destPath, entry.RelPath);
+                        CloudUploadQueue?.Enqueue(entry.RelPath);
                         OnFileDone?.Invoke(entry.Size);
                         MaybeWriteCheckpoint(targetRoot);
                         continue;
@@ -261,7 +261,7 @@ public sealed class DestinationJob
             }
             LogRow(new ReportRow { File = entry.RelPath, SizeBytes = entry.Size, SrcHash = srcRepr, DstHash = dstRepr, Status = status, Error = errorMsg });
             // Urcare Cloud: doar fisierele copiate cu succes local (OK/SARIT).
-            if (status is "OK" or "SARIT") CloudUploadQueue?.Enqueue(destPath, entry.RelPath);
+            if (status is "OK" or "SARIT") CloudUploadQueue?.Enqueue(entry.RelPath);
             OnFileDone?.Invoke(entry.Size);
             MaybeWriteCheckpoint(targetRoot);
         }

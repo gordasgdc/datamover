@@ -1,5 +1,21 @@
 # Changelog — DataMover
 
+## v2.10.1 — Upload Cloud mult mai rapid (2026-08-30, paritate Mac/Windows)
+Cerință reală, raportată de Cristi ("mi se pare exagerat de mult că durează
+transferul"): urcarea Cloud (v2.8.0) pornea un proces `rclone` nou, separat,
+pentru FIECARE fișier — overhead-ul de pornire domina timpul la multe
+fișiere mici. Rescris: fișierele se acumulează într-un lot (25 fișiere sau
+3 secunde, ce vine primul) și se urcă printr-un SINGUR proces
+`rclone copy --files-from -`, cu flag-uri de performanță
+(`--transfers 8 --checkers 16 --drive-chunk-size 64M --fast-list`).
+- Măsurat direct: pe Google Drive, viteza per-fișier a crescut și mai mult
+  (**~18x**) după configurarea unui client OAuth propriu pentru Google
+  Drive în Master Control Studio Pro (vezi CHANGELOG-ul acelui repo) — cei
+  doi factori (batching + client propriu) sunt independenți, ambii ajută.
+- Pagina web (`docs/index.html`) — prețul fix (23 €) scos din text; suma
+  exactă (poate include oferte temporare) apare doar în aplicație, la
+  Activare, conform standardului de preț dinamic (Regula 27).
+
 Format: fiecare intrare listează versiunea, platformele afectate, și — pentru
 funcționalități noi — dacă are paritate completă Mac/Windows sau e "doar pe
 o platformă, portare pe cealaltă e TODO".

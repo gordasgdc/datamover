@@ -55,19 +55,37 @@ enum CloudSyncService {
         }
     }
 
-    /// Urca UN singur fisier deja copiat local catre `remote:remoteFolder/relPath`,
-    /// pastrand structura de subfoldere (relPath poate contine "/"). Ruleaza
-    /// `rclone copyto` (fisier -> fisier, nu folder -> folder) ca sa nu
-    /// re-scaneze tot folderul de destinatie la fiecare fisier - cerinta
-    /// Regulii 21 (fara operatii care cresc cu volumul deja transferat).
-    /// `onLine` primeste progresul linie-cu-linie (stdout+stderr combinate),
-    /// pentru feed-ul de activitate deja existent din DestinationJob.
+    /// Urca UN SINGUR LOT de fisiere deja copiate local (relPath-uri, relative
+    /// la `localRoot`) catre `remote:remoteFolder`, intr-un SINGUR proces
+    /// `rclone copy`. Inlocuieste vechiul `uploadFile`/`copyto` per-fisier
+    /// (2026-08-30, gasit ca bug real de performanta - Cristi: "mi se pare
+    /// exagerat de mult ca dureaza transferul"): un proces `rclone` nou per
+    /// fisier are un overhead de pornire+autentificare care domina timpul
+    /// la multe fisiere mici, iar `copyto` nu paralelizeaza niciodata (un
+    /// singur fisier per invocare). `rclone copy` cu `--files-from=-`
+    /// (lista de cai primita pe stdin) lasa RCLONE INSUSI sa paralelizeze
+    /// (`--transfers`) si sa foloseasca fragmente mai mari la upload
+    /// (`--drive-chunk-size`, relevant si pentru fisiere mari) - un singur
+    /// proces, mult mai rapid, indiferent daca lotul e "multe fisiere mici"
+    /// sau "putine fisiere mari" (ambele cazuri confirmate de Cristi).
+    /// `onLine` primeste progresul linie-cu-linie (stdout+stderr combinate).
     @discardableResult
-    static func uploadFile(localPath: String, remote: String, remoteFolder: String,
-                            relPath: String, onLine: @escaping (String) -> Void) -> Bool {
+    static func uploadBatch(localRoot: String, remote: String, remoteFolder: String,
+                             relPaths: [String], onLine: @escaping (String) -> Void) -> Bool {
+        guard !relPaths.isEmpty else { return true }
         let cleanFolder = remoteFolder.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        let remoteTarget = cleanFolder.isEmpty ? "\(remote):\(relPath)" : "\(remote):\(cleanFolder)/\(relPath)"
-        let p = makeProcess(["copyto", localPath, remoteTarget, "--stats=1s", "-v"])
+        let remoteTarget = cleanFolder.isEmpty ? "\(remote):" : "\(remote):\(cleanFolder)"
+        let p = makeProcess([
+            "copy", localRoot, remoteTarget,
+            "--files-from", "-",
+            "--transfers", "8",
+            "--checkers", "16",
+            "--drive-chunk-size", "64M",
+            "--fast-list",
+            "--stats", "1s", "-v",
+        ])
+        let inPipe = Pipe()
+        p.standardInput = inPipe
         let out = Pipe()
         p.standardOutput = out
         p.standardError = out
@@ -80,6 +98,11 @@ enum CloudSyncService {
         }
         do {
             try p.run()
+            let listText = relPaths.joined(separator: "\n") + "\n"
+            if let listData = listText.data(using: .utf8) {
+                inPipe.fileHandleForWriting.write(listData)
+            }
+            try? inPipe.fileHandleForWriting.close()
             p.waitUntilExit()
             out.fileHandleForReading.readabilityHandler = nil
             return p.terminationStatus == 0
@@ -91,37 +114,73 @@ enum CloudSyncService {
     }
 }
 
-/// Coada SERIALA de upload-uri Cloud, una per DestinationJob (2026-08-30).
-/// Motiv: mai multe procese `rclone` in paralel (cate unul per fisier
-/// terminat local) ar concura pentru aceeasi banda de retea si ar creste
-/// memoria/CPU nestapanit pe un transfer de mii de fisiere mici - o coada
-/// seriala uploadeaza in fundal, fara sa blocheze bucla de copiere locala
-/// (raspunde cerintei "in acelasi timp"), dar fara sa multiplice procese.
+/// Coada SERIALA + pe LOTURI de upload-uri Cloud, una per DestinationJob
+/// (2026-08-30, rescrisa dupa un bug real de performanta - vezi
+/// `uploadBatch`). Motiv al variantei seriale (nemodificat): mai multe
+/// procese `rclone` in paralel (cate unul per fisier terminat local) ar
+/// concura pentru aceeasi banda de retea si ar creste memoria/CPU
+/// nestapanit pe un transfer de mii de fisiere mici. NOU: fisierele nu se
+/// mai urca unul cate unul (un proces `rclone` per fisier, overhead mare la
+/// multe fisiere mici) - se ACUMULEAZA intr-un lot, golit fie cand ajunge
+/// la `batchSize`, fie dupa `batchDelay` secunde de la primul fisier
+/// neurcat inca, oricare vine primul - un SINGUR proces `rclone copy` per
+/// lot, care paralelizeaza singur transferurile (`--transfers`).
 final class CloudUploadQueue: @unchecked Sendable {
     private let queue = DispatchQueue(label: "com.gdc.datamover.clouduploads", qos: .utility)
     private let remote: String
     private let remoteFolder: String
+    private let localRoot: String
     private let onLine: (String) -> Void
+    private var pending: [String] = []
+    private var flushScheduled = false
+    private let batchSize = 25
+    private let batchDelay: TimeInterval = 3.0
 
-    init(remote: String, remoteFolder: String, onLine: @escaping (String) -> Void) {
+    /// `localRoot` = radacina locala din care se raporteaza `relPath`-urile
+    /// (acelasi `targetRoot` folosit de DestinationJob pentru copierea
+    /// locala) - `rclone copy` are nevoie de o singura radacina sursa per
+    /// invocare, filtrata apoi de `--files-from` la doar fisierele cerute.
+    init(remote: String, remoteFolder: String, localRoot: String, onLine: @escaping (String) -> Void) {
         self.remote = remote
         self.remoteFolder = remoteFolder
+        self.localRoot = localRoot
         self.onLine = onLine
     }
 
-    func enqueue(localPath: String, relPath: String) {
-        queue.async { [remote, remoteFolder, onLine] in
-            onLine("Cloud: urcare \(relPath) → \(remote):\(remoteFolder.isEmpty ? "" : remoteFolder + "/")\(relPath)…")
-            let ok = CloudSyncService.uploadFile(localPath: localPath, remote: remote,
-                                                  remoteFolder: remoteFolder, relPath: relPath, onLine: onLine)
-            onLine(ok ? "Cloud: ✔ \(relPath) urcat cu succes." : "Cloud: ✘ \(relPath) — urcarea a eșuat.")
+    func enqueue(relPath: String) {
+        queue.async { [weak self] in
+            guard let self else { return }
+            self.pending.append(relPath)
+            if self.pending.count >= self.batchSize {
+                self.flushLocked()
+            } else if !self.flushScheduled {
+                self.flushScheduled = true
+                self.queue.asyncAfter(deadline: .now() + self.batchDelay) { [weak self] in
+                    self?.flushLocked()
+                }
+            }
         }
     }
 
+    /// Trebuie apelata DOAR pe `queue` (async sau sync) - nu e thread-safe
+    /// singura, se bazeaza pe serializarea cozii.
+    private func flushLocked() {
+        flushScheduled = false
+        guard !pending.isEmpty else { return }
+        let batch = pending
+        pending.removeAll()
+        onLine("Cloud: urcare lot de \(batch.count) fișier(e) → \(remote):\(remoteFolder.isEmpty ? "" : remoteFolder + "/")…")
+        let ok = CloudSyncService.uploadBatch(localRoot: localRoot, remote: remote,
+                                               remoteFolder: remoteFolder, relPaths: batch, onLine: onLine)
+        onLine(ok ? "Cloud: ✔ lot de \(batch.count) fișier(e) urcat cu succes."
+                   : "Cloud: ✘ lot de \(batch.count) fișier(e) — cel puțin unul a eșuat (vezi jurnalul rclone de mai sus).")
+    }
+
     /// Blocheaza pana cand toate upload-urile deja puse in coada s-au
-    /// terminat - apelat la finalul unui job, ca raportul final sa nu
-    /// arate "gata" cat timp mai sunt fisiere care inca se urca.
+    /// terminat (inclusiv un lot inca neajuns la prag/timp) - apelat la
+    /// finalul unui job, ca raportul final sa nu arate "gata" cat timp mai
+    /// sunt fisiere care inca se urca.
     func waitUntilDrained() {
-        queue.sync {}
+        queue.sync { [weak self] in self?.flushLocked() }
     }
 }
