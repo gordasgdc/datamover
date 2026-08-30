@@ -4,6 +4,20 @@ Format: fiecare intrare listează versiunea, platformele afectate, și — pentr
 funcționalități noi — dacă are paritate completă Mac/Windows sau e "doar pe
 o platformă, portare pe cealaltă e TODO".
 
+## v2.10.0 — Mac: preț dinamic (Pricing Manager), fără recompilare (2026-08-30)
+Cerință arhitecturală: o ofertă (Black Friday, Crăciun) necesita până acum
+recompilarea + republicarea aplicației doar ca să schimbi o cifră. Acum
+`ActivationSheet` citește prețul din `pricing.json` (publicat prin noul
+panou „Prețuri & Oferte" din Furnizor, `gdc-plugin-manager-catalog-vendor`)
+în loc de o valoare hardcodată:
+- Preț de bază + program de oferte cu interval de timp, afișate automat
+  („🔥 Black Friday -35%" + preț tăiat), cu countdown live opțional.
+- Mesajul WhatsApp pre-completat folosește prețul curent, nu unul fix.
+- **Fail-open**: fără conexiune, revine la prețul hardcodat din cod —
+  niciodată un ecran gol/eronat.
+- Windows (DataMover WPF) rămâne TODO pentru acest pilot — vezi Regula 27
+  (CLAUDE.md) pentru planul de propagare pe restul ecosistemului.
+
 ## v2.9.0 — Plafon de 2 GB per transfer în versiunea de probă (2026-08-30, paritate Mac/Windows)
 Cerință explicită a lui Cristi: testerii dezinstalează/reinstalează
 aplicația repetat ca să resetez proba de 7 zile și să o folosească la
