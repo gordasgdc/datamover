@@ -196,7 +196,8 @@ public sealed class OffloadRunner : INotifyPropertyChanged
     // ---------------- Start ----------------
 
     public void Start(List<string> sources, List<string> destinations, VerificationModel model,
-        List<string> exclusions, bool resume, string project, string card, string? folderNameOverride = null)
+        List<string> exclusions, bool resume, string project, string card, string? folderNameOverride = null,
+        string cloudRemote = "", string cloudRemoteFolder = "")
     {
         if (IsRunning) return;
 
@@ -246,11 +247,19 @@ public sealed class OffloadRunner : INotifyPropertyChanged
         var results = new List<DestinationResult>();
         var resultsLock = new object();
 
+        // Cloud secondary destination (2026-08-30) - o coada NOUA per
+        // destinatie locala, ca fiecare disc/destinatie sa urce independent.
+        var trimmedRemote = cloudRemote.Trim();
+
         Jobs = destinations.Select(dest =>
         {
             var job = new DestinationJob(dest, folderName, files, token, pauseTok, model, resume, sourceRoot, chunkBytes, RamLimitMB);
             job.OnFileDone = size => Advance(size);
             job.OnActivity = line => LogActivity(line);
+            if (trimmedRemote.Length > 0)
+            {
+                job.CloudUploadQueue = new CloudUploadQueue(trimmedRemote, cloudRemoteFolder, line => LogActivity(line));
+            }
             return job;
         }).ToList();
 

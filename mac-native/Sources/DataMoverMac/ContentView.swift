@@ -25,6 +25,12 @@ struct ContentView: View {
     // setari de copiere/verificare
     @State private var verificationModel: VerificationModel = .md5
     @State private var exclusionsText: String = ""
+    // Destinatie secundara Cloud (2026-08-30) - vezi CloudSyncService.
+    // "" inseamna "dezactivat", niciun upload nu porneste.
+    @State private var cloudRemote: String = ""
+    @State private var cloudRemoteFolder: String = ""
+    @State private var availableCloudRemotes: [String] = []
+    @State private var cloudAvailable = false
     // Deschidere automata a folderului destinatie la final — persistata
     // (spre deosebire de restul setarilor de mai sus, care se reseteaza
     // la fiecare pornire): e o preferinta stabila a userului, nu ceva ce
@@ -579,6 +585,7 @@ struct ContentView: View {
                 .disabled(runner.isRunning)
                 .popover(isPresented: $showSettings, arrowEdge: .top) {
                     settingsPopover
+                        .onAppear { refreshCloudRemotes() }
                 }
                 // Pauza/Continua (2026-08-28) - alaturi de Anuleaza, dar
                 // reversibil: opreste temporar transferul FARA sa piarda
@@ -654,7 +661,21 @@ struct ContentView: View {
         runner.start(sources: sourcePaths, destinations: destinationPaths,
                      verificationModel: verificationModel, exclusions: exclusions,
                      resume: resume, project: projectName, card: cardName,
-                     folderNameOverride: folderNameOverride)
+                     folderNameOverride: folderNameOverride,
+                     cloudRemote: cloudRemote, cloudRemoteFolder: cloudRemoteFolder)
+    }
+
+    /// Reimprospateaza lista de conturi Cloud (rclone listremotes) - apelat
+    /// la deschiderea popover-ului de Setari, headless, ca in Regula 4.
+    private func refreshCloudRemotes() {
+        DispatchQueue.global(qos: .utility).async {
+            let available = CloudSyncService.isAvailable()
+            let remotes = available ? CloudSyncService.listRemotes() : []
+            DispatchQueue.main.async {
+                cloudAvailable = available
+                availableCloudRemotes = remotes
+            }
+        }
     }
 
     /// Flux de activitate stil Terminal, in footer, cat timp ruleaza un
@@ -747,6 +768,35 @@ struct ContentView: View {
 
             Toggle(L.t("settings.autoOpenDestFolder"), isOn: $autoOpenDestFolder)
                 .font(.system(size: 12))
+
+            Divider()
+
+            // Destinatie secundara Cloud, powered by Rclone (2026-08-30) -
+            // vezi CloudSyncService. Foloseste ACELEASI conturi configurate
+            // in Cloud Manager-ul din Master Control Studio Pro (rclone.conf
+            // e global, nu izolat per aplicatie) - nimic nou de configurat
+            // aici daca userul are deja un cont acolo.
+            VStack(alignment: .leading, spacing: 4) {
+                Text(L.t("settings.cloudTitle")).font(.system(size: 11)).foregroundStyle(.secondary)
+                if !cloudAvailable {
+                    Text(L.t("settings.cloudUnavailable"))
+                        .font(.system(size: 11)).foregroundStyle(.orange)
+                } else {
+                    Picker("", selection: $cloudRemote) {
+                        Text(L.t("settings.cloudNone")).tag("")
+                        ForEach(availableCloudRemotes, id: \.self) { remote in
+                            Text(remote).tag(remote)
+                        }
+                    }
+                    .labelsHidden()
+                    if !cloudRemote.isEmpty {
+                        TextField(L.t("settings.cloudFolderPlaceholder"), text: $cloudRemoteFolder)
+                            .textFieldStyle(.roundedBorder)
+                        Text(L.t("settings.cloudHint"))
+                            .font(.system(size: 10)).foregroundStyle(.secondary)
+                    }
+                }
+            }
 
             Divider()
 
@@ -948,6 +998,8 @@ struct ContentView: View {
         exclusionsText = profile.exclusionsText
         chunkSizeMB = profile.chunkSizeMB
         ramLimitMB = profile.ramLimitMB
+        cloudRemote = profile.cloudRemote ?? ""
+        cloudRemoteFolder = profile.cloudRemoteFolder ?? ""
     }
 
     private func saveCurrentAsProfile() {
@@ -956,7 +1008,9 @@ struct ContentView: View {
         profileStore.upsert(TransferProfile(
             name: name, sourcePaths: sourcePaths, destinationPaths: destinationPaths,
             verificationModel: verificationModel, exclusionsText: exclusionsText,
-            chunkSizeMB: chunkSizeMB, ramLimitMB: ramLimitMB
+            chunkSizeMB: chunkSizeMB, ramLimitMB: ramLimitMB,
+            cloudRemote: cloudRemote.isEmpty ? nil : cloudRemote,
+            cloudRemoteFolder: cloudRemoteFolder.isEmpty ? nil : cloudRemoteFolder
         ))
         newProfileName = ""
     }

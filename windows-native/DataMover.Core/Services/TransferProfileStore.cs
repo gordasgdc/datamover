@@ -13,6 +13,11 @@ public sealed class TransferProfile
     public string ExclusionsText { get; set; } = "";
     public int ChunkSizeMB { get; set; } = IOSettings.DefaultChunkSizeMB;
     public int RamLimitMB { get; set; } = 1024;
+    /// Destinatie secundara Cloud (2026-08-30, optionala - vezi
+    /// CloudSyncService). Lipsesc din JSON-ul profilelor salvate INAINTE
+    /// de aceasta versiune - System.Text.Json le lasa pe default ("").
+    public string CloudRemote { get; set; } = "";
+    public string CloudRemoteFolder { get; set; } = "";
 }
 
 public sealed class TransferProfileStore

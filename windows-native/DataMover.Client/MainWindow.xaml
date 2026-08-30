@@ -144,6 +144,27 @@
                                     </WrapPanel>
                                     <TextBlock x:Name="IoUsageText" Foreground="Gray" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,12" />
 
+                                    <!-- Destinatie secundara Cloud, powered by Rclone (2026-08-30) -
+                                         vezi CloudSyncService.cs. Foloseste ACELEASI conturi configurate
+                                         in Cloud Manager-ul din Master Control Studio Pro (rclone.conf
+                                         e global, nu izolat per aplicatie). -->
+                                    <TextBlock Text="Destinație secundară Cloud (Rclone)" FontWeight="Bold" Margin="0,0,0,6" />
+                                    <TextBlock x:Name="CloudUnavailableText" Foreground="Orange" FontSize="11" TextWrapping="Wrap"
+                                               Text="Rclone nu e instalat — instalează-l din Master Control Studio Pro (Dependențe) ca să activezi urcarea automată."
+                                               Visibility="Collapsed" Margin="0,0,0,8" />
+                                    <WrapPanel x:Name="CloudRemotePanel" Margin="0,0,0,4">
+                                        <TextBlock Text="Cont:" VerticalAlignment="Center" Margin="0,0,8,4" />
+                                        <ComboBox x:Name="CloudRemoteCombo" Width="150" Margin="0,0,20,4" SelectionChanged="OnCloudRemoteChanged" />
+                                    </WrapPanel>
+                                    <WrapPanel x:Name="CloudFolderPanel" Margin="0,0,0,4" Visibility="Collapsed">
+                                        <TextBlock Text="Subfolder:" VerticalAlignment="Center" Margin="0,0,8,4" />
+                                        <ui:TextBox x:Name="CloudFolderBox" Width="220"
+                                                    PlaceholderText="implicit: numele folderului de transfer" Margin="0,0,0,4" />
+                                    </WrapPanel>
+                                    <TextBlock x:Name="CloudHintText" Foreground="Gray" FontSize="10" TextWrapping="Wrap"
+                                               Text="Fiecare fișier copiat local se urcă automat, în fundal, imediat după verificare."
+                                               Visibility="Collapsed" Margin="0,0,0,12" />
+
                                     <TextBlock Text="Profile de transfer" FontWeight="Bold" Margin="0,0,0,6" />
                                     <WrapPanel Margin="0,0,0,8">
                                         <ComboBox x:Name="ProfilesCombo" Width="200" Margin="0,0,8,4" />

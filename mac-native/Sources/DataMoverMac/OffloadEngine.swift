@@ -316,6 +316,9 @@ final class DestinationJob {
     let verificationModel: VerificationModel
     let resume: Bool
     let sourceRoot: String?
+    /// Destinatie secundara Cloud (2026-08-30, vezi CloudSyncService) -
+    /// optionala; daca nil, comportamentul e identic cu inainte.
+    let cloudUploadQueue: CloudUploadQueue?
     /// apelat dupa fiecare fisier procesat (pe thread-ul de fundal —
     /// OffloadRunner e cel care sare pe main thread inainte sa atinga UI)
     let onFileDone: (_ size: Int64) -> Void
@@ -346,6 +349,7 @@ final class DestinationJob {
     init(destRoot: String, folderName: String, files: [FileEntry], cancel: CancelToken,
          pause: PauseToken = PauseToken(),
          verificationModel: VerificationModel = .md5, resume: Bool = false, sourceRoot: String? = nil,
+         cloudUploadQueue: CloudUploadQueue? = nil,
          onFileDone: @escaping (_ size: Int64) -> Void,
          onActivity: @escaping (_ line: String) -> Void = { _ in }) {
         self.destRoot = destRoot
@@ -357,6 +361,7 @@ final class DestinationJob {
         self.verificationModel = verificationModel
         self.resume = resume
         self.sourceRoot = sourceRoot
+        self.cloudUploadQueue = cloudUploadQueue
         self.onFileDone = onFileDone
     }
 
@@ -428,6 +433,7 @@ final class DestinationJob {
                         filesStatus[entry.relPath] = "sarit"
                         logRow(ReportRow(file: entry.relPath, sizeBytes: entry.size,
                                           srcHash: s, dstHash: d, status: status, error: ""))
+                        cloudUploadQueue?.enqueue(localPath: destPath, relPath: entry.relPath)
                         onFileDone(entry.size)
                         maybeWriteCheckpoint(targetRoot: targetRoot)
                         continue
@@ -457,10 +463,23 @@ final class DestinationJob {
             logRow(ReportRow(file: entry.relPath, sizeBytes: entry.size,
                               srcHash: srcRepr, dstHash: dstRepr,
                               status: status, error: errorMsg))
+            // Urcare Cloud (2026-08-30): doar fisierele copiate cu succes
+            // local (OK/SARIT) - un fisier cu NEPOTRIVIRE/EROARE local nu se
+            // urca, la fel cum nu s-ar considera "transferat" nici pe disc.
+            if status == "OK" || status == "SARIT" {
+                cloudUploadQueue?.enqueue(localPath: destPath, relPath: entry.relPath)
+            }
             onFileDone(entry.size)
             maybeWriteCheckpoint(targetRoot: targetRoot)
         }
 
+        // Asteapta upload-urile Cloud deja puse in coada inainte de raport -
+        // altfel raportul final ar aparea "complet" cat timp inca se mai
+        // urca fisiere in fundal.
+        if let queue = cloudUploadQueue {
+            onActivity("Cloud: se așteaptă finalizarea urcărilor rămase…")
+            queue.waitUntilDrained()
+        }
         maybeWriteCheckpoint(targetRoot: targetRoot, force: true)
         let (savedCSV, pdfPath) = writeReports(targetRoot: targetRoot)
         return DestinationResult(destRoot: destRoot, okCount: okCount, skipCount: skipCount,
@@ -797,7 +816,8 @@ final class OffloadRunner: ObservableObject {
                verificationModel: VerificationModel = .md5,
                exclusions: [String] = [], resume: Bool = true,
                project: String = "", card: String = "",
-               folderNameOverride: String? = nil) {
+               folderNameOverride: String? = nil,
+               cloudRemote: String = "", cloudRemoteFolder: String = "") {
         guard !isRunning else { return }
 
         var files: [FileEntry] = []
@@ -847,13 +867,26 @@ final class OffloadRunner: ObservableObject {
         var results: [DestinationResult] = []
         let resultsLock = NSLock()
 
+        // Cloud secondary destination (2026-08-30) - o coada de upload NOUA
+        // per destinatie locala, ca fiecare disc/destinatie sa urce
+        // independent, in paralel cu celelalte destinatii locale (fiecare
+        // job ruleaza deja pe propriul thread).
+        let trimmedRemote = cloudRemote.trimmingCharacters(in: .whitespaces)
+
         for dest in destinations {
             group.enter()
+            let cloudQueue: CloudUploadQueue? = trimmedRemote.isEmpty ? nil : CloudUploadQueue(
+                remote: trimmedRemote, remoteFolder: cloudRemoteFolder,
+                onLine: { [weak self] line in
+                    Task { @MainActor [weak self] in self?.logActivity(line) }
+                }
+            )
             DispatchQueue.global(qos: .utility).async { [weak self] in
                 let job = DestinationJob(
                     destRoot: dest, folderName: folderName, files: files, cancel: token,
                     pause: pauseTok,
                     verificationModel: verificationModel, resume: resume, sourceRoot: sourceRoot,
+                    cloudUploadQueue: cloudQueue,
                     onFileDone: { size in
                         Task { @MainActor [weak self] in
                             self?.advance(size: size)
