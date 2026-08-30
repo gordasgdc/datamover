@@ -1,7 +1,7 @@
 {
-  "version": "2.7.3",
-  "release_date": "2026-08-29",
-  "changes": "Mac: selector explicit Sistem/Luminos/Intunecat (lipsea complet) + butonul Help deschide acum ghidul PDF mare (RO/EN/ES, dupa limba curenta) in loc de fereastra scurta. Windows: neschimbat.",
+  "version": "2.8.0",
+  "release_date": "2026-08-30",
+  "changes": "Destinatie secundara Cloud, powered by Rclone: fiecare fisier copiat local se urca automat pe contul Cloud ales, in fundal.",
   "download_url": {
     "windows": "https://github.com/gordasgdc/datamover/releases/latest/download/DataMover-Windows.zip",
     "mac": "https://github.com/gordasgdc/datamover/releases/latest/download/DataMover-Mac.zip",
