@@ -4,6 +4,16 @@ Format: fiecare intrare listează versiunea, platformele afectate, și — pentr
 funcționalități noi — dacă are paritate completă Mac/Windows sau e "doar pe
 o platformă, portare pe cealaltă e TODO".
 
+## v2.8.1 — Mac: diagnostic real pentru PDF-ul de raport lipsă (2026-08-30)
+Raportat de Cristi: `offload_checkpoint.json` și CSV-ul se creau normal,
+dar PDF-ul de raport lipsea complet, fără nicio indicație. Cauza: spre
+deosebire de Windows (are deja fallback `offload_report_PDF_EROARE.txt`
+din v2.7.0), Mac-ul înghițea tăcut orice eșec al `CGDataConsumer`/
+`CGContext` (motive posibile: folder de destinație deconectat între timp,
+disc plin, cale invalidă). Acum: motivul exact apare în feed-ul de
+activitate ȘI într-un fișier `offload_report_PDF_EROARE.txt` lângă CSV,
+la fel ca pe Windows — dacă problema reapare, mesajul spune direct de ce.
+
 ## v2.8.0 — Destinație secundară Cloud, powered by Rclone (2026-08-30, paritate Mac/Windows)
 Cerință explicită a lui Cristi: copierea locală (SSD/HDD/card) poate acum
 urca simultan fiecare fișier și pe un cont Cloud, fără nicio "legătură"
