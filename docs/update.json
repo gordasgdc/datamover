@@ -1,7 +1,7 @@
 {
-  "version": "2.11.0",
+  "version": "2.11.1",
   "release_date": "2026-09-03",
-  "changes": "Flux profesional de offload: fisier MHL pentru post-productie, verificare xxHash64 (mult mai rapida), reincercare automata a fisierelor esuate, verificare de spatiu liber inainte de start, coada de carduri, pornire automata la introducerea cardului, sablon liber pentru numele folderelor, recunoasterea cardurilor de camera, rapoarte brandate (logo, client, operator, note) + raport HTML, ejectare automata si notificare la final.",
+  "changes": "Actualizarea automata din Windows functioneaza din nou (esua de fiecare data cu 'Nu am gasit DataMover.exe in arhiva'). Pagina web: doua butoane separate de descarcare Mac/Windows, cu descarcare directa a fisierului, si capturi de ecran nedeformate.",
   "download_url": {
     "windows": "https://github.com/gordasgdc/datamover/releases/latest/download/DataMover-Windows.zip",
     "mac": "https://github.com/gordasgdc/datamover/releases/latest/download/DataMover-Mac.zip",
