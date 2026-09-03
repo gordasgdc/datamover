@@ -1259,3 +1259,149 @@ Cristi: batching-ul confirmat activ (`ps`/`pgrep` arata comanda `rclone`
 noua cu flag-urile corecte), viteza masurata live cu `nettop` a crescut de
 la ~2.5 Mbit/s la ~27 Mbit/s pe transferul lui real (dupa configurarea
 clientului OAuth propriu) - **confirmat funcțional, nu doar compilat**.
+
+## Etapa 2026-09-03 — Flux profesional de offload, inspirat de ShotPut Pro (v2.11.0, paritate completa Mac/Windows)
+
+Cerinta lui Cristi, cu ShotPut Pro (liderul international al categoriei) ca
+reper: *"ce putem imbunatati noi in Data Mover ca sa fie mai eficient si mai
+profesional... fiecare sa fie independent una de alta, dar sa aiba acelasi
+scop"* — apoi, la lista de 9 propuneri prioritizate: **"le vreau pe toate"**.
+Toate cele 9 au fost implementate pe AMBELE platforme in aceeasi versiune
+(nu s-a folosit clauza de independenta Mac/Windows — nu a fost nevoie, nicio
+functie n-a fost blocata tehnic pe vreo platforma).
+
+### P1 — obligatorii pentru intrarea intr-un flux de post-productie
+
+**1. MHL (Media Hash List) v1.1** — `MHLWriter.swift` / `MhlWriter.cs`.
+Fisier XML scris langa datele copiate, in radacina folderului de destinatie,
+cu cai RELATIVE (ca mutarea folderului sa nu-l invalideze). Citit de
+Silverstack, YoYotta, ShotPut Pro, Resolve. **Fara el, un card descarcat cu
+DataMover nu putea intra intr-un flux profesional** — CSV/PDF sunt rapoarte
+pentru OM, MHL e pentru MASINA.
+- Doar `md5`/`sha1`/`xxhash64be` sunt in schema MHL 1.1 — la SHA-256/512
+  transferul si rapoartele raman complete, doar MHL-ul nu se scrie (cu mesaj
+  explicit in feed, nu tacere).
+- Se scrie DOAR pentru fisierele cu status OK/SARIT (verificate). Un MHL e o
+  certificare; un fisier nesigur in el ar certifica date corupte.
+- **Memorie (Regula 21)**: intrarile se scriu incremental intr-un `.part`;
+  la `close()` se compune fisierul final. Motivul pentru care corpul nu
+  poate merge direct in fisierul final: `<creatorinfo>` sta obligatoriu
+  PRIMUL in schema si contine `<finishdate>`, cunoscut abia la sfarsit.
+- Caile din MHL folosesc mereu `/` (normalizate pe Windows) — altfel un MHL
+  scris pe Windows n-ar putea fi verificat pe Mac.
+
+**2. xxHash64 (XXH64, seed 0)** — `XXHash64.swift` / `XxHash64.cs`, ambele
+implementari PROPRII, fara nicio dependinta externa (pe Windows: intentionat
+NU pachetul `System.IO.Hashing` — un restore NuGet esuat in CI ar bloca
+release-ul pentru un algoritm de 100 de linii). Devenit **modelul implicit**
+de verificare (era MD5), ca la ShotPut/Silverstack.
+- **VALIDARE OBLIGATORIE, facuta**: ambele implementari au fost verificate
+  byte-for-byte fata de implementarea de referinta (`python-xxhash`) pe 8
+  vectori (0, 1, 3, 31, 32, 33, 256, 1800 octeti) x 3 dimensiuni de bucata
+  (7 / 32 / 1.000.000) = 24 de combinatii per platforma, toate identice, si
+  identice intre Mac si Windows. Cazurile 31/32/33 acopera exact granita
+  stripe-ului de 32 de octeti, unde o implementare gresita de streaming
+  trece testul pe fisiere mici si esueaza pe cele mari.
+- **Daca se mai atinge vreodata cod de hashing aici**: re-ruleaza acea
+  validare inainte de release. Un hash gresit nu da eroare — da un MHL
+  care certifica fals, descoperit luni mai tarziu, in post.
+
+**3. Reincercare automata a fisierelor esuate** — pas separat, la finalul
+transferului, INAINTE de scrierea rapoartelor (rapoartele trebuie sa arate
+starea finala). Fisierul partial de la destinatie se STERGE inainte de
+recopiere (`allowSkipExisting: false`), altfel logica "exista deja, verific
+doar" l-ar putea considera bun. Recuperarile apar EXPLICIT in rezumat si in
+rapoarte (`OK (reincercat)`) — userul trebuie sa stie ca transferul a avut
+rateuri tranzitorii chiar daca s-a terminat bine (indiciu de cablu/card/disc
+in curs de a ceda).
+- Refactor necesar: bucla per-fisier a fost extrasa in `processOne`/
+  `ProcessOne`, folosita IDENTIC de ambele treceri — altfel cele doua cai
+  ar diverge in timp si un fisier recuperat ar fi verificat altfel decat
+  unul copiat din prima.
+
+**4. Verificare de spatiu liber INAINTE de primul octet copiat.** Un card de
+512 GB pornit catre un disc cu 80 GB liberi copia ore intregi si esua la
+mijloc. Acum transferul nu porneste; userul vede cifrele reale si poate
+forta (`ignoreSpaceWarning`). La o RELUARE se scad fisierele deja prezente
+cu aceeasi dimensiune — altfel o reluare la 90% ar fi blocata cerand spatiu
+pentru date deja copiate. Marja: 1% din transfer, minim 100 MB (rapoartele
+se scriu tot acolo, la final). Mac:
+`volumeAvailableCapacityForImportantUsage` (corect pe APFS, tine cont de
+snapshot-uri purjabile), nu `systemFreeSize`.
+
+### P2 — flux de lucru
+
+**5. Coada de carduri** (`QueueItem`) — carduri descarcate unul dupa altul,
+fiecare in PROPRIUL folder (spre deosebire de mai multe surse adaugate
+simultan, care merg toate in acelasi folder). In coada, reluarea e implicit
+ACTIVA si dialogul de duplicate e ocolit: modul nesupravegheat nu poate
+astepta un raspuns. O ANULARE opreste toata coada (daca userul a apasat
+Anuleaza, nu vrea sa porneasca imediat cardul urmator).
+
+**6. Pornire automata la introducerea unui card** — cardul intra direct in
+coada si porneste singur. Conditii obligatorii: exista cel putin o
+destinatie aleasa, si prima trecere de polling stabileste doar baseline-ul
+(altfel orice card deja conectat la pornirea aplicatiei ar declansa fals o
+descarcare).
+
+**7. Sablon liber pentru numele folderelor** — `NamingTemplate.swift`/`.cs`,
+tokeni `{data} {ora} {proiect} {card} {camera} {operator}`, cu
+PREVIZUALIZARE LIVE in Setari (un sablon gresit descoperit dupa 2 TB copiati
+nu se mai poate corecta fara mutare manuala). Sablonul implicit produce
+EXACT numele vechi, deci nimeni nu e afectat daca nu-l schimba.
+- **Consecinta arhitecturala**: `findExistingFolderName` nu mai poate cauta
+  dupa sufixul hardcodat `_Proiect_Card`. Cauta acum "miezul stabil" al
+  sablonului (`stableCore` = tot, mai putin tokenii de data/ora) —
+  generalizarea corecta a fix-ului din 2026-08-28 (transfer care trece peste
+  miezul noptii).
+
+### P3 — profesionalism vizibil
+
+**8. Recunoasterea structurii de card** — `CameraCardDetector.swift`/`.cs`:
+RED (`.RDM`), ARRI (`.ARI`/`AVID`), Sony XDCAM (`XDROOT`) si XAVC
+(`PRIVATE/M4ROOT`), Panasonic AVCHD (`PRIVATE/AVCHD`) si P2 (`CONTENTS`),
+Blackmagic (`.braw`), Canon (`DCIM`+`MISC`), DCIM generic. **Ordinea
+verificarilor conteaza** — structurile specifice INAINTEA lui `DCIM`, pe
+care il are si un telefon. Pur informativ, nu blocheaza niciodata
+transferul. Avertizeaza la: card gol, fisiere de 0 octeti (clipuri
+incomplete), si — cel mai valoros — `parentLooksLikeCard`, cazul in care
+userul a selectat un SUBFOLDER al cardului in loc de radacina si ar pierde
+metadatele.
+
+**9. Rapoarte brandate + raport HTML** — `ProductionMeta` (Proiect, Client,
+Card, Camera, Operator/DIT, Note, Logo) alimenteaza ACELEASI campuri si in
+sablonul de denumire, si in antetul PDF, si in HTML. Campurile goale NU
+apar deloc (un raport cu "Client: —" arata neterminat). Logo-ul se
+INCORPOREAZA in HTML ca data URI (plafonat la 3 MB) — un `<img src="fisier">`
+ar functiona doar cat timp raportul sta langa imaginea originala, exact ce
+nu se intampla cand e trimis pe email.
+
+**10. Ejectare automata + notificare de sistem.** Ejectarea se face DOAR
+daca transferul s-a terminat fara nicio eroare — un card cu probleme nu se
+scoate niciodata automat (s-ar putea sa mai fie nevoie de o reluare de pe
+el; scoaterea l-ar transforma dintr-o problema reparabila in pierdere de
+material).
+- **Diferenta reala Mac/Windows**: Mac are `NSWorkspace.unmountAndEjectDevice`.
+  Windows NU are un echivalent simplu si sigur din .NET fara P/Invoke pe
+  handle-uri de volum — folosim utilitarul nativ `mountvol /P`, care cere
+  drepturi de Administrator. Cand nu le are, esecul e RAPORTAT in feed, nu
+  ascuns: userul trebuie sa stie ca mai are de scos cardul manual, nu sa
+  creada ca s-a facut.
+- Notificarea: `UNUserNotificationCenter` (Mac). `Bundle.main.bundleIdentifier`
+  se verifica explicit inainte — `UNUserNotificationCenter.current()` arunca
+  o exceptie FATALA intr-un proces fara bundle id (rulare din linia de
+  comanda), si ar fi crapat aplicatia exact la final de transfer.
+
+### Decizii transversale
+
+- **Feed-ul de activitate nu se mai goleste la start** (doar se adauga un
+  separator `──── Transfer nou: <folder> ────`). Motiv: avertismentele
+  detectorului de carduri apar INAINTE de start si tocmai ele trebuie sa
+  ramana vizibile in timpul transferului. Plafonul de 200 de linii ramane.
+- **Windows: `AppSettings`** (`%AppData%\DataMover\settings.json`) —
+  echivalentul `@AppStorage` de pe Mac, acelasi tipar ca `ThemeSettings`.
+  Notele de filmare sunt SINGURELE nepersistate: o nota veche aparuta in
+  raportul de maine ar fi o informatie gresita intr-un document de predare.
+- **Verificat**: `swift build` (Mac, 0 erori) + `dotnet build` pe
+  `DataMover.Core` (0 erori, 0 warning-uri). Clientul WPF (net8.0-windows)
+  nu se poate compila pe Mac — verificat de CI la release.

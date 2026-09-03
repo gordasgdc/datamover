@@ -1,7 +1,7 @@
 {
-  "version": "2.10.2",
+  "version": "2.11.0",
   "release_date": "2026-09-03",
-  "changes": "Detectare acces refuzat la disc, cu indicații clare (Full Disk Access pe Mac, relansare ca Administrator pe Windows).",
+  "changes": "Flux profesional de offload: fișier MHL pentru post-producție, verificare xxHash64 (mult mai rapidă), reîncercare automată a fișierelor eșuate, verificare de spațiu liber înainte de start, coadă de carduri, pornire automată la introducerea cardului, șablon liber pentru numele folderelor, recunoașterea cardurilor de cameră, rapoarte brandate (logo, client, operator, note) + raport HTML, ejectare automată și notificare la final.",
   "download_url": {
     "windows": "https://github.com/gordasgdc/datamover/releases/latest/download/DataMover-Windows.zip",
     "mac": "https://github.com/gordasgdc/datamover/releases/latest/download/DataMover-Mac.zip",

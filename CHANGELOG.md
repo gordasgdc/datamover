@@ -1,5 +1,63 @@
 # Changelog — DataMover
 
+## v2.11.0 — Flux profesional de offload, la nivel de platou (2026-09-03, paritate completă Mac/Windows)
+Cea mai mare adăugare de la rescrierea nativă. Toate funcțiile de mai jos
+există identic pe Mac și pe Windows.
+
+**Predare către post-producție**
+- **Fișier MHL (Media Hash List)** scris automat lângă datele copiate —
+  certificatul de integritate pe care îl citesc Silverstack, YoYotta,
+  ShotPut Pro, DaVinci Resolve și casele de post. Luni mai târziu, oricine
+  poate re-verifica automat că fiecare fișier de pe NAS/LTO e bit-identic
+  cu ce a ieșit din cameră în ziua filmării. Se poate opri din Setări.
+- **Rapoarte brandate** — logo-ul firmei, Client, Cameră, Operator/DIT și
+  Note de filmare apar în antetul raportului PDF. Câmpurile necompletate nu
+  apar deloc.
+- **Raport HTML nou**, alături de CSV și PDF: se deschide în orice browser,
+  pe orice telefon, și poate fi trimis pe WhatsApp/email fără să-și piardă
+  formatarea.
+
+**Viteză și siguranță**
+- **Verificare xxHash64** — noul model implicit, același folosit de
+  ofloaderele profesionale. Aceeași siguranță practică la detectarea
+  coruperii de date ca MD5, dar de câteva ori mai rapid: pe un card de
+  sute de GB, verificarea e etapa care durează, nu copierea. MD5, SHA-1,
+  SHA-256 și SHA-512 rămân disponibile.
+- **Reîncercare automată a fișierelor eșuate**, la finalul transferului.
+  Majoritatea eșecurilor de pe platou sunt trecătoare (card mișcat în
+  cititor, cablu atins, disc extern adormit) — până acum rămâneau erori
+  definitive în raport și trebuia reluat manual tot transferul. Fișierele
+  recuperate apar explicit în rezumat, ca să știi că transferul a avut
+  probleme, chiar dacă s-a terminat bine.
+- **Verificare de spațiu liber înainte de start.** Un card de 512 GB
+  pornit către un disc cu 80 GB liberi copia liniștit ore întregi și eșua
+  abia la mijloc. Acum transferul nu mai pornește: vezi de cât spațiu e
+  nevoie, cât e liber, și poți continua oricum dacă vrei.
+
+**Flux de lucru nesupravegheat**
+- **Coadă de carduri** — pui mai multe carduri la rând și se descarcă unul
+  după altul, fiecare în propriul folder. La finalul unei zile cu 3 camere
+  nu mai stai lângă laptop să pornești manual fiecare card.
+- **Pornire automată la introducerea unui card** (opțional): cardul intră
+  direct în coadă și descărcarea începe singură.
+- **Ejectare automată a cardului la final** (opțional) — doar dacă
+  transferul s-a terminat fără nicio eroare. Un card cu probleme nu se
+  scoate niciodată automat.
+- **Notificare de sistem la final**, pe lângă sunet — rămâne în Centrul de
+  notificări până o citești, chiar dacă erai în altă cameră.
+
+**Organizare**
+- **Șablon liber pentru numele folderelor**, cu previzualizare live:
+  `{data} {ora} {proiect} {card} {camera} {operator}`. Șablonul implicit
+  produce exact numele de până acum, deci nimic nu se schimbă dacă nu vrei.
+- **Recunoașterea cardurilor de cameră** — RED, ARRI, Sony XAVC/XDCAM,
+  Panasonic P2/AVCHD, Canon, Blackmagic BRAW, carduri DCIM. Aplicația îți
+  spune ce card a recunoscut și câte clipuri are, te avertizează dacă
+  găsește fișiere de 0 octeți (clipuri incomplete) și — cel mai important —
+  dacă ai selectat din greșeală un subfolder al cardului în loc de cardul
+  întreg, caz în care s-ar pierde metadatele.
+
+
 ## v2.10.1 — Upload Cloud mult mai rapid (2026-08-30, paritate Mac/Windows)
 Cerință reală, raportată de Cristi ("mi se pare exagerat de mult că durează
 transferul"): urcarea Cloud (v2.8.0) pornea un proces `rclone` nou, separat,

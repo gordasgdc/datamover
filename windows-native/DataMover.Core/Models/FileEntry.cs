@@ -37,4 +37,12 @@ public sealed class DestinationResult
     public bool Cancelled { get; init; }
     public string? CsvPath { get; init; }
     public string? PdfPath { get; init; }
+    /// [2026-09-03] Raport HTML — vezi HtmlReport.
+    public string? HtmlPath { get; init; }
+    /// [2026-09-03] Fisierul MHL scris langa date (null daca generarea a
+    /// fost oprita din Setari sau algoritmul ales nu e in standardul MHL).
+    public string? MhlPath { get; init; }
+    /// Cate fisiere esuate la prima trecere au fost recuperate de pasul
+    /// automat de reincercare.
+    public int RecoveredCount { get; init; }
 }
