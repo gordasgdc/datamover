@@ -1,7 +1,7 @@
 {
-  "version": "2.11.1",
+  "version": "2.11.2",
   "release_date": "2026-09-03",
-  "changes": "Actualizarea automata din Windows functioneaza din nou (esua de fiecare data cu 'Nu am gasit DataMover.exe in arhiva'). Pagina web: doua butoane separate de descarcare Mac/Windows, cu descarcare directa a fisierului, si capturi de ecran nedeformate.",
+  "changes": "Ghidurile PDF (RO/EN/ES) rescrise complet: pas cu pas, cu cuprins, toate optiunile explicate una cate una. Pagina web: capturi noi, functiile noi si link catre ghid.",
   "download_url": {
     "windows": "https://github.com/gordasgdc/datamover/releases/latest/download/DataMover-Windows.zip",
     "mac": "https://github.com/gordasgdc/datamover/releases/latest/download/DataMover-Mac.zip",
