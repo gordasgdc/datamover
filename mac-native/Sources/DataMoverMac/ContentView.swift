@@ -177,6 +177,26 @@ struct ContentView: View {
                 Text(String(format: L.t("trial.sizeLimitMessage"),
                             ByteCountFormatter.string(fromByteCount: runner.trialLimitExceededBytes ?? 0, countStyle: .file)))
             }
+            // Full Disk Access lipsa (2026-09-03) - vezi OffloadEngine.
+            // isPermissionError / OffloadRunner.permissionErrorPath. Deschide
+            // direct panoul relevant din System Settings - userul bifeaza o
+            // singura data, manual (nu se poate acorda din cod).
+            .alert(
+                L.t("permission.title"),
+                isPresented: Binding(
+                    get: { runner.permissionErrorPath != nil },
+                    set: { if !$0 { runner.permissionErrorPath = nil } }
+                )
+            ) {
+                Button(L.t("permission.openSettings")) {
+                    if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles") {
+                        NSWorkspace.shared.open(url)
+                    }
+                }
+                Button(L.t("completion.ok"), role: .cancel) {}
+            } message: {
+                Text(String(format: L.t("permission.message"), runner.permissionErrorPath ?? ""))
+            }
 
             // eticheta "fantoma" care urmareste cursorul cat timp tragi un disc
             if let path = draggingDiskPath {

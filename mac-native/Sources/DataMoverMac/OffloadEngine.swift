@@ -232,6 +232,23 @@ func hashOfFile(path: String, model: VerificationModel, cancel: CancelToken, chu
     }
 }
 
+/// [2026-09-03] Detecteaza daca o eroare de copiere/citire e cauzata de
+/// lipsa Full Disk Access (macOS blocheaza silentios citirea/scrierea pe
+/// anumite volume/foldere pentru aplicatii fara aceasta permisiune —
+/// EACCES/EPERM, nu o eroare de disc defect). `FileHandle.read/write`
+/// arunca `NSError` in domeniul POSIX cu codul errno real; verificam si
+/// eroarea "underlying", si textul localizat, ca sa prindem toate formele
+/// in care Foundation poate ambala acelasi errno.
+func isPermissionError(_ error: Error) -> Bool {
+    func matches(_ nsErr: NSError) -> Bool {
+        nsErr.domain == NSPOSIXErrorDomain && (nsErr.code == Int(EACCES) || nsErr.code == Int(EPERM))
+    }
+    let nsErr = error as NSError
+    if matches(nsErr) { return true }
+    if let underlying = nsErr.userInfo[NSUnderlyingErrorKey] as? NSError, matches(underlying) { return true }
+    return nsErr.localizedDescription.localizedCaseInsensitiveContains("permission denied")
+}
+
 struct ReportRow {
     let file: String
     let sizeBytes: Int64
@@ -329,6 +346,12 @@ final class DestinationJob {
     /// intre doua incrementari. Fisierele mari sunt EXACT cazul in care
     /// asigurarea asta psihologica conteaza cel mai mult.
     let onActivity: (_ line: String) -> Void
+    /// [2026-09-03] Apelat o singura data cu calea destinatiei, la prima
+    /// eroare de tip "Permission denied" — OffloadRunner arata un alert
+    /// cu buton catre panoul de Full Disk Access din System Settings,
+    /// in loc sa lase userul sa vada doar "EROARE" in raportul CSV/PDF,
+    /// fara nicio indicatie a cauzei reale.
+    let onPermissionError: (_ path: String) -> Void
 
     /// Esantion plafonat pentru raportul PDF (nu tot istoricul - vezi
     /// pdfSampleLimit): toate erorile/nepotrivirile plus o mostra din
@@ -351,13 +374,15 @@ final class DestinationJob {
          verificationModel: VerificationModel = .md5, resume: Bool = false, sourceRoot: String? = nil,
          cloudUploadQueue: CloudUploadQueue? = nil,
          onFileDone: @escaping (_ size: Int64) -> Void,
-         onActivity: @escaping (_ line: String) -> Void = { _ in }) {
+         onActivity: @escaping (_ line: String) -> Void = { _ in },
+         onPermissionError: @escaping (_ path: String) -> Void = { _ in }) {
         self.destRoot = destRoot
         self.folderName = folderName
         self.files = files
         self.cancel = cancel
         self.pause = pause
         self.onActivity = onActivity
+        self.onPermissionError = onPermissionError
         self.verificationModel = verificationModel
         self.resume = resume
         self.sourceRoot = sourceRoot
@@ -453,6 +478,7 @@ final class DestinationJob {
             } catch {
                 status = "EROARE"
                 errorMsg = error.localizedDescription
+                if isPermissionError(error) { onPermissionError(destPath) }
             }
 
             switch status {
@@ -713,6 +739,12 @@ final class OffloadRunner: ObservableObject {
     /// trialMaxTransferBytes. ContentView asculta asta si arata un alert
     /// cu buton de activare, in loc sa lase Start-ul sa esueze tacut.
     @Published var trialLimitExceededBytes: Int64? = nil
+    /// [2026-09-03] Setat o singura data la prima eroare de tip "Permission
+    /// denied" intalnita pe parcursul unui transfer — ContentView asculta
+    /// asta si arata un alert cu buton direct catre panoul de Full Disk
+    /// Access din System Settings, in loc sa lase userul sa se descurce
+    /// singur cu un mesaj generic "EROARE" din raport.
+    @Published var permissionErrorPath: String? = nil
     /// Feed-ul stil Terminal din footer (vezi DestinationJob.onActivity).
     /// Capat la `activityLogLimit` — nu tinem tot istoricul unui transfer
     /// de mii de fisiere in memorie/UI, doar ce s-a intamplat recent.
@@ -901,6 +933,7 @@ final class OffloadRunner: ObservableObject {
         speedText = ""
         lastResults = []
         activityLines = []
+        permissionErrorPath = nil
         updateMemoryDisplay()
 
         let token = cancelToken
@@ -938,6 +971,15 @@ final class OffloadRunner: ObservableObject {
                     onActivity: { line in
                         Task { @MainActor [weak self] in
                             self?.logActivity(line)
+                        }
+                    },
+                    onPermissionError: { path in
+                        Task { @MainActor [weak self] in
+                            // Doar prima eroare conteaza pentru alert - nu
+                            // vrem sa suprascriem calea aratata userului cu
+                            // fisiere ulterioare care esueaza din ACEEASI
+                            // cauza (odata identificata, restul sunt zgomot).
+                            if self?.permissionErrorPath == nil { self?.permissionErrorPath = path }
                         }
                     }
                 )
