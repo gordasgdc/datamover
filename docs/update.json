@@ -1,7 +1,7 @@
 {
-  "version": "2.10.1",
-  "release_date": "2026-08-30",
-  "changes": "Cloud: upload in loturi mult mai rapid (nu mai porneste un proces rclone per fisier), site fara pret fix.",
+  "version": "2.10.2",
+  "release_date": "2026-09-03",
+  "changes": "Detectare acces refuzat la disc, cu indicații clare (Full Disk Access pe Mac, relansare ca Administrator pe Windows).",
   "download_url": {
     "windows": "https://github.com/gordasgdc/datamover/releases/latest/download/DataMover-Windows.zip",
     "mac": "https://github.com/gordasgdc/datamover/releases/latest/download/DataMover-Mac.zip",
