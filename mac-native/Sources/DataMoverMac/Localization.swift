@@ -78,6 +78,49 @@ enum L {
         "footer.cancelled": [.ro: "Anulat.", .en: "Cancelled.", .es: "Cancelado."],
         "footer.finished": [.ro: "Finalizat", .en: "Finished", .es: "Terminado"],
         "footer.problems": [.ro: "probleme", .en: "problems", .es: "problemas"],
+        "footer.recovered": [.ro: "recuperate la reîncercare", .en: "recovered on retry", .es: "recuperados al reintentar"],
+
+        // MARK: - Coada de carduri (2026-09-03)
+        "queue.title": [.ro: "COADĂ CARDURI", .en: "CARD QUEUE", .es: "COLA DE TARJETAS"],
+        "queue.add": [.ro: "+ Adaugă în coadă", .en: "+ Add to queue", .es: "+ Añadir a la cola"],
+        "queue.empty": [.ro: "Niciun card în așteptare.", .en: "No cards waiting.", .es: "Ninguna tarjeta en espera."],
+        "queue.start": [.ro: "Pornește coada", .en: "Start queue", .es: "Iniciar cola"],
+        "queue.running": [.ro: "Coadă în desfășurare…", .en: "Queue running…", .es: "Cola en curso…"],
+
+        // MARK: - Metadate productie (2026-09-03)
+        "settings.productionTitle": [.ro: "PRODUCȚIE & RAPOARTE", .en: "PRODUCTION & REPORTS", .es: "PRODUCCIÓN E INFORMES"],
+        "meta.client": [.ro: "Client", .en: "Client", .es: "Cliente"],
+        "meta.operator": [.ro: "Operator / DIT", .en: "Operator / DIT", .es: "Operador / DIT"],
+        "meta.camera": [.ro: "Cameră", .en: "Camera", .es: "Cámara"],
+        "meta.notes": [.ro: "Note de filmare (apar în raport)", .en: "Shoot notes (appear in the report)", .es: "Notas de rodaje (aparecen en el informe)"],
+        "meta.chooseLogo": [.ro: "Alege logo…", .en: "Choose logo…", .es: "Elegir logo…"],
+        "meta.changeLogo": [.ro: "Schimbă logo…", .en: "Change logo…", .es: "Cambiar logo…"],
+        "settings.folderTemplate": [.ro: "Șablon nume folder", .en: "Folder name template", .es: "Plantilla del nombre de carpeta"],
+        "settings.folderPreview": [.ro: "Va rezulta:", .en: "Result:", .es: "Resultado:"],
+        "settings.ejectWhenDone": [.ro: "Ejectează cardul automat la final", .en: "Eject card automatically when done", .es: "Expulsar la tarjeta automáticamente al terminar"],
+        "settings.ejectWhenDoneHelp": [.ro: "Doar dacă transferul s-a terminat fără nicio eroare. Un card cu probleme nu se ejectează niciodată automat.", .en: "Only if the transfer finished with no errors. A card with problems is never ejected automatically.", .es: "Solo si la transferencia terminó sin errores. Una tarjeta con problemas nunca se expulsa automáticamente."],
+        "settings.autoStartOnCard": [.ro: "Pornește automat la introducerea unui card", .en: "Start automatically when a card is inserted", .es: "Iniciar automáticamente al insertar una tarjeta"],
+        "settings.autoStartOnCardHelp": [.ro: "Cardul intră direct în coadă și descărcarea începe singură. Necesită cel puțin o destinație aleasă.", .en: "The card goes straight into the queue and the offload starts by itself. Requires at least one destination.", .es: "La tarjeta entra directamente en la cola y la descarga comienza sola. Requiere al menos un destino."],
+
+        "notify.doneTitle": [.ro: "DataMover — transfer finalizat", .en: "DataMover — transfer finished", .es: "DataMover — transferencia finalizada"],
+        "notify.cancelledTitle": [.ro: "DataMover — transfer anulat", .en: "DataMover — transfer cancelled", .es: "DataMover — transferencia cancelada"],
+
+        // MARK: - Spatiu liber insuficient (2026-09-03)
+        "space.statusBlocked": [.ro: "Spațiu insuficient la destinație — transferul nu a pornit.", .en: "Not enough space at destination — transfer did not start.", .es: "Espacio insuficiente en el destino — la transferencia no se inició."],
+        "space.title": [.ro: "Spațiu insuficient la destinație", .en: "Not enough space at destination", .es: "Espacio insuficiente en el destino"],
+        // Argumente, in ordine: 1 = destinatia, 2 = spatiu necesar, 3 =
+        // spatiu liber. Specificatori POZITIONALI peste tot (%1$@ etc.) —
+        // in RO/EN/ES ordinea din fraza difera, iar un amestec de "%@" cu
+        // "%2$@" in acelasi sir e nedefinit.
+        "space.message": [.ro: "Pe „%1$@\" mai sunt %3$@ liberi, dar transferul are nevoie de %2$@. Eliberează spațiu sau alege altă destinație.", .en: "“%1$@\" has %3$@ free, but the transfer needs %2$@. Free up space or pick another destination.", .es: "En «%1$@» quedan %3$@ libres, pero la transferencia necesita %2$@. Libera espacio o elige otro destino."],
+        "space.continueAnyway": [.ro: "Continuă oricum", .en: "Continue anyway", .es: "Continuar de todos modos"],
+        "space.cancel": [.ro: "Anulează", .en: "Cancel", .es: "Cancelar"],
+
+        // MARK: - MHL si reincercare (2026-09-03)
+        "settings.generateMHL": [.ro: "Generează fișier MHL (Media Hash List)", .en: "Generate MHL file (Media Hash List)", .es: "Generar archivo MHL (Media Hash List)"],
+        "settings.generateMHLHelp": [.ro: "Certificat de integritate citit de Silverstack, YoYotta, ShotPut Pro și casele de post — se scrie lângă datele copiate. Necesită xxHash64, MD5 sau SHA-1.", .en: "Integrity certificate read by Silverstack, YoYotta, ShotPut Pro and post houses — written next to the copied data. Requires xxHash64, MD5 or SHA-1.", .es: "Certificado de integridad que leen Silverstack, YoYotta, ShotPut Pro y las casas de post — se escribe junto a los datos copiados. Requiere xxHash64, MD5 o SHA-1."],
+        "settings.retryFailed": [.ro: "Reîncearcă automat fișierele eșuate", .en: "Automatically retry failed files", .es: "Reintentar automáticamente los archivos fallidos"],
+        "settings.retryFailedHelp": [.ro: "La finalul transferului, fișierele cu eroare sau nepotrivire se copiază încă o dată — majoritatea eșecurilor de pe platou sunt tranzitorii (card mișcat, cablu, disc adormit).", .en: "At the end of the transfer, failed or mismatched files are copied once more — most on-set failures are transient (card nudged, cable, sleeping drive).", .es: "Al final de la transferencia, los archivos con error o discrepancia se copian una vez más — la mayoría de los fallos en rodaje son transitorios."],
         "footer.noFiles": [.ro: "Nu am gasit niciun fisier de copiat.", .en: "No files found to copy.", .es: "No se encontraron archivos para copiar."],
         "status.ready": [.ro: "Gata de pornire", .en: "Ready to start", .es: "Listo para empezar"],
         "status.cancelling": [.ro: "Se anuleaza...", .en: "Cancelling...", .es: "Cancelando..."],
@@ -139,6 +182,7 @@ enum L {
         "completion.ok": [.ro: "OK", .en: "OK", .es: "OK"],
         "settings.openLastReport": [.ro: "Deschide ultimul raport in Finder", .en: "Open last report in Finder", .es: "Abrir el último informe en Finder"],
 
+        "verif.xxhash64": [.ro: "xxHash64 (recomandat — cel mai rapid)", .en: "xxHash64 (recommended — fastest)", .es: "xxHash64 (recomendado — el más rápido)"],
         "verif.md5": [.ro: "MD5 (rapid)", .en: "MD5 (fast)", .es: "MD5 (rápido)"],
         "verif.sha1": [.ro: "SHA-1 (echilibrat)", .en: "SHA-1 (balanced)", .es: "SHA-1 (equilibrado)"],
         "verif.sha256": [.ro: "SHA-256 (recomandat pentru arhivare)", .en: "SHA-256 (recommended for archiving)", .es: "SHA-256 (recomendado para archivo)"],

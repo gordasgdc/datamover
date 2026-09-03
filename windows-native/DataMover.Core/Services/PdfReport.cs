@@ -29,8 +29,10 @@ public static class PdfReport
         string targetRoot, string destination, string folderName,
         IReadOnlyList<ReportRow> rows, DateTime startedAt, DateTime finishedAt,
         int okCount, int skipCount, int failCount, bool cancelled,
-        string verificationLabel, string? truncatedNote)
+        string verificationLabel, string? truncatedNote,
+        ProductionMeta? meta = null, int recoveredCount = 0, string? mhlPath = null)
     {
+        meta ??= new ProductionMeta();
         QuestPDF.Settings.License = LicenseType.Community;
 
         var timestamp = finishedAt.ToString("yyyy-MM-dd_HH-mm-ss");
@@ -47,19 +49,49 @@ public static class PdfReport
                 page.Margin(18, Unit.Millimetre);
                 page.DefaultTextStyle(x => x.FontSize(9));
 
-                page.Header().Column(col =>
+                page.Header().Row(headerRow =>
                 {
-                    col.Item().Text("Raport offload – DataMover").FontSize(18).Bold();
-                    col.Item().PaddingTop(4).Text($"Destinatie: {destination}");
-                    col.Item().Text($"Folder creat: {folderName}");
-                    col.Item().Text($"Model de verificare: {verificationLabel}");
-                    col.Item().Text($"Inceput: {startedAt:yyyy-MM-dd HH:mm:ss}");
-                    col.Item().Text($"Finalizat: {finishedAt:yyyy-MM-dd HH:mm:ss}");
-                    col.Item().Text($"Durata: {duration}");
-                    col.Item().Text($"Status sesiune: {statusText}");
-                    col.Item().PaddingTop(6).Text($"Total fisiere: {total}   OK: {okCount}   Sarite: {skipCount}   Probleme: {failCount}").Bold();
-                    if (!string.IsNullOrEmpty(truncatedNote))
-                        col.Item().Text(truncatedNote).Italic().FontSize(8);
+                    headerRow.RelativeItem().Column(col =>
+                    {
+                        col.Item().Text("Raport offload – DataMover").FontSize(18).Bold();
+                        col.Item().PaddingTop(4).Text($"Destinatie: {destination}");
+                        col.Item().Text($"Folder creat: {folderName}");
+                        // [2026-09-03] Campurile de productie completate de
+                        // user (Client, Camera, Operator…) - cele goale nu
+                        // se deseneaza deloc, vezi ProductionMeta.HeaderFields.
+                        var brandingFields = meta.HeaderFields();
+                        if (brandingFields.Count > 0)
+                            col.Item().Text(string.Join("   |   ", brandingFields.Select(f => $"{f.Label}: {f.Value}")));
+                        col.Item().Text($"Model de verificare: {verificationLabel}");
+                        col.Item().Text($"Inceput: {startedAt:yyyy-MM-dd HH:mm:ss}");
+                        col.Item().Text($"Finalizat: {finishedAt:yyyy-MM-dd HH:mm:ss}");
+                        col.Item().Text($"Durata: {duration}");
+                        col.Item().Text($"Status sesiune: {statusText}");
+                        if (!string.IsNullOrEmpty(mhlPath))
+                            col.Item().Text($"MHL: {Path.GetFileName(mhlPath)}");
+                        var summary = $"Total fisiere: {total}   OK: {okCount}   Sarite: {skipCount}   Probleme: {failCount}";
+                        if (recoveredCount > 0) summary += $"   Recuperate la reincercare: {recoveredCount}";
+                        col.Item().PaddingTop(6).Text(summary).Bold();
+                        if (!string.IsNullOrEmpty(meta.Notes))
+                            col.Item().PaddingTop(2).Text($"Note: {meta.Notes}").Italic().FontSize(8);
+                        if (!string.IsNullOrEmpty(truncatedNote))
+                            col.Item().Text(truncatedNote).Italic().FontSize(8);
+                    });
+
+                    // Logo-ul productiei, in dreapta sus. Un raport care
+                    // ajunge la client trebuie sa arate ca vine de la o
+                    // firma, nu dintr-un utilitar generic. Orice problema la
+                    // citirea imaginii e ignorata - raportul se genereaza
+                    // oricum, fara logo.
+                    if (!string.IsNullOrWhiteSpace(meta.LogoPath) && File.Exists(meta.LogoPath))
+                    {
+                        try
+                        {
+                            var bytes = File.ReadAllBytes(meta.LogoPath);
+                            headerRow.ConstantItem(110).AlignRight().AlignTop().Height(45).Image(bytes).FitArea();
+                        }
+                        catch { /* raportul e mai important decat logo-ul */ }
+                    }
                 });
 
                 page.Content().PaddingTop(10).Table(table =>

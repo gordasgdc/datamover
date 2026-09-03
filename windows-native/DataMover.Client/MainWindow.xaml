@@ -82,6 +82,35 @@
                                  AllowDrop="True" DragOver="OnSourcesDragOver" Drop="OnSourcesDrop" />
                     <ui:Button Content="Adauga sursa..." Icon="{ui:SymbolIcon FolderAdd24}" Click="OnAddSourceClicked" HorizontalAlignment="Stretch" Margin="0,0,0,4" />
                     <ui:Button Content="Elimina selectia" Click="OnRemoveSourceClicked" HorizontalAlignment="Stretch" Appearance="Secondary" />
+
+                    <!-- [2026-09-03] COADA DE CARDURI — descarcarea mai multor
+                         carduri, unul dupa altul, nesupravegheat. Pe un platou cu
+                         3 camere se aduna 6-8 carduri la finalul zilei; pana acum
+                         operatorul trebuia sa porneasca manual fiecare card dupa
+                         ce se termina cel dinainte. Fiecare card din coada isi
+                         pastreaza numele propriu, deci ajunge in propriul folder
+                         la destinatie. -->
+                    <Separator Margin="0,10,0,6" />
+                    <TextBlock Text="COADA CARDURI" FontWeight="Bold" FontSize="11" Foreground="Gray" Margin="0,0,0,4" />
+                    <ItemsControl x:Name="CardQueueList" MaxHeight="110">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Margin="0,1">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="{Binding Card}" FontSize="11" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                    <ui:Button Grid.Column="1" Content="✕" Appearance="Secondary" FontSize="10" Padding="6,2"
+                                               Tag="{Binding}" Click="OnRemoveFromQueueClicked" />
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <ui:Button Content="+ Adauga in coada" Appearance="Secondary" FontSize="11"
+                               Click="OnAddToQueueClicked" HorizontalAlignment="Stretch" Margin="0,4,0,2" />
+                    <ui:Button Content="Porneste coada" FontSize="11"
+                               Click="OnStartQueueClicked" HorizontalAlignment="Stretch" />
                 </StackPanel>
             </ui:CardExpander>
 
@@ -127,7 +156,53 @@
                                         <TextBlock Text="Excluderi:" VerticalAlignment="Center" Margin="0,0,8,4" />
                                         <ui:TextBox x:Name="ExclusionsBox" Width="260" Text=".DS_Store, .tmp, Thumbs.db" Margin="0,0,0,4" />
                                     </WrapPanel>
-                                    <CheckBox x:Name="SkipExistingCheck" Content="Sari peste fisiere identice deja existente" Margin="0,0,0,12" />
+                                    <CheckBox x:Name="SkipExistingCheck" Content="Sari peste fisiere identice deja existente" Margin="0,0,0,4" />
+
+                                    <!-- [2026-09-03] MHL + reincercare + ejectare + pornire
+                                         automata. Explicatia de sub fiecare bifa nu e decor:
+                                         un DIT stie ce e un MHL, dar un videograf care descarca
+                                         singur cardul nu, iar bifa fara context ar fi lasata pe
+                                         implicit fara sa inteleaga ce livreaza mai departe. -->
+                                    <CheckBox x:Name="GenerateMhlCheck" Content="Genereaza fisier MHL (Media Hash List)" Checked="OnToggleSettingChanged" Unchecked="OnToggleSettingChanged" />
+                                    <TextBlock Text="Certificat de integritate citit de Silverstack, YoYotta, ShotPut Pro si casele de post — se scrie langa datele copiate. Necesita xxHash64, MD5 sau SHA-1."
+                                               Foreground="Gray" FontSize="10" TextWrapping="Wrap" Margin="24,0,0,6" />
+                                    <CheckBox x:Name="RetryFailedCheck" Content="Reincearca automat fisierele esuate" Checked="OnToggleSettingChanged" Unchecked="OnToggleSettingChanged" />
+                                    <TextBlock Text="La finalul transferului, fisierele cu eroare sau nepotrivire se copiaza inca o data — majoritatea esecurilor de pe platou sunt tranzitorii (card miscat, cablu, disc adormit)."
+                                               Foreground="Gray" FontSize="10" TextWrapping="Wrap" Margin="24,0,0,6" />
+                                    <CheckBox x:Name="EjectWhenDoneCheck" Content="Ejecteaza cardul automat la final" Checked="OnToggleSettingChanged" Unchecked="OnToggleSettingChanged" />
+                                    <TextBlock Text="Doar daca transferul s-a terminat fara nicio eroare. Ejectarea cere drepturi de Administrator."
+                                               Foreground="Gray" FontSize="10" TextWrapping="Wrap" Margin="24,0,0,6" />
+                                    <CheckBox x:Name="AutoStartOnCardCheck" Content="Porneste automat la introducerea unui card" Checked="OnToggleSettingChanged" Unchecked="OnToggleSettingChanged" />
+                                    <TextBlock Text="Cardul intra direct in coada si descarcarea incepe singura. Necesita cel putin o destinatie aleasa."
+                                               Foreground="Gray" FontSize="10" TextWrapping="Wrap" Margin="24,0,0,12" />
+
+                                    <!-- [2026-09-03] Metadate de productie + sablon de denumire.
+                                         Toate campurile sunt OPTIONALE — un transfer fara ele
+                                         functioneaza exact ca inainte. Completate, apar in
+                                         antetul rapoartelor PDF/HTML si (unde userul le pune in
+                                         sablon) in numele folderelor. -->
+                                    <TextBlock Text="Productie &amp; rapoarte" FontWeight="Bold" Margin="0,0,0,6" />
+                                    <WrapPanel Margin="0,0,0,6">
+                                        <TextBlock Text="Client:" VerticalAlignment="Center" Margin="0,0,8,4" />
+                                        <ui:TextBox x:Name="ClientBox" Width="120" Margin="0,0,12,4" TextChanged="OnProductionMetaChanged" />
+                                        <TextBlock Text="Operator / DIT:" VerticalAlignment="Center" Margin="0,0,8,4" />
+                                        <ui:TextBox x:Name="OperatorBox" Width="120" Margin="0,0,0,4" TextChanged="OnProductionMetaChanged" />
+                                    </WrapPanel>
+                                    <WrapPanel Margin="0,0,0,6">
+                                        <TextBlock Text="Camera:" VerticalAlignment="Center" Margin="0,0,8,4" />
+                                        <ui:TextBox x:Name="CameraBox" Width="120" Margin="0,0,0,4" TextChanged="OnProductionMetaChanged" />
+                                    </WrapPanel>
+                                    <ui:TextBox x:Name="NotesBox" PlaceholderText="Note de filmare (apar in raport)" AcceptsReturn="True" Height="46" Margin="0,0,0,6" TextChanged="OnProductionMetaChanged" />
+                                    <WrapPanel Margin="0,0,0,8">
+                                        <ui:Button Content="Alege logo..." Click="OnChooseLogoClicked" Margin="0,0,6,0" />
+                                        <ui:Button Content="Sterge" Appearance="Secondary" Click="OnClearLogoClicked" Margin="0,0,8,0" />
+                                        <TextBlock x:Name="LogoPathText" Text="(niciun logo)" Foreground="Gray" FontSize="11" VerticalAlignment="Center" />
+                                    </WrapPanel>
+                                    <TextBlock Text="Sablon nume folder:" Margin="0,0,0,2" />
+                                    <ui:TextBox x:Name="FolderTemplateBox" FontFamily="Consolas" Margin="0,0,0,2" TextChanged="OnProductionMetaChanged" />
+                                    <TextBlock x:Name="FolderPreviewText" Foreground="Gray" FontFamily="Consolas" FontSize="10" TextWrapping="Wrap" Margin="0,0,0,2" />
+                                    <TextBlock Text="{}{data}  {ora}  {proiect}  {card}  {camera}  {operator}"
+                                               Foreground="Gray" FontFamily="Consolas" FontSize="10" Margin="0,0,0,12" />
 
                                     <TextBlock Text="I/O &amp; Memorie" FontWeight="Bold" Margin="0,0,0,6" />
                                     <WrapPanel Margin="0,0,0,8">

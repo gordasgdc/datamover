@@ -1,6 +1,15 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
+/// [2026-09-03] Un card in coada de descarcare. Fiecare are propriul nume
+/// de card, deci propriul folder la destinatie — spre deosebire de mai
+/// multe surse adaugate simultan, care ajung toate in ACELASI folder.
+struct QueueItem: Identifiable, Equatable {
+    let id = UUID()
+    var source: String
+    var card: String
+}
+
 struct ContentView: View {
     @EnvironmentObject var license: LicenseManager
     @StateObject private var runner = OffloadRunner()
@@ -23,7 +32,45 @@ struct ContentView: View {
     @State private var showActivation = false
 
     // setari de copiere/verificare
-    @State private var verificationModel: VerificationModel = .md5
+    // [2026-09-03] Implicit xxHash64 (nu MD5): acelasi implicit ca la
+    // ofloaderele profesionale, cateva ori mai rapid la verificare pe
+    // acelasi grad de siguranta practica. Profilele salvate anterior isi
+    // pastreaza algoritmul lor, nu sunt rescrise.
+    @State private var verificationModel: VerificationModel = .xxhash64
+    // [2026-09-03] MHL + reincercare automata — preferinte stabile,
+    // persistate (ca autoOpenDestFolder), nu resetate la fiecare pornire.
+    @AppStorage("dm_generateMHL") private var generateMHL = true
+    @AppStorage("dm_retryFailed") private var retryFailedFiles = true
+    // Ultimii parametri de start, retinuti ca butonul "Continuă oricum"
+    // din alertul de spatiu insuficient sa reporneasca EXACT acelasi
+    // transfer, nu unul recalculat cu alte optiuni.
+    @State private var lastStartResume = true
+    @State private var lastStartFolderOverride: String? = nil
+
+    // [2026-09-03] Metadate de productie (vezi ProductionMeta.swift) —
+    // persistate, pentru ca pe un proiect se schimba doar cardul de la o
+    // descarcare la alta; clientul, operatorul si logo-ul raman aceleasi
+    // saptamani intregi. Notele sunt singurele per-transfer (nepersistate).
+    @AppStorage("dm_client") private var clientName = ""
+    @AppStorage("dm_operatorName") private var operatorName = ""
+    @AppStorage("dm_cameraName") private var cameraName = ""
+    @AppStorage("dm_logoPath") private var logoPath = ""
+    @State private var shootNotes = ""
+    // [2026-09-03] Sablon de denumire a folderelor — vezi NamingTemplate.
+    @AppStorage("dm_folderTemplate") private var folderTemplate = NamingTemplate.defaultTemplate
+    // [2026-09-03] Ejectare automata a cardului dupa un transfer curat.
+    @AppStorage("dm_ejectWhenDone") private var ejectSourceWhenDone = false
+    // [2026-09-03] Pornire automata la introducerea unui card — modul
+    // "nesupravegheat" al unui ofloader de platou.
+    @AppStorage("dm_autoStartOnCard") private var autoStartOnCardInsert = false
+
+    // [2026-09-03] Coada de carduri — vezi cardQueueSection.
+    @State private var cardQueue: [QueueItem] = []
+    @State private var queueRunning = false
+    @State private var currentQueueCard: String = ""
+    // Structura detectata pentru fiecare sursa (RED/ARRI/Sony…), calculata
+    // in fundal la adaugare — vezi CameraCardDetector.
+    @State private var cardInfoBySource: [String: CameraCardInfo] = [:]
     @State private var exclusionsText: String = ""
     // Destinatie secundara Cloud (2026-08-30) - vezi CloudSyncService.
     // "" inseamna "dezactivat", niciun upload nu porneste.
@@ -152,7 +199,26 @@ struct ContentView: View {
             // cerinta explicita: buton mereu disponibil + o bifa separata
             // de auto-deschidere).
             .onChange(of: runner.isRunning) { wasRunning, isRunning in
-                guard wasRunning, !isRunning, !(runner.lastResults.first?.cancelled ?? true) else { return }
+                guard wasRunning, !isRunning else { return }
+                let wasCancelled = runner.lastResults.first?.cancelled ?? true
+                // [2026-09-03] Coada continua singura cu urmatorul card.
+                // O anulare opreste TOATA coada — daca userul a apasat
+                // Anulează, nu vrea sa porneasca imediat cardul urmator.
+                if queueRunning {
+                    if wasCancelled {
+                        queueRunning = false
+                        currentQueueCard = ""
+                        runner.logExternal("Coadă oprită (transfer anulat) — au rămas \(cardQueue.count) card(uri).")
+                    } else if !cardQueue.isEmpty {
+                        startNextInQueue()
+                        return
+                    } else {
+                        queueRunning = false
+                        currentQueueCard = ""
+                        runner.logExternal("Coadă terminată — toate cardurile au fost descărcate.")
+                    }
+                }
+                guard !wasCancelled else { return }
                 if autoOpenDestFolder { openLastDestinationFolder() }
                 showCompletionAlert = true
             }
@@ -196,6 +262,31 @@ struct ContentView: View {
                 Button(L.t("completion.ok"), role: .cancel) {}
             } message: {
                 Text(String(format: L.t("permission.message"), runner.permissionErrorPath ?? ""))
+            }
+
+            // [2026-09-03] Spatiu insuficient la destinatie, verificat
+            // INAINTE de a copia primul octet (vezi
+            // OffloadRunner.spaceShortfall). Nu blocam definitiv: aratam
+            // cifrele reale si lasam userul sa forteze, daca stie ceva ce
+            // aplicatia nu stie (ex. va elibera spatiu intre timp).
+            .alert(item: Binding(
+                get: { runner.spaceShortfall },
+                set: { runner.spaceShortfall = $0 }
+            )) { shortfall in
+                Alert(
+                    title: Text(L.t("space.title")),
+                    message: Text(String(
+                        format: L.t("space.message"),
+                        (shortfall.destination as NSString).lastPathComponent,
+                        ByteCountFormatter.string(fromByteCount: shortfall.needed, countStyle: .file),
+                        ByteCountFormatter.string(fromByteCount: shortfall.free, countStyle: .file))),
+                    primaryButton: .destructive(Text(L.t("space.continueAnyway"))) {
+                        startTransfer(resume: lastStartResume,
+                                      folderNameOverride: lastStartFolderOverride,
+                                      ignoreSpaceWarning: true)
+                    },
+                    secondaryButton: .cancel(Text(L.t("space.cancel")))
+                )
             }
 
             // eticheta "fantoma" care urmareste cursorul cat timp tragi un disc
@@ -322,11 +413,23 @@ struct ContentView: View {
                         Image(nsImage: NSWorkspace.shared.icon(forFile: path))
                             .resizable()
                             .frame(width: 18, height: 18)
-                        Text((path as NSString).lastPathComponent)
-                            .lineLimit(1)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text((path as NSString).lastPathComponent)
+                                .lineLimit(1)
+                            // [2026-09-03] Tipul de card recunoscut
+                            // (RED/ARRI/Sony…) + numarul de clipuri —
+                            // confirmarea vizuala ca s-a selectat cardul
+                            // intreg, nu un subfolder din el.
+                            if let info = cardInfoBySource[path] {
+                                Text(info.summary)
+                                    .font(.system(size: 9))
+                                    .foregroundStyle(info.warnings.isEmpty ? Color.green : Color.orange)
+                            }
+                        }
                         Spacer()
                         Button {
                             sourcePaths.removeAll { $0 == path }
+                            cardInfoBySource[path] = nil
                         } label: {
                             Image(systemName: "xmark.circle.fill")
                                 .foregroundStyle(.secondary)
@@ -344,7 +447,60 @@ struct ContentView: View {
                         .foregroundStyle(.secondary)
                 }
             }
+
+            cardQueueSection
         }
+    }
+
+    /// [2026-09-03] Coada de carduri — descarcarea mai multor carduri, unul
+    /// dupa altul, nesupravegheat.
+    ///
+    /// DE CE: pe un platou cu 3 camere se aduna 6-8 carduri la finalul
+    /// zilei. Pana acum, operatorul trebuia sa stea langa laptop si sa
+    /// porneasca manual fiecare card dupa ce se termina cel dinainte —
+    /// ore de asteptare activa. Fiecare card din coada isi pastreaza numele
+    /// propriu, deci ajunge in propriul folder la destinatie.
+    private var cardQueueSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text(L.t("queue.title"))
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button(L.t("queue.add")) { addCurrentToQueue() }
+                    .font(.system(size: 10))
+                    .disabled(sourcePaths.isEmpty || runner.isRunning)
+            }
+
+            if cardQueue.isEmpty {
+                Text(L.t("queue.empty"))
+                    .font(.system(size: 10))
+                    .foregroundStyle(.tertiary)
+            } else {
+                ForEach(cardQueue) { item in
+                    HStack(spacing: 6) {
+                        Image(systemName: "sdcard")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.secondary)
+                        Text(item.card).font(.system(size: 10)).lineLimit(1)
+                        Spacer()
+                        Button {
+                            cardQueue.removeAll { $0.id == item.id }
+                        } label: {
+                            Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                Button(queueRunning ? L.t("queue.running") : L.t("queue.start")) {
+                    startNextInQueue()
+                }
+                .font(.system(size: 10))
+                .disabled(runner.isRunning || destinationPaths.isEmpty)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.bottom, 8)
     }
 
     /// PITFALL FIXED 2026-08-24: tragerea unui FOLDER din interiorul unui
@@ -391,10 +547,23 @@ struct ContentView: View {
         let detected = VolumeInfo.detectAll()
         if let known = knownVolumePaths {
             let newlyAppeared = detected.filter { !known.contains($0.path) }
-            // Daca s-au conectat mai multe simultan (rar), aratam popup
-            // doar pentru primul — restul raman disponibile in grila,
-            // fara sa inecam userul in popup-uri consecutive.
-            if newlyDetectedVolume == nil, let first = newlyAppeared.first {
+            // [2026-09-03] Mod nesupravegheat: daca userul a bifat pornirea
+            // automata si sunt indeplinite conditiile (exista destinatii,
+            // nu ruleaza nimic), cardul intra direct in coada si porneste
+            // singur. Numele cardului devine numele volumului — singurul
+            // pe care il stim fara sa intrebam. Conditia "exista
+            // destinatii" nu e optionala: fara ea, un card introdus dupa
+            // pornirea aplicatiei ar declansa un start esuat.
+            if autoStartOnCardInsert, !newlyAppeared.isEmpty, !destinationPaths.isEmpty {
+                for volume in newlyAppeared {
+                    cardQueue.append(QueueItem(source: volume.path, card: volume.name))
+                    runner.logExternal("Card detectat automat: \(volume.name) — adăugat în coadă.")
+                }
+                if !runner.isRunning { startNextInQueue() }
+            } else if newlyDetectedVolume == nil, let first = newlyAppeared.first {
+                // Daca s-au conectat mai multe simultan (rar), aratam popup
+                // doar pentru primul — restul raman disponibile in grila,
+                // fara sa inecam userul in popup-uri consecutive.
                 newlyDetectedVolume = first
             }
         }
@@ -418,6 +587,71 @@ struct ContentView: View {
         if !sourcePaths.contains(path) {
             sourcePaths.append(path)
         }
+        detectCard(at: path)
+    }
+
+    // MARK: - Metadate productie, sablon, coada (2026-09-03)
+
+    /// Metadatele curente, compuse din campurile din bara de sus si din
+    /// Setari — o singura sursa de adevar pentru: numele folderului
+    /// (NamingTemplate), antetul rapoartelor (PDF/HTML) si istoricul.
+    private var currentMeta: ProductionMeta {
+        ProductionMeta(project: projectName, card: cardName, client: clientName,
+                       operatorName: operatorName, camera: cameraName,
+                       notes: shootNotes, logoPath: logoPath)
+    }
+
+    /// Recunoasterea structurii de card se face pe un thread de fundal:
+    /// enumerarea unui card plin (zeci de mii de fisiere) ar bloca UI-ul
+    /// exact in momentul in care userul tocmai a tras cardul in fereastra.
+    private func detectCard(at path: String) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            let info = CameraCardDetector.detect(root: path)
+            let parentCard = info == nil ? CameraCardDetector.parentLooksLikeCard(path: path) : nil
+            DispatchQueue.main.async {
+                if let info {
+                    cardInfoBySource[path] = info
+                    for warning in info.warnings {
+                        runner.logExternal("⚠ \((path as NSString).lastPathComponent): \(warning)")
+                    }
+                } else if let parentCard {
+                    // Cazul cel mai scump de pe platou: s-a selectat un
+                    // subfolder al cardului, nu radacina lui.
+                    runner.logExternal("⚠ \((path as NSString).lastPathComponent) pare a fi un SUBFOLDER al cardului \((parentCard as NSString).lastPathComponent) — copiat singur, pierzi metadatele cardului.")
+                }
+            }
+        }
+    }
+
+    private func addCurrentToQueue() {
+        guard let source = sourcePaths.first else { return }
+        let card = cardName.trimmingCharacters(in: .whitespaces)
+        cardQueue.append(QueueItem(source: source, card: card.isEmpty ? (source as NSString).lastPathComponent : card))
+        // Sursa iese din lista curenta: e "predata" cozii, altfel ar fi
+        // copiata de doua ori (o data acum, o data cand ii vine randul).
+        sourcePaths.removeAll { $0 == source }
+        cardName = ""
+    }
+
+    /// Porneste (sau continua) coada. Fiecare card primeste propriul folder
+    /// la destinatie, calculat cu acelasi sablon ca un transfer normal.
+    /// Reluarea e implicit ACTIVA in coada: modul nesupravegheat nu poate
+    /// astepta un raspuns la dialogul de duplicate.
+    private func startNextInQueue() {
+        guard !cardQueue.isEmpty else {
+            queueRunning = false
+            currentQueueCard = ""
+            return
+        }
+        let next = cardQueue.removeFirst()
+        queueRunning = true
+        currentQueueCard = next.card
+        sourcePaths = [next.source]
+        cardName = next.card
+        let existing = runner.findExistingFolderName(
+            destinations: destinationPaths, project: projectName, card: next.card,
+            template: folderTemplate, camera: cameraName, operatorName: operatorName)
+        startTransfer(resume: true, folderNameOverride: existing)
     }
 
     private func isDirectory(_ path: String) -> Bool {
@@ -652,7 +886,9 @@ struct ContentView: View {
                         // Baza e numele "de azi" (nu cel vechi gasit),
                         // ca un folder chiar nou sa nu mosteneasca data
                         // veche a transferului anterior.
-                        let todayName = runner.folderName(project: projectName, card: cardName)
+                        let todayName = runner.folderName(project: projectName, card: cardName,
+                                                          template: folderTemplate, camera: cameraName,
+                                                          operatorName: operatorName)
                         let freeName = runner.freeFolderName(base: todayName, destinations: destinationPaths)
                         startTransfer(resume: resumeEnabled, folderNameOverride: freeName)
                     }
@@ -680,8 +916,11 @@ struct ContentView: View {
         // findExistingFolderName - fix 2026-08-28 pentru transferuri care
         // trec peste miezul noptii). Doar daca nu gasim niciunul, calculam
         // numele "de azi", ca la un transfer chiar nou.
-        let folderName = runner.findExistingFolderName(destinations: destinationPaths, project: projectName, card: cardName)
-            ?? runner.folderName(project: projectName, card: cardName)
+        let folderName = runner.findExistingFolderName(
+            destinations: destinationPaths, project: projectName, card: cardName,
+            template: folderTemplate, camera: cameraName, operatorName: operatorName)
+            ?? runner.folderName(project: projectName, card: cardName,
+                                 template: folderTemplate, camera: cameraName, operatorName: operatorName)
         let existing = runner.existingNonEmptyDestinations(destinations: destinationPaths, folderName: folderName)
         if existing.isEmpty {
             startTransfer(resume: resumeEnabled, folderNameOverride: nil)
@@ -691,13 +930,86 @@ struct ContentView: View {
         }
     }
 
-    private func startTransfer(resume: Bool, folderNameOverride: String?) {
+    private func startTransfer(resume: Bool, folderNameOverride: String?, ignoreSpaceWarning: Bool = false) {
+        lastStartResume = resume
+        lastStartFolderOverride = folderNameOverride
         let exclusions = exclusionsText.split(separator: ",").map(String.init)
         runner.start(sources: sourcePaths, destinations: destinationPaths,
                      verificationModel: verificationModel, exclusions: exclusions,
-                     resume: resume, project: projectName, card: cardName,
+                     resume: resume, meta: currentMeta, folderTemplate: folderTemplate,
                      folderNameOverride: folderNameOverride,
-                     cloudRemote: cloudRemote, cloudRemoteFolder: cloudRemoteFolder)
+                     cloudRemote: cloudRemote, cloudRemoteFolder: cloudRemoteFolder,
+                     generateMHL: generateMHL, retryFailedFiles: retryFailedFiles,
+                     ejectSourceWhenDone: ejectSourceWhenDone,
+                     ignoreSpaceWarning: ignoreSpaceWarning)
+    }
+
+    /// [2026-09-03] Metadatele productiei + sablonul de denumire.
+    /// Toate campurile sunt OPTIONALE — un transfer fara ele functioneaza
+    /// exact ca inainte. Completate, apar in antetul rapoartelor PDF/HTML
+    /// si (unde userul le pune in sablon) in numele folderelor.
+    private var productionMetaSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(L.t("settings.productionTitle"))
+                .font(.system(size: 11, weight: .bold)).foregroundStyle(.secondary)
+
+            HStack(spacing: 8) {
+                TextField(L.t("meta.client"), text: $clientName).textFieldStyle(.roundedBorder)
+                TextField(L.t("meta.operator"), text: $operatorName).textFieldStyle(.roundedBorder)
+            }
+            TextField(L.t("meta.camera"), text: $cameraName).textFieldStyle(.roundedBorder)
+            TextField(L.t("meta.notes"), text: $shootNotes, axis: .vertical)
+                .textFieldStyle(.roundedBorder)
+                .lineLimit(2...4)
+
+            HStack(spacing: 8) {
+                Button(logoPath.isEmpty ? L.t("meta.chooseLogo") : L.t("meta.changeLogo")) {
+                    chooseLogo()
+                }
+                .font(.system(size: 11))
+                if !logoPath.isEmpty {
+                    Text((logoPath as NSString).lastPathComponent)
+                        .font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1)
+                    Button {
+                        logoPath = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(L.t("settings.folderTemplate"))
+                    .font(.system(size: 11)).foregroundStyle(.secondary)
+                TextField(NamingTemplate.defaultTemplate, text: $folderTemplate)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(size: 11, design: .monospaced))
+                // Previzualizare live: userul vede EXACT numele folderului
+                // care se va crea, inainte sa porneasca transferul — un
+                // sablon gresit descoperit dupa 2 TB copiati nu se mai
+                // poate corecta fara sa muti manual folderul.
+                Text(L.t("settings.folderPreview") + " " + runner.folderName(
+                    project: projectName, card: cardName, template: folderTemplate,
+                    camera: cameraName, operatorName: operatorName))
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+                Text(NamingTemplate.tokens.joined(separator: "  "))
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundStyle(.tertiary)
+            }
+        }
+    }
+
+    private func chooseLogo() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.png, .jpeg, .gif]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        if panel.runModal() == .OK, let url = panel.url {
+            logoPath = url.path
+        }
     }
 
     /// Reimprospateaza lista de conturi Cloud (rclone listremotes) - apelat
@@ -803,6 +1115,39 @@ struct ContentView: View {
 
             Toggle(L.t("settings.autoOpenDestFolder"), isOn: $autoOpenDestFolder)
                 .font(.system(size: 12))
+
+            // [2026-09-03] MHL + reincercare automata — vezi MHLWriter.swift
+            // si DestinationJob.retryFailed. Explicatia de sub fiecare bifa
+            // nu e decor: un DIT stie ce e un MHL, dar un videograf care
+            // descarca singur cardul nu, iar bifa fara context ar fi lasata
+            // pe implicit fara sa inteleaga ce livreaza mai departe.
+            VStack(alignment: .leading, spacing: 2) {
+                Toggle(L.t("settings.generateMHL"), isOn: $generateMHL)
+                    .font(.system(size: 12))
+                Text(L.t("settings.generateMHLHelp"))
+                    .font(.system(size: 10)).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Toggle(L.t("settings.retryFailed"), isOn: $retryFailedFiles)
+                    .font(.system(size: 12))
+                Text(L.t("settings.retryFailedHelp"))
+                    .font(.system(size: 10)).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Toggle(L.t("settings.ejectWhenDone"), isOn: $ejectSourceWhenDone)
+                .font(.system(size: 12))
+                .help(L.t("settings.ejectWhenDoneHelp"))
+
+            Toggle(L.t("settings.autoStartOnCard"), isOn: $autoStartOnCardInsert)
+                .font(.system(size: 12))
+                .help(L.t("settings.autoStartOnCardHelp"))
+
+            Divider()
+
+            productionMetaSection
 
             Divider()
 

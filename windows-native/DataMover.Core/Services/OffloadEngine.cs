@@ -15,13 +15,19 @@ namespace DataMover.Core.Services;
 /// </summary>
 public enum VerificationModel
 {
-    Md5, Sha1, Sha256, Sha512, SizeOnly
+    /// [2026-09-03] Primul din lista pentru ca e alegerea implicita a
+    /// ofloaderelor profesionale (ShotPut Pro, Silverstack): aceeasi
+    /// siguranta practica la detectarea coruperii de date ca MD5, dar de
+    /// cateva ori mai rapid — pe un card de sute de GB, verificarea e
+    /// etapa care dureaza, nu copierea. Vezi XxHash64.cs.
+    XxHash64, Md5, Sha1, Sha256, Sha512, SizeOnly
 }
 
 public static class VerificationModelExtensions
 {
     public static string Label(this VerificationModel m) => m switch
     {
+        VerificationModel.XxHash64 => "xxHash64 (recomandat — cel mai rapid)",
         VerificationModel.Md5 => "MD5 (rapid)",
         VerificationModel.Sha1 => "SHA-1",
         VerificationModel.Sha256 => "SHA-256",
@@ -32,6 +38,7 @@ public static class VerificationModelExtensions
 
     public static string Key(this VerificationModel m) => m switch
     {
+        VerificationModel.XxHash64 => "xxhash64",
         VerificationModel.Md5 => "md5",
         VerificationModel.Sha1 => "sha1",
         VerificationModel.Sha256 => "sha256",
@@ -146,6 +153,21 @@ public sealed class DestinationJob
     public bool Cancelled { get; private set; }
     public string? CsvPath { get; private set; }
     public string? PdfPath { get; private set; }
+    public string? HtmlPath { get; private set; }
+    public string? MhlPath { get; private set; }
+    public int RecoveredCount { get; private set; }
+
+    /// [2026-09-03] Generare MHL (vezi MhlWriter.cs) — optionala, activa implicit.
+    public bool GenerateMhl { get; set; } = true;
+    /// [2026-09-03] Pasul automat de reincercare a fisierelor esuate.
+    public bool RetryFailedFiles { get; set; } = true;
+    /// [2026-09-03] Metadatele productiei, pentru antetul rapoartelor.
+    public ProductionMeta Meta { get; set; } = new();
+    /// Versiunea aplicatiei, scrisa in MHL si in subsolul raportului HTML.
+    public string AppVersion { get; set; } = "?";
+
+    private MhlWriter? _mhl;
+    private readonly List<FileEntry> _failedEntries = new();
 
     private const int PdfSampleLimit = 500; // esantion plafonat pentru PDF (Regula 21) - lista completa ramane in CSV
     private readonly List<ReportRow> _sampleRows = new();
@@ -191,6 +213,21 @@ public sealed class DestinationJob
 
         OpenCsv(targetRoot);
 
+        // [2026-09-03] MHL (Media Hash List) — se scrie langa datele copiate,
+        // in radacina folderului de destinatie. Vezi MhlWriter.
+        if (GenerateMhl)
+        {
+            if (MhlWriter.IsSupported(Model))
+            {
+                var mhlPath = Path.Combine(targetRoot, $"{FolderName}_{_startedAt:yyyy-MM-dd_HH-mm-ss}.mhl");
+                _mhl = MhlWriter.TryCreate(mhlPath, Model, $"DataMover {AppVersion}", _startedAt);
+            }
+            else
+            {
+                OnActivity?.Invoke($"MHL: nu se poate genera cu {Model.Label()} — standardul MHL acceptă doar xxHash64, MD5 sau SHA-1.");
+            }
+        }
+
         foreach (var entry in Files)
         {
             if (Cancel.IsCancelled) { Cancelled = true; break; }
@@ -217,61 +254,50 @@ public sealed class DestinationJob
             var destPath = Path.Combine(targetRoot, entry.RelPath);
             Directory.CreateDirectory(Path.GetDirectoryName(destPath)!);
 
-            string status = "OK", srcRepr = "", dstRepr = "", errorMsg = "";
-            try
+            var outcome = ProcessOne(entry, destPath, allowSkipExisting: Resume);
+            if (outcome.Cancelled) { Cancelled = true; break; }
+            if (outcome.Skipped)
             {
-                // "Completeaza/Reia": daca fisierul exista deja la
-                // destinatie cu ACEEASI marime, il verificam direct
-                // (fara sa-l recopiem) - functioneaza si fara checkpoint.
-                if (Resume && File.Exists(destPath) && new FileInfo(destPath).Length == entry.Size)
-                {
-                    OnActivity?.Invoke($"Verificare fisier existent: {entry.RelPath}…");
-                    var (same0, s0, d0) = VerifyPair(entry, destPath);
-                    if (same0)
-                    {
-                        status = "SARIT";
-                        srcRepr = s0; dstRepr = d0;
-                        SkipCount++;
-                        _filesStatus[entry.RelPath] = "sarit";
-                        LogRow(new ReportRow { File = entry.RelPath, SizeBytes = entry.Size, SrcHash = s0, DstHash = d0, Status = status });
-                        CloudUploadQueue?.Enqueue(entry.RelPath);
-                        OnFileDone?.Invoke(entry.Size);
-                        MaybeWriteCheckpoint(targetRoot);
-                        continue;
-                    }
-                }
-
-                OnActivity?.Invoke($"Copiere: {entry.RelPath} ({FormatBytes(entry.Size)})");
-                CopyFileCancelable(entry.FullPath, destPath, ChunkSizeBytes);
-                OnActivity?.Invoke($"Verificare checksum: {entry.RelPath}…");
-                var (same, s, d) = VerifyPair(entry, destPath);
-                srcRepr = s; dstRepr = d;
-                if (!same) status = "NEPOTRIVIRE";
-            }
-            catch (OffloadCancelledException)
-            {
-                Cancelled = true;
-                break;
-            }
-            catch (Exception ex)
-            {
-                status = "EROARE";
-                errorMsg = ex.Message;
-                if (IsPermissionError(ex)) OnPermissionError?.Invoke(destPath);
+                SkipCount++;
+                _filesStatus[entry.RelPath] = "sarit";
+                LogRow(new ReportRow { File = entry.RelPath, SizeBytes = entry.Size, SrcHash = outcome.SrcHash, DstHash = outcome.DstHash, Status = "SARIT" });
+                RecordInMhl(entry, outcome.SrcHash);
+                CloudUploadQueue?.Enqueue(entry.RelPath);
+                OnFileDone?.Invoke(entry.Size);
+                MaybeWriteCheckpoint(targetRoot);
+                continue;
             }
 
-            switch (status)
+            if (outcome.Status == "OK")
             {
-                case "OK": OkCount++; _filesStatus[entry.RelPath] = "ok"; break;
-                case "SARIT": SkipCount++; _filesStatus[entry.RelPath] = "sarit"; break;
-                default: FailCount++; _filesStatus[entry.RelPath] = "fail"; break;
+                OkCount++;
+                _filesStatus[entry.RelPath] = "ok";
             }
-            LogRow(new ReportRow { File = entry.RelPath, SizeBytes = entry.Size, SrcHash = srcRepr, DstHash = dstRepr, Status = status, Error = errorMsg });
-            // Urcare Cloud: doar fisierele copiate cu succes local (OK/SARIT).
-            if (status is "OK" or "SARIT") CloudUploadQueue?.Enqueue(entry.RelPath);
+            else
+            {
+                FailCount++;
+                _filesStatus[entry.RelPath] = "fail";
+                // [2026-09-03] Retinut pentru pasul automat de reincercare
+                // de la finalul transferului — un card cu un contact slab
+                // sau un disc extern care "hiccup"-uie o data produce exact
+                // acest tip de esec, care trece la a doua incercare.
+                _failedEntries.Add(entry);
+            }
+            LogRow(new ReportRow { File = entry.RelPath, SizeBytes = entry.Size, SrcHash = outcome.SrcHash, DstHash = outcome.DstHash, Status = outcome.Status, Error = outcome.Error });
+            if (outcome.Status == "OK")
+            {
+                RecordInMhl(entry, outcome.SrcHash);
+                // Urcare Cloud: doar fisierele copiate cu succes local.
+                CloudUploadQueue?.Enqueue(entry.RelPath);
+            }
             OnFileDone?.Invoke(entry.Size);
             MaybeWriteCheckpoint(targetRoot);
         }
+
+        // [2026-09-03] Pas automat de reincercare, INAINTE de rapoarte —
+        // rapoartele trebuie sa reflecte starea finala, nu una intermediara.
+        if (!Cancelled && RetryFailedFiles && _failedEntries.Count > 0)
+            RetryFailed(targetRoot);
 
         // Asteapta upload-urile Cloud deja puse in coada inainte de raport.
         if (CloudUploadQueue != null)
@@ -280,14 +306,152 @@ public sealed class DestinationJob
             CloudUploadQueue.WaitUntilDrained();
         }
         MaybeWriteCheckpoint(targetRoot, force: true);
+        MhlPath = _mhl?.Close(DateTime.Now);
+        if (MhlPath != null)
+            OnActivity?.Invoke($"MHL scris: {Path.GetFileName(MhlPath)} ({_mhl?.EntryCount ?? 0} fișiere certificate)");
         CloseCsv();
+        WriteHtml(targetRoot);
         WritePdf(targetRoot);
 
         return new DestinationResult
         {
             DestRoot = DestRoot, OkCount = OkCount, SkipCount = SkipCount,
             FailCount = FailCount, Cancelled = Cancelled, CsvPath = CsvPath, PdfPath = PdfPath,
+            HtmlPath = HtmlPath, MhlPath = MhlPath, RecoveredCount = RecoveredCount,
         };
+    }
+
+    /// Rezultatul procesarii unui singur fisier — extras din bucla ca sa
+    /// poata fi refolosit IDENTIC de pasul de reincercare (altfel cele doua
+    /// cai ar putea diverge, iar un fisier recuperat ar fi verificat altfel
+    /// decat unul copiat din prima).
+    private sealed class FileOutcome
+    {
+        public string Status = "OK";
+        public string SrcHash = "";
+        public string DstHash = "";
+        public string Error = "";
+        public bool Cancelled;
+        public bool Skipped;
+    }
+
+    private FileOutcome ProcessOne(FileEntry entry, string destPath, bool allowSkipExisting)
+    {
+        var outcome = new FileOutcome();
+        try
+        {
+            // "Completeaza/Reia": daca fisierul exista deja la destinatie cu
+            // ACEEASI marime, il verificam direct (fara sa-l recopiem) -
+            // functioneaza si fara checkpoint.
+            if (allowSkipExisting && File.Exists(destPath) && new FileInfo(destPath).Length == entry.Size)
+            {
+                OnActivity?.Invoke($"Verificare fisier existent: {entry.RelPath}…");
+                var (same0, s0, d0) = VerifyPair(entry, destPath);
+                if (same0)
+                {
+                    outcome.Skipped = true;
+                    outcome.Status = "SARIT";
+                    outcome.SrcHash = s0;
+                    outcome.DstHash = d0;
+                    return outcome;
+                }
+            }
+
+            OnActivity?.Invoke($"Copiere: {entry.RelPath} ({FormatBytes(entry.Size)})");
+            CopyFileCancelable(entry.FullPath, destPath, ChunkSizeBytes);
+            OnActivity?.Invoke($"Verificare checksum: {entry.RelPath}…");
+            var (same, s, d) = VerifyPair(entry, destPath);
+            outcome.SrcHash = s;
+            outcome.DstHash = d;
+            if (!same) outcome.Status = "NEPOTRIVIRE";
+        }
+        catch (OffloadCancelledException)
+        {
+            outcome.Cancelled = true;
+        }
+        catch (Exception ex)
+        {
+            outcome.Status = "EROARE";
+            outcome.Error = ex.Message;
+            if (IsPermissionError(ex)) OnPermissionError?.Invoke(destPath);
+        }
+        return outcome;
+    }
+
+    /// [2026-09-03] A doua trecere peste fisierele care au esuat la prima.
+    ///
+    /// DE CE: pe platou, cauza tipica a unui esec izolat e tranzitorie — un
+    /// card scos si reintrodus prost, un cablu miscat, un disc extern care
+    /// intra in sleep. Un ofloader profesional reincearca automat inainte
+    /// sa declare pierderea. Fisierul partial de la destinatie se STERGE
+    /// inainte de recopiere (de aceea `allowSkipExisting: false`).
+    private void RetryFailed(string targetRoot)
+    {
+        var toRetry = _failedEntries.ToList();
+        _failedEntries.Clear();
+        OnActivity?.Invoke($"Reîncercare automată: {toRetry.Count} fișier(e) care au eșuat la prima trecere…");
+        foreach (var entry in toRetry)
+        {
+            if (Cancel.IsCancelled) { Cancelled = true; return; }
+            if (Pause.IsPaused)
+            {
+                Pause.WaitWhilePaused(Cancel);
+                if (Cancel.IsCancelled) { Cancelled = true; return; }
+            }
+            var destPath = Path.Combine(targetRoot, entry.RelPath);
+            try { if (File.Exists(destPath)) File.Delete(destPath); } catch { /* ignora */ }
+            var outcome = ProcessOne(entry, destPath, allowSkipExisting: false);
+            if (outcome.Cancelled) { Cancelled = true; return; }
+            if (outcome.Status == "OK")
+            {
+                FailCount--;
+                OkCount++;
+                RecoveredCount++;
+                _filesStatus[entry.RelPath] = "ok";
+                RecordInMhl(entry, outcome.SrcHash);
+                CloudUploadQueue?.Enqueue(entry.RelPath);
+                OnActivity?.Invoke($"Recuperat la reîncercare: {entry.RelPath}");
+                LogRow(new ReportRow { File = entry.RelPath, SizeBytes = entry.Size, SrcHash = outcome.SrcHash, DstHash = outcome.DstHash, Status = "OK (reîncercat)" });
+            }
+            else
+            {
+                OnActivity?.Invoke($"Eșuat și la reîncercare: {entry.RelPath}");
+                LogRow(new ReportRow { File = entry.RelPath, SizeBytes = entry.Size, SrcHash = outcome.SrcHash, DstHash = outcome.DstHash, Status = outcome.Status + " (reîncercat)", Error = outcome.Error });
+            }
+            MaybeWriteCheckpoint(targetRoot);
+        }
+    }
+
+    /// Adauga fisierul in MHL — doar cu hash-ul SURSEI si doar dupa ce
+    /// verificarea a confirmat ca destinatia are acelasi hash. Un MHL e o
+    /// certificare; un fisier nesigur nu are ce cauta in el.
+    private void RecordInMhl(FileEntry entry, string hash)
+    {
+        if (_mhl == null || string.IsNullOrEmpty(hash)) return;
+        DateTime? modified = null;
+        try { modified = new FileInfo(entry.FullPath).LastWriteTime; } catch { /* ignora */ }
+        _mhl.Add(entry.RelPath, entry.Size, modified, hash, DateTime.Now);
+    }
+
+    private void WriteHtml(string targetRoot)
+    {
+        try
+        {
+            string? truncatedNote = Files.Count > _sampleRows.Count
+                ? $"Lista completă ({Files.Count} fișiere) e în CSV-ul alăturat — raportul arată toate problemele plus un eșantion."
+                : null;
+            var path = Path.Combine(targetRoot, $"offload_report_{DateTime.Now:yyyy-MM-dd_HH-mm-ss}.html");
+            if (HtmlReport.Write(path, DestRoot, FolderName, _sampleRows, Meta, _startedAt, DateTime.Now,
+                    OkCount, SkipCount, FailCount, RecoveredCount, Cancelled, Model.Label(),
+                    MhlPath, truncatedNote, AppVersion))
+                HtmlPath = path;
+            else
+                OnActivity?.Invoke("Nu s-a putut genera raportul HTML.");
+        }
+        catch (Exception ex)
+        {
+            OnActivity?.Invoke($"Nu s-a putut genera raportul HTML: {ex.Message}");
+        }
     }
 
     /// [2026-09-03] Detecteaza daca o eroare de copiere/citire e cauzata de
@@ -308,7 +472,8 @@ public sealed class DestinationJob
                 : null;
             PdfPath = PdfReport.Generate(
                 targetRoot, DestRoot, FolderName, _sampleRows, _startedAt, DateTime.Now,
-                OkCount, SkipCount, FailCount, Cancelled, Model.Label(), truncatedNote);
+                OkCount, SkipCount, FailCount, Cancelled, Model.Label(), truncatedNote,
+                Meta, RecoveredCount, MhlPath);
         }
         catch (Exception ex)
         {
@@ -419,6 +584,23 @@ public sealed class DestinationJob
 
     public static string HashOfFile(string path, VerificationModel model, int chunkSize, CancelToken? cancel = null)
     {
+        // [2026-09-03] xxHash64 nu e un `HashAlgorithm` din BCL, deci are
+        // propria bucla de citire — aceeasi structura, acelasi buffer
+        // reutilizat, aceeasi verificare de anulare intre bucati.
+        if (model == VerificationModel.XxHash64)
+        {
+            var xx = new XxHash64();
+            using var xxStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, chunkSize, FileOptions.SequentialScan);
+            var xxBuffer = new byte[chunkSize];
+            int xxRead;
+            while ((xxRead = xxStream.Read(xxBuffer, 0, xxBuffer.Length)) > 0)
+            {
+                if (cancel != null && cancel.IsCancelled) throw new OffloadCancelledException();
+                xx.Update(xxBuffer, xxRead);
+            }
+            return xx.HexDigest();
+        }
+
         using HashAlgorithm hasher = model switch
         {
             VerificationModel.Md5 => MD5.Create(),

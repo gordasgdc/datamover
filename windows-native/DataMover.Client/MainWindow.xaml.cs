@@ -22,6 +22,15 @@ public sealed class DriveTile
     public System.Windows.Media.ImageSource? IconSource { get; init; }
 }
 
+/// [2026-09-03] Un card in coada de descarcare. Fiecare are propriul nume
+/// de card, deci propriul folder la destinatie — spre deosebire de mai
+/// multe surse adaugate simultan, care ajung toate in ACELASI folder.
+public sealed class QueueItem
+{
+    public string Source { get; init; } = "";
+    public string Card { get; init; } = "";
+}
+
 public partial class MainWindow : FluentWindow
 {
     private readonly OffloadRunner _runner = new();
@@ -32,6 +41,35 @@ public partial class MainWindow : FluentWindow
     private readonly DispatcherTimer _uiTimer;
     private readonly DispatcherTimer _drivesTimer;
     private bool _wasRunning;
+
+    // [2026-09-03] Ultimii parametri de start, retinuti ca reincercarea din
+    // dialogul de spatiu insuficient sa reporneasca EXACT acelasi transfer.
+    private bool _lastStartResume = true;
+    private string? _lastStartFolderOverride;
+
+    // [2026-09-03] Coada de carduri (vezi QueueItem/StartNextInQueue) —
+    // descarcarea mai multor carduri, unul dupa altul, nesupravegheat.
+    private readonly ObservableCollection<QueueItem> _cardQueue = new();
+    private bool _queueRunning;
+    /// Radacinile de volum vazute la ultima verificare — baza pentru
+    /// detectarea unui card NOU introdus. `null` = inca n-am facut niciun
+    /// poll: prima trecere stabileste doar baseline-ul, fara sa considere
+    /// "nou" tot ce era deja conectat la pornirea aplicatiei.
+    private HashSet<string>? _knownDriveRoots;
+
+    /// Metadatele curente, compuse din campurile din bara de sus si din
+    /// Setari — o singura sursa de adevar pentru numele folderului
+    /// (NamingTemplate) si antetul rapoartelor (PDF/HTML).
+    private ProductionMeta CurrentMeta() => new()
+    {
+        Project = ProjectBox.Text.Trim(),
+        Card = CardBox.Text.Trim(),
+        Client = AppSettings.Client,
+        OperatorName = AppSettings.OperatorName,
+        Camera = AppSettings.Camera,
+        Notes = AppSettings.ShootNotes,
+        LogoPath = AppSettings.LogoPath,
+    };
 
     private void OnToggleSettingsPopup(object sender, RoutedEventArgs e)
     {
@@ -99,7 +137,24 @@ public partial class MainWindow : FluentWindow
         DrivesList.ItemsSource = _drives;
 
         VerificationCombo.ItemsSource = Enum.GetValues<VerificationModel>();
-        VerificationCombo.SelectedItem = VerificationModel.Md5;
+        // [2026-09-03] Implicit xxHash64 (nu MD5): acelasi implicit ca la
+        // ofloaderele profesionale, cateva ori mai rapid la verificare pe
+        // acelasi grad de siguranta practica. Profilele salvate anterior
+        // isi pastreaza algoritmul lor, nu sunt rescrise.
+        VerificationCombo.SelectedItem = VerificationModel.XxHash64;
+
+        // [2026-09-03] Coada de carduri + preferintele persistate.
+        CardQueueList.ItemsSource = _cardQueue;
+        ClientBox.Text = AppSettings.Client;
+        OperatorBox.Text = AppSettings.OperatorName;
+        CameraBox.Text = AppSettings.Camera;
+        FolderTemplateBox.Text = AppSettings.FolderTemplate;
+        LogoPathText.Text = string.IsNullOrEmpty(AppSettings.LogoPath)
+            ? "(niciun logo)" : Path.GetFileName(AppSettings.LogoPath);
+        GenerateMhlCheck.IsChecked = AppSettings.GenerateMhl;
+        RetryFailedCheck.IsChecked = AppSettings.RetryFailedFiles;
+        EjectWhenDoneCheck.IsChecked = AppSettings.EjectWhenDone;
+        AutoStartOnCardCheck.IsChecked = AppSettings.AutoStartOnCard;
 
         ChunkSizeCombo.ItemsSource = IOSettings.ChunkSizeChoicesMB.Select(IOSettings.SizeLabel).ToList();
         ChunkSizeCombo.SelectedItem = IOSettings.SizeLabel(IOSettings.DefaultChunkSizeMB);
@@ -134,6 +189,7 @@ public partial class MainWindow : FluentWindow
         _drivesTimer.Start();
 
         VersionText.Text = $"DataMover {UpdateChecker.CurrentVersion}";
+        UpdateFolderPreview();
         Loaded += async (_, _) =>
         {
             _ = LicenseManager.Shared.RefreshRevocationAsync();
@@ -192,6 +248,62 @@ public partial class MainWindow : FluentWindow
     private void OnShowProfileClicked(object sender, RoutedEventArgs e) =>
         new ProfileWindow { Owner = this }.ShowDialog();
 
+    // ---------------- Setari persistate (2026-09-03) ----------------
+    // Fiecare control isi scrie valoarea imediat (AppSettings salveaza in
+    // %AppData%\DataMover\settings.json) - fara buton "Salveaza", la fel ca
+    // @AppStorage pe Mac.
+
+    private void OnProductionMetaChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
+    {
+        if (!IsLoaded) return;
+        AppSettings.Client = ClientBox.Text;
+        AppSettings.OperatorName = OperatorBox.Text;
+        AppSettings.Camera = CameraBox.Text;
+        AppSettings.ShootNotes = NotesBox.Text;
+        AppSettings.FolderTemplate = FolderTemplateBox.Text;
+        UpdateFolderPreview();
+    }
+
+    /// Previzualizare live: userul vede EXACT numele folderului care se va
+    /// crea, inainte sa porneasca transferul — un sablon gresit descoperit
+    /// dupa 2 TB copiati nu se mai poate corecta fara sa muti folderul.
+    private void UpdateFolderPreview()
+    {
+        if (FolderPreviewText == null) return;
+        FolderPreviewText.Text = "Va rezulta: " + OffloadRunner.FolderName(
+            ProjectBox.Text.Trim(), CardBox.Text.Trim(), AppSettings.FolderTemplate,
+            AppSettings.Camera, AppSettings.OperatorName);
+    }
+
+    private void OnToggleSettingChanged(object sender, RoutedEventArgs e)
+    {
+        if (!IsLoaded) return;
+        AppSettings.GenerateMhl = GenerateMhlCheck.IsChecked == true;
+        AppSettings.RetryFailedFiles = RetryFailedCheck.IsChecked == true;
+        AppSettings.EjectWhenDone = EjectWhenDoneCheck.IsChecked == true;
+        AppSettings.AutoStartOnCard = AutoStartOnCardCheck.IsChecked == true;
+    }
+
+    private void OnChooseLogoClicked(object sender, RoutedEventArgs e)
+    {
+        var dialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Filter = "Imagini (*.png;*.jpg;*.jpeg;*.gif)|*.png;*.jpg;*.jpeg;*.gif",
+            Title = "Alege logo-ul pentru rapoarte",
+        };
+        if (dialog.ShowDialog() == true)
+        {
+            AppSettings.LogoPath = dialog.FileName;
+            LogoPathText.Text = Path.GetFileName(dialog.FileName);
+        }
+    }
+
+    private void OnClearLogoClicked(object sender, RoutedEventArgs e)
+    {
+        AppSettings.LogoPath = "";
+        LogoPathText.Text = "(niciun logo)";
+    }
+
     // ---------------- Discuri detectate (2026-08-28) ----------------
     // Raportat lipsa la testul real pe Windows: "nu detecteaza sursele, nu
     // se vad hard discurile, cardurile video" - Mac are un grid de discuri
@@ -216,6 +328,33 @@ public partial class MainWindow : FluentWindow
         // pastram selectia curenta din UI intacta - inlocuim doar continutul
         _drives.Clear();
         foreach (var t in tiles) _drives.Add(t);
+
+        // [2026-09-03] Mod nesupravegheat: un card nou introdus intra direct
+        // in coada si porneste singur. Prima trecere stabileste doar
+        // baseline-ul (`_knownDriveRoots == null`) — altfel orice card deja
+        // conectat la pornirea aplicatiei ar declansa fals o descarcare.
+        var roots = new HashSet<string>(tiles.Select(t => t.Path), StringComparer.OrdinalIgnoreCase);
+        if (_knownDriveRoots != null && AppSettings.AutoStartOnCard && _destinations.Count > 0)
+        {
+            var appeared = roots.Where(r => !_knownDriveRoots.Contains(r)).ToList();
+            foreach (var root in appeared)
+            {
+                var label = tiles.FirstOrDefault(t => t.Path == root)?.Label ?? root;
+                _cardQueue.Add(new QueueItem { Source = root, Card = CleanCardName(label) });
+                _runner.LogExternal($"Card detectat automat: {label} — adăugat în coadă.");
+            }
+            if (appeared.Count > 0 && !_runner.IsRunning) StartNextInQueue();
+        }
+        _knownDriveRoots = roots;
+    }
+
+    /// Eticheta unui volum ("CARD_A (E:\)") nu e un nume de folder valid —
+    /// pastram doar partea utila, fara calea dintre paranteze.
+    private static string CleanCardName(string label)
+    {
+        var idx = label.IndexOf(" (", StringComparison.Ordinal);
+        var name = idx > 0 ? label[..idx] : label;
+        return name.Trim().Length == 0 ? "Card" : name.Trim();
     }
 
     private static string FormatBytes(long bytes)
@@ -229,7 +368,83 @@ public partial class MainWindow : FluentWindow
 
     private void OnAddDriveAsSourceClicked(object sender, RoutedEventArgs e)
     {
-        if (((FrameworkElement)sender).Tag is string path && !_sources.Contains(path)) _sources.Add(path);
+        if (((FrameworkElement)sender).Tag is string path && !_sources.Contains(path))
+        {
+            _sources.Add(path);
+            DetectCard(path);
+        }
+    }
+
+    // ---------------- Detectie card, coada (2026-09-03) ----------------
+
+    /// Recunoasterea structurii de card se face pe un thread de fundal:
+    /// enumerarea unui card plin (zeci de mii de fisiere) ar bloca UI-ul
+    /// exact cand userul tocmai a adaugat cardul. Rezultatul se scrie in
+    /// feed-ul de activitate, unde userul se uita deja.
+    private void DetectCard(string path)
+    {
+        Task.Run(() =>
+        {
+            var info = CameraCardDetector.Detect(path);
+            var parentCard = info == null ? CameraCardDetector.ParentLooksLikeCard(path) : null;
+            Dispatcher.Invoke(() =>
+            {
+                if (info != null)
+                {
+                    _runner.LogExternal($"{Path.GetFileName(path.TrimEnd('\\'))}: {info.Summary}");
+                    foreach (var warning in info.Warnings)
+                        _runner.LogExternal($"⚠ {warning}");
+                }
+                else if (parentCard != null)
+                {
+                    // Cazul cel mai scump de pe platou: s-a selectat un
+                    // subfolder al cardului, nu radacina lui.
+                    _runner.LogExternal($"⚠ {Path.GetFileName(path.TrimEnd('\\'))} pare a fi un SUBFOLDER al cardului {parentCard} — copiat singur, pierzi metadatele cardului.");
+                }
+            });
+        });
+    }
+
+    private void OnAddToQueueClicked(object sender, RoutedEventArgs e)
+    {
+        var source = _sources.FirstOrDefault();
+        if (source == null) return;
+        var card = CardBox.Text.Trim();
+        if (card.Length == 0) card = CleanCardName(Path.GetFileName(source.TrimEnd('\\')));
+        _cardQueue.Add(new QueueItem { Source = source, Card = card });
+        // Sursa iese din lista curenta: e "predata" cozii, altfel ar fi
+        // copiata de doua ori (o data acum, o data cand ii vine randul).
+        _sources.Remove(source);
+        CardBox.Text = "";
+    }
+
+    private void OnRemoveFromQueueClicked(object sender, RoutedEventArgs e)
+    {
+        if (((FrameworkElement)sender).Tag is QueueItem item) _cardQueue.Remove(item);
+    }
+
+    private void OnStartQueueClicked(object sender, RoutedEventArgs e) => StartNextInQueue();
+
+    /// Porneste (sau continua) coada. Fiecare card primeste propriul folder
+    /// la destinatie. Reluarea e implicit ACTIVA in coada: modul
+    /// nesupravegheat nu poate astepta un raspuns la dialogul de duplicate.
+    private void StartNextInQueue()
+    {
+        if (_cardQueue.Count == 0 || _destinations.Count == 0 || _runner.IsRunning)
+        {
+            _queueRunning = false;
+            return;
+        }
+        var next = _cardQueue[0];
+        _cardQueue.RemoveAt(0);
+        _queueRunning = true;
+        _sources.Clear();
+        _sources.Add(next.Source);
+        CardBox.Text = next.Card;
+        var existing = OffloadRunner.FindExistingFolderName(
+            _destinations, ProjectBox.Text.Trim(), next.Card,
+            AppSettings.FolderTemplate, AppSettings.Camera, AppSettings.OperatorName);
+        StartTransfer(resume: true, folderNameOverride: existing);
     }
 
     private void OnAddDriveAsDestinationClicked(object sender, RoutedEventArgs e)
@@ -258,7 +473,11 @@ public partial class MainWindow : FluentWindow
     private void OnSourcesDrop(object sender, DragEventArgs e)
     {
         foreach (var path in DroppedPaths(e))
-            if (!_sources.Contains(path)) _sources.Add(path);
+            if (!_sources.Contains(path))
+            {
+                _sources.Add(path);
+                DetectCard(path);
+            }
     }
 
     private void OnDestinationsDrop(object sender, DragEventArgs e)
@@ -286,10 +505,35 @@ public partial class MainWindow : FluentWindow
         if (_wasRunning && !_runner.IsRunning)
         {
             var anyResult = _runner.LastResults.FirstOrDefault();
+            bool wasCancelled = anyResult?.Cancelled ?? true;
+
+            // [2026-09-03] Coada continua singura cu urmatorul card. O
+            // anulare opreste TOATA coada — daca userul a apasat Anuleaza,
+            // nu vrea sa porneasca imediat cardul urmator.
+            if (_queueRunning)
+            {
+                if (wasCancelled)
+                {
+                    _queueRunning = false;
+                    _runner.LogExternal($"Coadă oprită (transfer anulat) — au rămas {_cardQueue.Count} card(uri).");
+                }
+                else if (_cardQueue.Count > 0)
+                {
+                    _wasRunning = _runner.IsRunning;
+                    StartNextInQueue();
+                    return;
+                }
+                else
+                {
+                    _queueRunning = false;
+                    _runner.LogExternal("Coadă terminată — toate cardurile au fost descărcate.");
+                }
+            }
+
             if (anyResult != null)
             {
                 OpenDestinationButton.Visibility = Visibility.Visible;
-                if (AutoOpenDestCheck.IsChecked == true) OpenLastDestinations();
+                if (AutoOpenDestCheck.IsChecked == true && !wasCancelled) OpenLastDestinations();
             }
         }
         _wasRunning = _runner.IsRunning;
@@ -471,12 +715,16 @@ public partial class MainWindow : FluentWindow
 
         var project = ProjectBox.Text.Trim();
         var card = CardBox.Text.Trim();
-        var todayFolderName = OffloadRunner.FolderName(project, card);
+        var template = AppSettings.FolderTemplate;
+        var camera = AppSettings.Camera;
+        var operatorName = AppSettings.OperatorName;
+        var todayFolderName = OffloadRunner.FolderName(project, card, template, camera, operatorName);
 
         // Cautam INTAI un folder deja existent cu acelasi proiect/card,
         // indiferent de data (fix 2026-08-28 - vezi comentariul din
         // OffloadRunner.FindExistingFolderName).
-        var existingName = OffloadRunner.FindExistingFolderName(_destinations, project, card) ?? todayFolderName;
+        var existingName = OffloadRunner.FindExistingFolderName(
+            _destinations, project, card, template, camera, operatorName) ?? todayFolderName;
 
         if (OffloadRunner.FolderHasRealFiles(_destinations, existingName))
         {
@@ -506,11 +754,12 @@ public partial class MainWindow : FluentWindow
         }
     }
 
-    private void StartTransfer(bool resume, string? folderNameOverride)
+    private void StartTransfer(bool resume, string? folderNameOverride, bool ignoreSpaceWarning = false)
     {
         _runner.ChunkSizeMB = SelectedChunkSizeMB();
         _runner.RamLimitMB = SelectedRamLimitMB();
-        _activity.Clear();
+        _lastStartResume = resume;
+        _lastStartFolderOverride = folderNameOverride;
         OpenDestinationButton.Visibility = Visibility.Collapsed;
         _runner.Start(
             sources: _sources.ToList(),
@@ -518,11 +767,32 @@ public partial class MainWindow : FluentWindow
             model: (VerificationModel)VerificationCombo.SelectedItem,
             exclusions: ParseExclusions(),
             resume: resume,
-            project: ProjectBox.Text.Trim(),
-            card: CardBox.Text.Trim(),
+            meta: CurrentMeta(),
             folderNameOverride: folderNameOverride,
             cloudRemote: SelectedCloudRemote(),
-            cloudRemoteFolder: SelectedCloudFolder());
+            cloudRemoteFolder: SelectedCloudFolder(),
+            folderTemplate: AppSettings.FolderTemplate,
+            generateMhl: AppSettings.GenerateMhl,
+            retryFailedFiles: AppSettings.RetryFailedFiles,
+            ejectSourceWhenDone: AppSettings.EjectWhenDone,
+            ignoreSpaceWarning: ignoreSpaceWarning,
+            appVersion: UpdateChecker.CurrentVersion);
+
+        // [2026-09-03] Spatiu insuficient la destinatie, verificat INAINTE de
+        // a copia primul octet (vezi OffloadRunner.CheckSpace). Nu blocam
+        // definitiv: aratam cifrele reale si lasam userul sa forteze.
+        if (_runner.LastSpaceShortfall is OffloadRunner.SpaceShortfall shortfall)
+        {
+            _runner.AcknowledgeSpaceShortfall();
+            var answer = MessageBox.Show(
+                $"Pe „{shortfall.Destination}\" mai sunt {FormatBytes(shortfall.Free)} liberi, " +
+                $"dar transferul are nevoie de {FormatBytes(shortfall.Needed)}.\n\n" +
+                "Eliberează spațiu sau alege altă destinație.\n\nVrei să continui oricum?",
+                "Spațiu insuficient la destinație", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+            if (answer == MessageBoxResult.Yes)
+                StartTransfer(resume, folderNameOverride, ignoreSpaceWarning: true);
+            return;
+        }
 
         // Plafon de proba depasit (2026-08-30) - vezi LicenseManager.
         // TrialMaxTransferBytes / OffloadRunner.TrialLimitExceededBytes.

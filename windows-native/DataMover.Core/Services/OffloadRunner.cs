@@ -93,27 +93,32 @@ public sealed class OffloadRunner : INotifyPropertyChanged
     // rata complet folderul vechi cu sute de GB deja copiate. Identic cu
     // OffloadRunner (Mac, OffloadEngine.swift).
 
-    public static string FolderName(string project, string card)
-    {
-        var proj = string.IsNullOrWhiteSpace(project) ? "Proiect" : project.Trim();
-        var crd = string.IsNullOrWhiteSpace(card) ? "Card" : card.Trim();
-        return $"{DateTime.Now:yyyy-MM-dd}_{proj}_{crd}".Replace(" ", "_");
-    }
-
-    private static string SanitizedProjectCard(string project, string card)
-    {
-        var proj = string.IsNullOrWhiteSpace(project) ? "Proiect" : project.Trim();
-        var crd = string.IsNullOrWhiteSpace(card) ? "Card" : card.Trim();
-        return $"{proj}_{crd}".Replace(" ", "_");
-    }
+    /// [2026-09-03] Numele se compune acum dintr-un SABLON configurabil
+    /// (vezi NamingTemplate.cs). Sablonul implicit produce exact acelasi
+    /// rezultat ca varianta veche, hardcodata: `&lt;data&gt;_&lt;Proiect&gt;_&lt;Card&gt;`.
+    public static string FolderName(string project, string card,
+        string template = NamingTemplate.DefaultTemplate, string camera = "", string operatorName = "")
+        => NamingTemplate.Render(template, new NamingTemplate.Context
+        {
+            Project = project, Card = card, Camera = camera, OperatorName = operatorName, Date = DateTime.Now,
+        });
 
     /// Cauta un folder deja EXISTENT (creat oricand, nu neaparat azi) cu
     /// acelasi proiect/card, la oricare destinatie - alege cel mai RECENT
     /// daca gaseste mai multe (prefixul de data se sorteaza lexicografic
     /// identic cu ordinea cronologica).
-    public static string? FindExistingFolderName(IEnumerable<string> destinations, string project, string card)
+    ///
+    /// [2026-09-03] Cu sabloane libere de denumire, cautarea nu mai poate fi
+    /// hardcodata pe sufixul `_Proiect_Card`. Comparam acum "miezul stabil"
+    /// al sablonului (tot, mai putin data/ora) — vezi NamingTemplate.StableCore.
+    public static string? FindExistingFolderName(IEnumerable<string> destinations, string project, string card,
+        string template = NamingTemplate.DefaultTemplate, string camera = "", string operatorName = "")
     {
-        var suffix = "_" + SanitizedProjectCard(project, card);
+        var core = NamingTemplate.StableCore(template, new NamingTemplate.Context
+        {
+            Project = project, Card = card, Camera = camera, OperatorName = operatorName,
+        });
+        if (string.IsNullOrEmpty(core) || core == "Transfer") return null;
         var candidates = new List<string>();
         foreach (var dest in destinations)
         {
@@ -122,13 +127,65 @@ public sealed class OffloadRunner : INotifyPropertyChanged
             {
                 candidates.AddRange(Directory.GetDirectories(dest)
                     .Select(Path.GetFileName)
-                    .Where(n => n != null && n.EndsWith(suffix))!
+                    .Where(n => n != null && n.Contains(core, StringComparison.Ordinal))!
                     .Cast<string>());
             }
             catch { /* destinatie inaccesibila momentan - ignora */ }
         }
         candidates.Sort(StringComparer.Ordinal);
         return candidates.Count > 0 ? candidates[^1] : null;
+    }
+
+    // ---------------- Spatiu liber (2026-09-03) ----------------
+
+    /// [2026-09-03] Prima destinatie la care NU incape transferul, sau null
+    /// daca incape peste tot.
+    ///
+    /// DE CE: pana acum, un card de 512 GB pornit catre un disc cu 80 GB
+    /// liberi copia linistit ore intregi si esua abia la mijloc, cu zeci de
+    /// erori "There is not enough space on the disk" in raport — exact
+    /// scenariul in care operatorul crede ca are backup si nu are.
+    /// La o reluare (folderul tinta exista deja) scadem fisierele deja
+    /// prezente cu aceeasi dimensiune.
+    public sealed class SpaceShortfall
+    {
+        public string Destination { get; init; } = "";
+        public long Needed { get; init; }
+        public long Free { get; init; }
+    }
+
+    public SpaceShortfall? LastSpaceShortfall { get; private set; }
+
+    public static SpaceShortfall? CheckSpace(IEnumerable<string> destinations, IReadOnlyList<FileEntry> files, string folderName)
+    {
+        foreach (var dest in destinations)
+        {
+            long free;
+            try { free = new DriveInfo(Path.GetPathRoot(Path.GetFullPath(dest))!).AvailableFreeSpace; }
+            catch { continue; } // volum de retea fara informatii de spatiu - nu blocam transferul
+            var targetRoot = Path.Combine(dest, folderName);
+            bool targetExists = Directory.Exists(targetRoot);
+            long needed = 0;
+            foreach (var file in files)
+            {
+                if (targetExists)
+                {
+                    try
+                    {
+                        var destPath = Path.Combine(targetRoot, file.RelPath);
+                        if (File.Exists(destPath) && new FileInfo(destPath).Length == file.Size) continue;
+                    }
+                    catch { /* il consideram necopiat */ }
+                }
+                needed += file.Size;
+            }
+            // Marja: 1% din transfer, minim 100 MB. Un volum umplut la refuz
+            // devine imprevizibil, iar rapoartele se scriu tot acolo, la final.
+            long margin = Math.Max(100L * 1024 * 1024, needed / 100);
+            if (free < needed + margin)
+                return new SpaceShortfall { Destination = dest, Needed = needed, Free = free };
+        }
+        return null;
     }
 
     public static bool FolderHasRealFiles(IEnumerable<string> destinations, string folderName)
@@ -218,8 +275,12 @@ public sealed class OffloadRunner : INotifyPropertyChanged
     // ---------------- Start ----------------
 
     public void Start(List<string> sources, List<string> destinations, VerificationModel model,
-        List<string> exclusions, bool resume, string project, string card, string? folderNameOverride = null,
-        string cloudRemote = "", string cloudRemoteFolder = "")
+        List<string> exclusions, bool resume, ProductionMeta meta, string? folderNameOverride = null,
+        string cloudRemote = "", string cloudRemoteFolder = "",
+        string folderTemplate = NamingTemplate.DefaultTemplate,
+        bool generateMhl = true, bool retryFailedFiles = true,
+        bool ejectSourceWhenDone = false, bool ignoreSpaceWarning = false,
+        string appVersion = "?")
     {
         if (IsRunning) return;
 
@@ -263,8 +324,24 @@ public sealed class OffloadRunner : INotifyPropertyChanged
         TrialLimitExceededBytes = null;
         PermissionErrorPath = null;
 
-        var folderName = folderNameOverride ?? FolderName(project, card);
+        var folderName = folderNameOverride ?? FolderName(meta.Project, meta.Card, folderTemplate, meta.Camera, meta.OperatorName);
         var sourceRoot = sources.FirstOrDefault();
+
+        // [2026-09-03] Spatiu insuficient: nu pornim deloc. MainWindow arata
+        // un dialog cu cifrele exacte si un buton "Continua oricum", care
+        // re-apeleaza Start() cu ignoreSpaceWarning: true — decizia ramane a
+        // userului, dar informata, nu descoperita dupa 3 ore.
+        if (!ignoreSpaceWarning)
+        {
+            var shortfall = CheckSpace(destinations, files, folderName);
+            if (shortfall != null)
+            {
+                LastSpaceShortfall = shortfall;
+                StatusText = "Spațiu insuficient la destinație — transferul nu a pornit.";
+                return;
+            }
+        }
+        LastSpaceShortfall = null;
 
         _cancelToken = new CancelToken();
         _pauseToken = new PauseToken();
@@ -278,7 +355,10 @@ public sealed class OffloadRunner : INotifyPropertyChanged
         StatusText = "Se copiaza...";
         SpeedText = "";
         LastResults = new();
-        _activityLines.Clear();
+        // [2026-09-03] Feed-ul NU se mai goleste la start: avertismentele
+        // detectorului de carduri apar INAINTE de start si tocmai ele
+        // trebuie sa ramana vizibile in timpul transferului.
+        LogActivity($"──────── Transfer nou: {folderName} ────────");
         UpdateMemoryDisplay();
 
         int chunkBytes = ChunkSizeMB * 1024 * 1024;
@@ -293,7 +373,13 @@ public sealed class OffloadRunner : INotifyPropertyChanged
 
         Jobs = destinations.Select(dest =>
         {
-            var job = new DestinationJob(dest, folderName, files, token, pauseTok, model, resume, sourceRoot, chunkBytes, RamLimitMB);
+            var job = new DestinationJob(dest, folderName, files, token, pauseTok, model, resume, sourceRoot, chunkBytes, RamLimitMB)
+            {
+                GenerateMhl = generateMhl,
+                RetryFailedFiles = retryFailedFiles,
+                Meta = meta,
+                AppVersion = appVersion,
+            };
             job.OnFileDone = size => Advance(size);
             job.OnActivity = line => LogActivity(line);
             job.OnPermissionError = path =>
@@ -317,9 +403,18 @@ public sealed class OffloadRunner : INotifyPropertyChanged
 
         Task.WhenAll(tasks).ContinueWith(_ =>
         {
-            Finish(results, folderName, sources, destinations);
+            Finish(results, folderName, sources, destinations, ejectSourceWhenDone);
         });
     }
+
+    /// MainWindow apeleaza asta dupa ce a aratat dialogul de spatiu, ca
+    /// polling-ul din DispatcherTimer sa nu-l re-afiseze la fiecare tick.
+    public void AcknowledgeSpaceShortfall() => LastSpaceShortfall = null;
+
+    /// [2026-09-03] Acelasi feed, dar scris din AFARA runner-ului (UI) —
+    /// folosit de avertismentele detectorului de carduri, care apar inainte
+    /// sa porneasca vreun transfer.
+    public void LogExternal(string line) => LogActivity(line);
 
     private void LogActivity(string line)
     {
@@ -340,7 +435,8 @@ public sealed class OffloadRunner : INotifyPropertyChanged
         UpdateMemoryDisplay();
     }
 
-    private void Finish(List<DestinationResult> results, string folderName, List<string> sources, List<string> destinations)
+    private void Finish(List<DestinationResult> results, string folderName, List<string> sources,
+        List<string> destinations, bool ejectSource = false)
     {
         IsRunning = false;
         LastResults = results;
@@ -348,10 +444,62 @@ public sealed class OffloadRunner : INotifyPropertyChanged
         int totalOk = results.Sum(r => r.OkCount);
         int totalSkip = results.Sum(r => r.SkipCount);
         int totalFail = results.Sum(r => r.FailCount);
-        StatusText = anyCancelled
-            ? "Anulat."
-            : $"Finalizat — {totalOk} OK" + (totalFail > 0 ? $", {totalFail} probleme." : ".");
+        int totalRecovered = results.Sum(r => r.RecoveredCount);
+        var summary = $"Finalizat — {totalOk} OK";
+        if (totalFail > 0) summary += $", {totalFail} probleme";
+        // Recuperarile la reincercare se afiseaza explicit: userul trebuie sa
+        // stie ca transferul a avut probleme tranzitorii, chiar daca s-a
+        // terminat cu bine (indiciu de cablu/card/disc care da rateuri).
+        if (totalRecovered > 0) summary += $", {totalRecovered} recuperate la reîncercare";
+        StatusText = anyCancelled ? "Anulat." : summary + ".";
+
+        // [2026-09-03] Ejectare automata a cardului sursa, DOAR daca totul a
+        // mers bine. Un card cu erori nu se scoate niciodata automat: s-ar
+        // putea sa mai fie nevoie de o reluare de pe el.
+        if (ejectSource && !anyCancelled && totalFail == 0) EjectSourceVolumes(sources);
 
         HistoryStore.Shared.Record(folderName, sources, destinations, totalOk, totalSkip, totalFail);
+    }
+
+    /// Scoate in siguranta volumele amovibile de pe care s-a citit.
+    ///
+    /// NOTA (diferenta reala fata de Mac): Windows nu are un echivalent
+    /// simplu si sigur al lui `NSWorkspace.unmountAndEjectDevice` accesibil
+    /// din .NET fara P/Invoke pe handle-uri de volum. Folosim utilitarul
+    /// nativ `mountvol /P`, care demonteaza volumul si il pregateste pentru
+    /// scoatere fizica — exact ce face "Safely Remove Hardware". Necesita
+    /// drepturi de administrator; daca nu le are, esecul e RAPORTAT in feed,
+    /// nu ascuns (userul trebuie sa stie ca mai trebuie sa scoata cardul
+    /// manual, nu sa creada ca s-a facut).
+    private void EjectSourceVolumes(IEnumerable<string> sources)
+    {
+        var done = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var source in sources)
+        {
+            string? root;
+            try { root = Path.GetPathRoot(Path.GetFullPath(source)); }
+            catch { continue; }
+            if (string.IsNullOrEmpty(root) || !done.Add(root)) continue;
+            try
+            {
+                var drive = new DriveInfo(root);
+                if (drive.DriveType != DriveType.Removable) continue;
+                var psi = new System.Diagnostics.ProcessStartInfo("mountvol", $"{root.TrimEnd('\\')} /P")
+                {
+                    UseShellExecute = false, CreateNoWindow = true,
+                    RedirectStandardOutput = true, RedirectStandardError = true,
+                };
+                using var proc = System.Diagnostics.Process.Start(psi);
+                proc?.WaitForExit(10000);
+                if (proc != null && proc.ExitCode == 0)
+                    LogActivity($"Card ejectat automat: {root}");
+                else
+                    LogActivity($"Cardul {root} nu a putut fi ejectat automat — scoate-l manual (ejectarea cere drepturi de administrator).");
+            }
+            catch (Exception ex)
+            {
+                LogActivity($"Cardul {root} nu a putut fi ejectat: {ex.Message}");
+            }
+        }
     }
 }
