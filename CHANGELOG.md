@@ -1,5 +1,28 @@
 # Changelog — DataMover
 
+## v2.11.2 — Ghiduri PDF rescrise complet și pagina web actualizată (2026-09-03)
+**Ghidurile PDF (RO/EN/ES)** au fost refăcute de la zero, la cererea lui
+Cristi („pas cu pas și foarte, foarte detaliat, toate opțiunile și toate
+ipostazele"): 18–19 pagini fiecare, cu **cuprins cu numere de pagină**, pași
+numerotați pentru fiecare procedură, casete de accent pentru avertismentele
+care contează, și tabele în care **fiecare setare** e explicată una câte una
+— inclusiv când o alegi și când nu. Ghidul din aplicație (butonul „?") și cel
+din arhiva de descărcare sunt aceleași fișiere, deci se actualizează odată cu
+aplicația.
+
+Corectate în ghiduri, față de versiunea anterioară:
+- Instalarea pe Mac descrie pachetul semnat și notarizat de Apple. Indicația
+  veche de a rula `xattr -cr` sau de a deschide cu click-dreapta **a fost
+  eliminată** — nu mai e necesară de când aplicația e notarizată, iar
+  păstrarea ei sugera greșit că aplicația nu e semnată.
+- Plafonul de 2 GB per transfer din perioada de probă era complet absent din
+  ghid, deși există în aplicație.
+- Toate funcțiile adăugate în v2.11.0 sunt acum documentate.
+
+**Pagina web:** capturi de ecran noi, încadrate identic; secțiuni noi pentru
+MHL, coada de carduri și recunoașterea cardurilor de cameră; link către
+ghidul PDF, care urmează limba aleasă în pagină.
+
 ## v2.11.1 — Actualizarea din Windows funcționează din nou (2026-09-03)
 **Bug real, raportat de Cristi** („când fac actualizare din Windows îmi dă
 eroare"): actualizarea automată eșua de **fiecare dată** pe Windows, cu
