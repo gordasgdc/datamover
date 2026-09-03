@@ -41,6 +41,11 @@ enum L {
         "trial.sizeLimitMessage": [.ro: "Acest transfer (%@) depășește plafonul de 2 GB per transfer al versiunii de probă. Activează licența pentru acces complet, fără limită de dimensiune.", .en: "This transfer (%@) exceeds the trial version's 2 GB per-transfer limit. Activate your license for full access, with no size limit.", .es: "Esta transferencia (%@) supera el límite de 2 GB por transferencia de la versión de prueba. Activa tu licencia para acceso completo, sin límite de tamaño."],
         "trial.sizeLimitStatus": [.ro: "Transfer blocat — depășește plafonul de 2 GB al probei.", .en: "Transfer blocked — exceeds the trial's 2 GB limit.", .es: "Transferencia bloqueada — supera el límite de 2 GB de la prueba."],
 
+        // MARK: - Permisiuni disc (Full Disk Access, 2026-09-03)
+        "permission.title": [.ro: "Acces la disc blocat de macOS", .en: "Disk access blocked by macOS", .es: "Acceso al disco bloqueado por macOS"],
+        "permission.message": [.ro: "DataMover nu are voie să scrie la:\n%@\n\nmacOS blochează accesul aplicațiilor la anumite discuri/foldere fără permisiunea „Acces total la disc”. Deschide Setări de Sistem, bifează DataMover, apoi repornește aplicația.", .en: "DataMover isn't allowed to write to:\n%@\n\nmacOS blocks app access to certain disks/folders without \"Full Disk Access\". Open System Settings, enable DataMover, then restart the app.", .es: "DataMover no tiene permiso para escribir en:\n%@\n\nmacOS bloquea el acceso a ciertos discos/carpetas sin \"Acceso total al disco\". Abre Configuración del Sistema, activa DataMover y reinicia la aplicación."],
+        "permission.openSettings": [.ro: "Deschide Setări", .en: "Open Settings", .es: "Abrir Configuración"],
+
         // MARK: - Meta bar (Proiect/Card)
         "meta.project": [.ro: "Proiect", .en: "Project", .es: "Proyecto"],
         "meta.card": [.ro: "Card", .en: "Card", .es: "Tarjeta"],

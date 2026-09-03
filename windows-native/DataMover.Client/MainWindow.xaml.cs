@@ -293,6 +293,43 @@ public partial class MainWindow : FluentWindow
             }
         }
         _wasRunning = _runner.IsRunning;
+
+        // Acces refuzat de Windows (2026-09-03) - vezi OffloadEngine.
+        // IsPermissionError / OffloadRunner.PermissionErrorPath. Arata o
+        // singura data un dialog cu optiunea de a relansa aplicatia ca
+        // Administrator, in loc sa lase userul sa vada doar "EROARE"
+        // generic in raport.
+        if (_runner.PermissionErrorPath is { } deniedPath)
+        {
+            _runner.AcknowledgePermissionError();
+            var result = MessageBox.Show(
+                $"DataMover nu are voie să scrie la:\n{deniedPath}\n\n" +
+                "Fișierul/folderul e protejat de Windows (deseori aparține altui utilizator sau unei zone de sistem) — copierea are nevoie de drepturi de Administrator.\n\n" +
+                "Repornești aplicația ca Administrator?",
+                "Acces la disc refuzat",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning);
+            if (result == MessageBoxResult.Yes) RelaunchAsAdministrator();
+        }
+    }
+
+    /// Relanseaza acest executabil cu promptul NATIV UAC ("Verb = runas")
+    /// - NICIODATA elevare silentioasa. Aplicatia curenta se inchide dupa
+    /// ce noul proces a fost lansat cu succes; daca userul refuza promptul
+    /// UAC, ramane pe procesul curent, neelevat.
+    private void RelaunchAsAdministrator()
+    {
+        try
+        {
+            var exePath = Process.GetCurrentProcess().MainModule?.FileName;
+            if (string.IsNullOrEmpty(exePath)) return;
+            Process.Start(new ProcessStartInfo(exePath) { UseShellExecute = true, Verb = "runas" });
+            Application.Current.Shutdown();
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+            // Userul a apasat "Nu" pe promptul UAC - ramanem pe procesul curent.
+        }
     }
 
     private void OpenLastDestinations()

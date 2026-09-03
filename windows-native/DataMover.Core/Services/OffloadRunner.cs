@@ -55,6 +55,21 @@ public sealed class OffloadRunner : INotifyPropertyChanged
     /// sa esueze tacut.
     public long? TrialLimitExceededBytes { get; private set; }
 
+    /// [2026-09-03] Setat o singura data la prima eroare de tip "acces
+    /// refuzat" intalnita pe parcursul unui transfer - MainWindow asculta
+    /// asta si arata un dialog cu optiunea de a relansa aplicatia ca
+    /// Administrator, in loc sa lase userul sa vada doar "EROARE" generic
+    /// in raport. Are nevoie de notificare (nu doar `private set` simplu,
+    /// ca la TrialLimitExceededBytes) - apare ASINCRON, la mijlocul unui
+    /// transfer deja pornit, nu doar imediat dupa Start().
+    private string? _permissionErrorPath;
+    public string? PermissionErrorPath { get => _permissionErrorPath; private set => Set(ref _permissionErrorPath, value); }
+
+    /// MainWindow apeleaza asta dupa ce a aratat dialogul o data - fara ea,
+    /// polling-ul din DispatcherTimer (RefreshUiFromRunner) ar re-arata
+    /// acelasi MessageBox la fiecare tick cat timp transferul continua.
+    public void AcknowledgePermissionError() => PermissionErrorPath = null;
+
     /// Feed-ul de activitate, plafonat la 200 linii (Regula 21 - nu tinem
     /// tot istoricul unui transfer de mii de fisiere in memorie/UI).
     public event Action<string>? ActivityLogged;
@@ -246,6 +261,7 @@ public sealed class OffloadRunner : INotifyPropertyChanged
             }
         }
         TrialLimitExceededBytes = null;
+        PermissionErrorPath = null;
 
         var folderName = folderNameOverride ?? FolderName(project, card);
         var sourceRoot = sources.FirstOrDefault();
@@ -280,6 +296,12 @@ public sealed class OffloadRunner : INotifyPropertyChanged
             var job = new DestinationJob(dest, folderName, files, token, pauseTok, model, resume, sourceRoot, chunkBytes, RamLimitMB);
             job.OnFileDone = size => Advance(size);
             job.OnActivity = line => LogActivity(line);
+            job.OnPermissionError = path =>
+            {
+                // Doar prima eroare conteaza pentru dialog - restul, din
+                // aceeasi cauza, sunt zgomot odata ce userul stie problema.
+                if (PermissionErrorPath is null) PermissionErrorPath = path;
+            };
             if (trimmedRemote.Length > 0)
             {
                 job.CloudUploadQueue = new CloudUploadQueue(trimmedRemote, cloudRemoteFolder, Path.Combine(dest, folderName), line => LogActivity(line));

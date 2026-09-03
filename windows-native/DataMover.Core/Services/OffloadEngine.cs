@@ -133,6 +133,12 @@ public sealed class DestinationJob
 
     public Action<long>? OnFileDone { get; set; }
     public Action<string>? OnActivity { get; set; }
+    /// [2026-09-03] Apelat cu calea destinatiei la prima eroare de tip
+    /// "acces refuzat" (fisier/folder protejat de sistem, sau apartinand
+    /// altui utilizator) - OffloadRunner arata un dialog cu optiunea de
+    /// a relansa aplicatia ca Administrator, in loc sa lase userul sa
+    /// vada doar "EROARE" generic in raport.
+    public Action<string>? OnPermissionError { get; set; }
 
     public int OkCount { get; private set; }
     public int SkipCount { get; private set; }
@@ -251,6 +257,7 @@ public sealed class DestinationJob
             {
                 status = "EROARE";
                 errorMsg = ex.Message;
+                if (IsPermissionError(ex)) OnPermissionError?.Invoke(destPath);
             }
 
             switch (status)
@@ -282,6 +289,15 @@ public sealed class DestinationJob
             FailCount = FailCount, Cancelled = Cancelled, CsvPath = CsvPath, PdfPath = PdfPath,
         };
     }
+
+    /// [2026-09-03] Detecteaza daca o eroare de copiere/citire e cauzata de
+    /// acces refuzat de Windows (fisier/folder protejat de sistem, sau
+    /// apartinand altui utilizator/proces) - `UnauthorizedAccessException`
+    /// e cazul direct; `IOException` cu HResult ERROR_ACCESS_DENIED (5,
+    /// codificat Win32 ca 0x80070005) apare la unele operatii de fisier
+    /// care nu arunca direct UnauthorizedAccessException.
+    private static bool IsPermissionError(Exception ex) =>
+        ex is UnauthorizedAccessException || ex.HResult == unchecked((int)0x80070005);
 
     private void WritePdf(string targetRoot)
     {
