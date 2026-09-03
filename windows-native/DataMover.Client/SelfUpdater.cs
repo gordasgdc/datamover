@@ -8,19 +8,31 @@ using MessageBox = System.Windows.MessageBox;
 
 namespace DataMover.Client;
 
-/// Descarca si instaleaza automat un update - port pentru clientul WPF al
-/// retetei deja functionale din core/updater.py (clientul Python vechi):
-/// clientul WPF INCA nu are installer Inno Setup (vezi TODO din CLAUDE.md),
-/// deci nu putem folosi reteta "descarca .exe, lanseaza-l" ca pe
-/// GDCVaultWin - descarcam arhiva .zip, extragem noul DataMover.exe, si il
-/// inlocuim pe cel curent printr-un script .bat auxiliar care asteapta ca
-/// procesul curent sa elibereze fisierul, apoi relanseaza aplicatia.
+/// Descarca si instaleaza automat un update.
 ///
-/// WARNING: functioneaza doar cand `UpdateChecker.WindowsWpfDownloadUrl`
-/// e populat - update.json nu are inca acest camp completat cu o arhiva
-/// REALA a clientului WPF (campul "windows" existent tinteste inca
-/// arhiva clientului Python vechi) - vezi CLAUDE.md. Pana atunci, arata
-/// un mesaj explicit in loc sa descarce arhiva gresita.
+/// [2026-09-03] BUG REAL, reparat — raportat de Cristi: "cand fac
+/// actualizare din Windows imi da eroare". Cauza: arhiva publicata pe
+/// release (`DataMover-WPF-Windows.zip`) contine `DataMoverSetup.exe`
+/// (installer-ul Inno Setup, adaugat in 2026-08-28), dar codul de-aici
+/// cauta in ea `DataMover.exe` — fisier care nu exista in arhiva. Rezultat:
+/// FIECARE incercare de update esua, de fiecare data, cu "Nu am gasit
+/// DataMover.exe in arhiva descarcata". Comentariul vechi de aici ("clientul
+/// WPF INCA nu are installer Inno Setup") ramasese in urma realitatii.
+///
+/// Reteta corecta acum (aceeasi ca GDCVaultWin): descarcam arhiva, gasim
+/// installer-ul si il LANSAM, apoi inchidem aplicatia ca installer-ul sa
+/// poata inlocui fisierele. Installer-ul isi cere singur drepturile de
+/// Administrator (UAC) si arata pagina de licenta — pasul de consimtamant
+/// din Regula 19 ramane intact, iar update-ul ramane un pas ASISTAT, nu
+/// unul silentios (Regula 13).
+///
+/// DE CE NU vechea reteta cu .bat care copia exe-ul peste cel curent: ar fi
+/// esuat oricum. Aplicatia se instaleaza in `Program Files`
+/// (`DefaultDirName={autopf}\DataMover`), unde un `copy` dintr-un `cmd.exe`
+/// neelevat primeste "Access is denied" — scriptul ar fi reincercat de 30 de
+/// ori si ar fi iesit fara sa relanseze nimic, dupa ce aplicatia se inchisese
+/// deja. Calea aceea ramane mai jos DOAR ca rezerva, pentru cazul in care o
+/// arhiva viitoare ar contine iar exe-ul dezarhivat, fara installer.
 public static class SelfUpdater
 {
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromMinutes(5) };
@@ -42,8 +54,26 @@ public static class SelfUpdater
             progress.SetStatus("Se extrage arhiva…");
             var extractDir = Path.Combine(tempDir, "extracted");
             ZipFile.ExtractToDirectory(zipPath, extractDir);
+
+            // Intai installer-ul (cazul REAL de azi), apoi rezerva cu exe
+            // dezarhivat. Cautam dupa tipar, nu dupa un nume fix, ca o
+            // redenumire viitoare a installer-ului sa nu rupa din nou
+            // update-ul in tacere.
+            var installer = FindInstaller(extractDir);
+            if (installer != null)
+            {
+                progress.SetStatus("Se lansează programul de instalare…");
+                Process.Start(new ProcessStartInfo(installer) { UseShellExecute = true });
+                progress.Close();
+                // Inchidem aplicatia: installer-ul nu poate inlocui un exe
+                // care ruleaza. Userul continua in fereastra installer-ului.
+                Application.Current.Shutdown();
+                return;
+            }
+
             var newExe = FindFile(extractDir, "DataMover.exe")
-                ?? throw new InvalidOperationException("Nu am găsit DataMover.exe în arhiva descărcată.");
+                ?? throw new InvalidOperationException(
+                    "Arhiva descărcată nu conține nici programul de instalare, nici DataMover.exe.");
 
             progress.SetStatus("Se instalează și se relansează…");
             var currentExe = Process.GetCurrentProcess().MainModule!.FileName!;
@@ -70,6 +100,17 @@ public static class SelfUpdater
         await using var fileStream = File.Create(destination);
         await httpStream.CopyToAsync(fileStream);
     }
+
+    /// Installer-ul Inno Setup din arhiva. Cautam orice `*setup*.exe` sau
+    /// `*install*.exe` — numele exact de azi e `DataMoverSetup.exe`, dar o
+    /// cautare dupa nume fix e exact greseala care a rupt update-ul pana acum.
+    private static string? FindInstaller(string directory) =>
+        Directory.EnumerateFiles(directory, "*.exe", SearchOption.AllDirectories)
+            .FirstOrDefault(f =>
+            {
+                var name = Path.GetFileName(f).ToLowerInvariant();
+                return name.Contains("setup") || name.Contains("install");
+            });
 
     private static string? FindFile(string directory, string exactName) =>
         Directory.EnumerateFiles(directory, exactName, SearchOption.AllDirectories).FirstOrDefault();

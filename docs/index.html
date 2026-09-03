@@ -289,6 +289,14 @@
   .app-shot img {
     display: block;
     width: 100%;
+    /* [2026-09-03] BUG REAL reparat (raportat de Cristi: capturile sunt
+       "strangulate, stranse, deformate"): tag-urile <img> au atribute
+       width/height (corect, previn saltul de layout la incarcare), dar CSS-ul
+       suprascria DOAR latimea cu 100%. Inaltimea ramanea fixata la valoarea
+       din atribut (1079px), asa ca la orice latime de ecran diferita de cea
+       originala imaginea era intinsa pe verticala si strivita pe orizontala.
+       `height: auto` obliga browserul sa pastreze raportul real al imaginii. */
+    height: auto;
     border-radius: 12px;
     border: 1px solid var(--line);
     box-shadow: 0 40px 100px -30px rgba(0,0,0,0.7), 0 0 0 1px rgba(79,209,139,0.06);
@@ -306,6 +314,14 @@
   .shot-gallery img {
     display: block;
     width: 100%;
+    /* [2026-09-03] BUG REAL reparat (raportat de Cristi: capturile sunt
+       "strangulate, stranse, deformate"): tag-urile <img> au atribute
+       width/height (corect, previn saltul de layout la incarcare), dar CSS-ul
+       suprascria DOAR latimea cu 100%. Inaltimea ramanea fixata la valoarea
+       din atribut (1079px), asa ca la orice latime de ecran diferita de cea
+       originala imaginea era intinsa pe verticala si strivita pe orizontala.
+       `height: auto` obliga browserul sa pastreze raportul real al imaginii. */
+    height: auto;
     border-radius: 14px;
     border: 1px solid var(--line);
     box-shadow: 0 40px 100px -30px rgba(0,0,0,0.7), 0 0 0 1px rgba(79,209,139,0.06);

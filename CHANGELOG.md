@@ -1,5 +1,24 @@
 # Changelog — DataMover
 
+## v2.11.1 — Actualizarea din Windows funcționează din nou (2026-09-03)
+**Bug real, raportat de Cristi** („când fac actualizare din Windows îmi dă
+eroare"): actualizarea automată eșua de **fiecare dată** pe Windows, cu
+mesajul „Nu am găsit DataMover.exe în arhiva descărcată". Cauza: arhiva
+publicată conține programul de instalare (`DataMoverSetup.exe`), dar
+aplicația căuta în ea un fișier care nu mai există acolo de la introducerea
+installer-ului. Acum aplicația lansează direct programul de instalare —
+același pas asistat, cu pagina de licență și cererea de drepturi de
+Administrator.
+
+> **Important:** fix-ul trăiește în versiunea NOUĂ. O aplicație instalată
+> anterior are încă varianta veche a actualizării, deci **această versiune
+> trebuie instalată o singură dată manual**, de pe gordas.dev. Actualizările
+> de după vor merge din aplicație.
+
+**Pagina web** (gordas.dev/datamover): două butoane separate de descărcare
+(Mac și Windows), care descarcă direct fișierul — nu se mai deschide pagina
+de GitHub. Capturile de ecran nu mai apar deformate.
+
 ## v2.11.0 — Flux profesional de offload, la nivel de platou (2026-09-03, paritate completă Mac/Windows)
 Cea mai mare adăugare de la rescrierea nativă. Toate funcțiile de mai jos
 există identic pe Mac și pe Windows.
