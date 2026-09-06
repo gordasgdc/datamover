@@ -1,5 +1,5 @@
 {
-  "version": "2.12.0",
+  "version": "2.13.0",
   "release_date": "2026-09-06",
   "changes": "Motor de copiere reconstruit: o singura citire a cardului, indiferent de numarul de destinatii",
   "download_url": {

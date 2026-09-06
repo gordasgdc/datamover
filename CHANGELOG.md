@@ -1,5 +1,13 @@
 # Changelog — DataMover
 
+## v2.13.0 — Flush fizic pe disc înainte de „OK” (2026-09-06)
+
+Fiecare fișier copiat e acum forțat fizic pe disc (nu doar în cache-ul
+sistemului de operare) înainte de a fi marcat ca finalizat — dacă scoți
+cardul/SSD-ul din mufă imediat după ce bara de progres ajunge la 100%,
+datele chiar sunt scrise, nu doar "în drum spre disc". Fără impact asupra
+vitezei percepute pe transferuri normale.
+
 ## v2.12.0 — Motor de copiere reconstruit: o singură citire a cardului (2026-09-06)
 
 Motorul de offload a fost reconstruit: până acum, cu 2 destinații alese,

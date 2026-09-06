@@ -1,5 +1,6 @@
 import Foundation
 import CryptoKit
+import Darwin
 
 /// [M1, 2026-09-06] Motor de copiere "citire unică, scriere multiplă" —
 /// înlocuiește tiparul vechi (un `DestinationJob` separat per destinație,
@@ -150,6 +151,40 @@ final class BoundedChunkQueue {
     }
 }
 
+/// [M2, 2026-09-06] Flush FIZIC pe disc — obligatoriu înainte de a marca
+/// un fișier "OK". Motiv: apelurile standard de scriere (`FileHandle.write`)
+/// scriu doar în cache-ul RAM al sistemului de operare, NU garantează că
+/// datele au ajuns pe cipurile flash. Dacă userul scoate cardul/SSD-ul din
+/// mufă imediat după ce bara de progres arată 100%, fișierele pot rămâne
+/// corupte — exact scenariul pe care un ofloader profesional trebuie să-l
+/// elimine matematic, nu doar statistic.
+///
+/// `fsync(2)` obișnuit NU e suficient pe macOS — documentat oficial de
+/// Apple (`man fsync`): pe multe dispozitive de stocare, controllerul
+/// hardware raportează scrierea ca „terminată" imediat ce a ajuns în
+/// propriul cache electric, ÎNAINTE de a ajunge fizic pe celulele flash.
+/// `F_FULLFSYNC` (specific Apple, via `fcntl`) e singurul apel care cere
+/// explicit controllerului să golească ACEL cache și să confirme scrierea
+/// fizică reală.
+///
+/// Degradare controlată: unele sisteme de fișiere (volume de rețea SMB/
+/// NFS, unele formatări exFAT/FAT32 vechi) NU suportă `F_FULLFSYNC` —
+/// întorc `ENOTSUP`. În acel caz, cade pe `fsync()` simplu (tot mai bine
+/// decât nimic) — NU tratăm asta ca eroare de transfer. Orice ALTĂ eroare
+/// (disc efectiv deconectat, defect) chiar trebuie să oprească fișierul
+/// respectiv cu eroare — datele nu sunt confirmate pe disc.
+func physicalFlush(_ handle: FileHandle) throws {
+    if fcntl(handle.fileDescriptor, F_FULLFSYNC) == -1 {
+        let code = errno
+        if code == ENOTSUP {
+            _ = fsync(handle.fileDescriptor) // fallback - vezi comentariul de mai sus
+        } else {
+            throw NSError(domain: NSPOSIXErrorDomain, code: Int(code),
+                           userInfo: [NSLocalizedDescriptionKey: "Flush fizic eșuat: \(String(cString: strerror(code)))"])
+        }
+    }
+}
+
 final class FanOutCopier {
     private let sourcePath: String
     private let destinationPaths: [String]
@@ -208,6 +243,10 @@ final class FanOutCopier {
                         hasher.update(chunk)
                         written += Int64(chunk.count)
                     }
+                    // [M2] Flush fizic OBLIGATORIU inainte de a marca fisierul
+                    // OK - vezi comentariul din physicalFlush(). O eroare reala
+                    // aici (nu ENOTSUP) opreste DOAR aceasta destinatie.
+                    try physicalFlush(output)
                     resultsLock.lock()
                     results[dst] = .success(hash: hasher.finalizeHex(), bytesWritten: written)
                     resultsLock.unlock()

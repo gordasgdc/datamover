@@ -137,6 +137,14 @@ public sealed class FanOutCopier
                     hasher.Update(chunk.Data, chunk.Length);
                     written += chunk.Length;
                 }
+                // [M2, 2026-09-06] Flush FIZIC obligatoriu inainte de a marca
+                // fisierul OK - vezi comentariul complet din FanOutCopier.swift
+                // (Mac) pentru motiv. `FileStream.Flush(true)` e documentat
+                // oficial de Microsoft sa apeleze `FlushFileBuffers` la nivel
+                // de OS pe Windows (nu doar bufferul intern .NET) - fara
+                // P/Invoke necesar. O eroare aici opreste DOAR aceasta
+                // destinatie, nu si celelalte.
+                output.Flush(true);
                 results[dst] = new FanOutDestResult { Success = true, Hash = hasher.FinalizeHex(), BytesWritten = written };
             }
             catch (Exception ex)

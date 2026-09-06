@@ -1673,3 +1673,34 @@ reale, per noua regulă de livrare pe etape (build+urcare+confirmare
 Versiune 2.11.5 → 2.12.0 (MINOR — schimbare reală de arhitectură a
 motorului, fără schimbare de UI/funcționalitate vizibilă pentru
 utilizator, Regula 14).
+
+## Etapa 2026-09-06 (8) — M2: Flush fizic pe disc (v2.13.0)
+
+Continuare directă a M1 (confirmat funcțional pe card real de Cristi).
+Cerință: fiecare fișier confirmat "OK" trebuie să fie FIZIC pe disc, nu
+doar în cache-ul OS — altfel scoaterea cardului/SSD-ului imediat după
+100% poate lăsa date corupte.
+
+**Mac** (`FanOutCopier.swift`, `physicalFlush(_:)` nou): `fcntl(fd,
+F_FULLFSYNC)` — documentat oficial Apple ca fiind necesar peste `fsync()`
+simplu (multe controllere raportează "scris" imediat ce ajunge în cache-ul
+electric propriu, înainte de celulele flash reale). Degradare controlată:
+`ENOTSUP` (unele volume SMB/NFS/exFAT vechi) cade pe `fsync()` simplu, NU
+tratat ca eroare; orice ALTĂ eroare oprește DOAR acea destinație.
+
+**Windows** (`FanOutCopier.cs`): `FileStream.Flush(true)` — documentat
+oficial Microsoft să apeleze `FlushFileBuffers` la nivel de OS, fără
+P/Invoke necesar (mai simplu decât propunerea inițială cu apel nativ direct).
+
+**Curățare conexă (Regula 30)**: `copyFileCancelable` (Mac) — confirmat cu
+grep pe tot modulul că nimic nu-l mai apelă de la M1 (motorul real e acum
+`FanOutCopier`) — șters, cu nota istorică a bug-ului de crash pe care-l
+documenta păstrată ca comentariu (aceeași lecție se aplică deja motorului nou).
+
+**Verificat REAL, nu presupus** (ambele platforme, harness izolat cu
+fișier real 5MB, pe filesystem-ul real de pe disc): copiere + flush fără
+nicio eroare, hash confirmat corect pe ambele. Build: `swift build` — 0
+erori/avertismente; `dotnet build` (Core) — 0 erori/avertismente.
+
+Versiune 2.12.0 → 2.13.0 (MINOR — funcționalitate de siguranță nouă,
+fără schimbare de UI, Regula 14).

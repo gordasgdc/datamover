@@ -126,75 +126,17 @@ func listAllFiles(root: String, exclusions: [String] = []) -> [FileEntry] {
     return results
 }
 
-/// Copiaza src -> dst in bucati de offloadChunkSize, verificand
-/// cancelToken intre bucati — ca butonul Anuleaza sa opreasca efectiv
-/// copierea unui fisier urias in cateva secunde, nu abia dupa ce
-/// fisierul respectiv termina.
-///
-/// WARNING (2026-08-26, fix de crash): NU folosi niciodata
-/// `FileHandle.readData(ofLength:)` / `.write(_:)` fara `try` aici. Sunt
-/// API-uri Objective-C legacy — la o eroare reala de citire/scriere (card
-/// SD deconectat in timpul copierii, disc extern scos, disc plin,
-/// permisiune refuzata) NU arunca o eroare Swift capturabila cu
-/// `do/catch`, ci ridica o EXCEPTIE OBJECTIVE-C
-/// (`_NSFileHandleRaiseOperationExceptionWhileReading`), pe care Swift n-o
-/// poate prinde. Rezultatul: `objc_exception_throw` necaptata -> `abort()`
-/// -> toata aplicatia crapa, nu doar job-ul curent. Confirmat printr-un
-/// crash real (`copyFileCancelable` -> `readDataOfLength:` -> abort) —
-/// pentru un tool de offload de pe platou, exact scenariul "cineva scoate
-/// cardul SD in timp ce copiaza" trebuia sa fie o eroare de job, nu un
-/// crash total. `FileHandle.read(upToCount:)` / `.write(contentsOf:)` sunt
-/// variantele THROWING corecte, introduse tocmai pentru asta (macOS
-/// 10.15.4+) — orice eroare de I/O ajunge acum in catch-ul de mai jos, ca
-/// eroare normala de job.
-func copyFileCancelable(src: String, dst: String, cancel: CancelToken, chunkSize: Int = offloadChunkSize) throws {
-    FileManager.default.createFile(atPath: dst, contents: nil)
-    guard let input = FileHandle(forReadingAtPath: src),
-          let output = FileHandle(forWritingAtPath: dst) else {
-        throw NSError(domain: "DataMover", code: 1, userInfo: [NSLocalizedDescriptionKey: "Nu pot deschide \(src) sau \(dst)"])
-    }
-    defer { try? input.close(); try? output.close() }
-
-    do {
-        // FIX MEMORIE REAL (2026-08-27): fara `autoreleasepool` aici,
-        // fiecare `Data` intoarsa de `read(upToCount:)` e backed de un
-        // obiect Objective-C (NSData) ale carui autorelease-uri NU se
-        // elibereaza pana la drenarea urmatorului autorelease pool -
-        // pe un DispatchQueue.global de fundal, GCD creeaza un pool o
-        // singura data PER BLOC dispatch-uit, nu per iteratie a acestei
-        // bucle `while`. Pentru un singur fisier de zeci/sute de GB (sau
-        // un transfer total de 3 TB), asta insemna ca memoria Objective-C
-        // temporara a FIECAREI bucati citite se acumula neintrerupt pe
-        // toata durata copierii, in loc sa fie eliberata dupa fiecare
-        // bloc scris pe disc - exact simptomul raportat ("Your system has
-        // run out of application memory", swap la maxim). `autoreleasepool`
-        // explicit, per iteratie, dreneaza acele temporare imediat dupa
-        // scrierea pe disc a fiecarui bloc.
-        while true {
-            if cancel.isCancelled { throw OffloadCancelled() }
-            var stop = false
-            try autoreleasepool {
-                // `read(upToCount:)` intoarce nil sau Data goala la EOF (in
-                // functie de versiune) — verificam ambele, nu doar `.isEmpty`.
-                guard let chunk = try input.read(upToCount: chunkSize), !chunk.isEmpty else {
-                    stop = true
-                    return
-                }
-                try output.write(contentsOf: chunk)
-            }
-            if stop { break }
-        }
-    } catch {
-        try? FileManager.default.removeItem(atPath: dst) // nu lasam fisier partial
-        throw error
-    }
-
-    // pastreaza data modificarii sursei, ca shutil.copystat in Python
-    if let attrs = try? FileManager.default.attributesOfItem(atPath: src),
-       let modDate = attrs[.modificationDate] as? Date {
-        try? FileManager.default.setAttributes([.modificationDate: modDate], ofItemAtPath: dst)
-    }
-}
+// [M2, 2026-09-06] `copyFileCancelable` (copiere 1-la-1, sursa->o
+// destinatie) a fost STEARSA aici — de la M1 (FanOutCopier), nimic nu o
+// mai apela (verificat cu grep pe tot modulul, Regula 30). Motorul de
+// copiere real e acum `FanOutCopier.swift`, care foloseste ACELASI tipar
+// de I/O throwing (`read(upToCount:)`/`write(contentsOf:)`) pentru
+// exact acelasi motiv documentat aici pana acum: `readData(ofLength:)`/
+// `.write(_:)` (variantele Objective-C vechi) ridica o exceptie
+// Objective-C necapturabila la o eroare reala de I/O (card deconectat,
+// disc plin) -> crash total al aplicatiei, nu doar eroare de job -
+// confirmat printr-un crash real in trecut. Pastrat aici ca istoric al
+// deciziei, pentru oricine atinge din nou I/O de fisiere in acest modul.
 
 /// Hash generic pe bucati, pentru orice algoritm CryptoKit conform
 /// HashFunction (MD5/SHA1/SHA256/SHA512 partajate acelasi cod).
