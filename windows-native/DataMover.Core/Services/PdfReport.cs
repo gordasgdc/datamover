@@ -94,31 +94,47 @@ public static class PdfReport
                     }
                 });
 
-                page.Content().PaddingTop(10).Table(table =>
+                // [M4, 2026-09-06] Randuri "DIT" - thumbnail real (Shell COM,
+                // vezi ThumbnailExtractor) + metadate video (rezolutie/fps/
+                // codec/canale audio, vezi MediaInspector) + status Pass/Fail
+                // colorat, in loc de tabelul text simplu de pana acum.
+                // Extragerea ruleaza DOAR aici (la generarea raportului, pe
+                // esantionul deja plafonat), niciodata in timpul copierii -
+                // motorul de transfer (FanOutCopier) ramane complet neatins.
+                page.Content().PaddingTop(10).Column(col =>
                 {
-                    table.ColumnsDefinition(c =>
-                    {
-                        c.RelativeColumn(4);
-                        c.RelativeColumn(1.5f);
-                        c.RelativeColumn(1.8f);
-                        c.RelativeColumn(3);
-                    });
-
-                    table.Header(h =>
-                    {
-                        h.Cell().Background("#2b2b2b").Padding(4).Text("Fisier").FontColor(Colors.White).FontSize(9);
-                        h.Cell().Background("#2b2b2b").Padding(4).Text("Marime").FontColor(Colors.White).FontSize(9);
-                        h.Cell().Background("#2b2b2b").Padding(4).Text("Status").FontColor(Colors.White).FontSize(9);
-                        h.Cell().Background("#2b2b2b").Padding(4).Text("Verificare sursa").FontColor(Colors.White).FontSize(9);
-                    });
-
                     foreach (var row in rows)
                     {
                         var color = StatusColors.GetValueOrDefault(row.Status, "#333333");
-                        table.Cell().BorderBottom(0.5f).BorderColor("#cccccc").Padding(3).Text(row.File).FontSize(8);
-                        table.Cell().BorderBottom(0.5f).BorderColor("#cccccc").Padding(3).Text(FormatBytes(row.SizeBytes)).FontSize(8);
-                        table.Cell().BorderBottom(0.5f).BorderColor("#cccccc").Padding(3).Text(row.Status).FontColor(color).FontSize(8).Bold();
-                        table.Cell().BorderBottom(0.5f).BorderColor("#cccccc").Padding(3).Text(Truncate(row.SrcHash, 24)).FontSize(8);
+                        var media = MediaInspector.Probe(row.DestPath);
+                        var thumbBytes = ThumbnailExtractor.ThumbnailJpegBytes(row.DestPath, 120, 68);
+
+                        col.Item().PaddingBottom(6).BorderBottom(0.5f).BorderColor("#cccccc").Row(r =>
+                        {
+                            r.ConstantItem(60).Height(34).Background("#e0e0e0").Element(e =>
+                            {
+                                if (thumbBytes != null) e.Image(thumbBytes).FitArea();
+                            });
+                            r.RelativeItem().PaddingLeft(8).Column(c =>
+                            {
+                                c.Item().Row(rr =>
+                                {
+                                    rr.RelativeItem().Text(row.File).FontSize(9).Bold();
+                                    rr.AutoItem().Text(row.Status).FontColor(color).FontSize(8).Bold();
+                                });
+                                var metaParts = new List<string> { FormatBytes(row.SizeBytes) };
+                                if (media != null)
+                                {
+                                    if (media.ResolutionText != null) metaParts.Add(media.ResolutionText);
+                                    if (media.FrameRate != null) metaParts.Add($"{media.FrameRate:0.00} fps");
+                                    if (media.VideoCodec != null) metaParts.Add(media.VideoCodec);
+                                    if (media.AudioChannels != null) metaParts.Add($"{media.AudioChannels}ch audio");
+                                }
+                                c.Item().Text(string.Join("  ·  ", metaParts)).FontSize(8).FontColor("#666666");
+                                if (!string.IsNullOrEmpty(row.Error))
+                                    c.Item().Text(Truncate(row.Error, 90)).FontSize(8).FontColor("#b02a2a");
+                            });
+                        });
                     }
                 });
 

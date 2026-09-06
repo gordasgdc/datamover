@@ -361,24 +361,26 @@ func writePDFReport(path: String, destination: String, folderName: String, rows:
         return String(s.prefix(maxChars - 1)) + "…"
     }
 
-    // Coloanele tabelului: Status | Fisier | Marime | Eroare
-    let colStatusX = margin
-    let colFileX = margin + 46
-    let colSizeX = pageWidth - margin - 150
-    let colErrorX = pageWidth - margin - 90
-    let rowHeight: CGFloat = 13
+    // [M4, 2026-09-06] Randuri "DIT" - thumbnail + metadate video + status
+    // Pass/Fail colorat, in loc de tabelul text simplu de pana acum.
+    let thumbW: CGFloat = 60, thumbH: CGFloat = 34
+    let textX = margin + thumbW + 10
+    let rowHeight: CGFloat = thumbH + 12 // spatiu pentru thumbnail + cele 2-3 linii de text
 
     func drawTableHeader() {
         let headerY = y
         ctx.saveGState()
         ctx.setFillColor(NSColor(white: 0.9, alpha: 1).cgColor)
-        ctx.fill(CGRect(x: margin - 4, y: headerY - 3, width: pageWidth - 2 * margin + 8, height: rowHeight))
+        ctx.fill(CGRect(x: margin - 4, y: headerY - 3, width: pageWidth - 2 * margin + 8, height: 13))
         ctx.restoreGState()
-        draw("Status", size: 8, bold: true, x: colStatusX)
-        draw("Fisier", size: 8, bold: true, x: colFileX)
-        draw("Marime", size: 8, bold: true, x: colSizeX)
-        draw("Eroare", size: 8, bold: true, x: colErrorX)
-        y -= rowHeight
+        draw("Fisier / metadate / MHL", size: 8, bold: true, x: textX)
+        y -= 15
+    }
+
+    /// Fundalul colorat al bulinei de status (Pass/Fail) - verde pentru
+    /// orice varianta de OK (inclusiv "OK (reîncercat)"), rosu altfel.
+    func statusBadgeColor(_ status: String) -> NSColor {
+        status.hasPrefix("OK") ? NSColor.systemGreen : (status == "SARIT" ? NSColor.systemGray : NSColor.systemRed)
     }
 
     let df = DateFormatter(); df.dateFormat = "yyyy-MM-dd HH:mm:ss"
@@ -432,18 +434,57 @@ func writePDFReport(path: String, destination: String, folderName: String, rows:
             ctx.endPDFPage(); newPage()
             drawTableHeader()
         }
+        let rowTop = y
         if index % 2 == 0 {
             ctx.saveGState()
             ctx.setFillColor(NSColor(white: 0.96, alpha: 1).cgColor)
-            ctx.fill(CGRect(x: margin - 4, y: y - 3, width: pageWidth - 2 * margin + 8, height: rowHeight))
+            ctx.fill(CGRect(x: margin - 4, y: rowTop - rowHeight + 4, width: pageWidth - 2 * margin + 8, height: rowHeight))
             ctx.restoreGState()
         }
-        let color: NSColor = row.status == "OK" ? .black : .systemRed
-        draw(row.status, size: 8, color: color, x: colStatusX)
-        draw(truncate(row.file, maxChars: 42), size: 8, color: color, x: colFileX)
-        draw(formatBytes(row.sizeBytes), size: 8, color: color, x: colSizeX)
-        draw(truncate(row.error, maxChars: 22), size: 8, color: .systemRed, x: colErrorX)
-        y -= rowHeight
+
+        // Thumbnail — extras DOAR la generarea raportului (nu in timpul
+        // transferului), pe eșantionul deja plafonat (max. 500 rânduri) —
+        // motorul de copiere (FanOutCopier) ramane complet neatins.
+        let thumbRect = CGRect(x: margin, y: rowTop - rowHeight + 6, width: thumbW, height: thumbH)
+        if let image = MediaInspector.thumbnailImage(path: row.destPath, size: CGSize(width: thumbW * 2, height: thumbH * 2)),
+           let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) {
+            ctx.draw(cgImage, in: thumbRect)
+        } else {
+            ctx.saveGState()
+            ctx.setFillColor(NSColor(white: 0.88, alpha: 1).cgColor)
+            ctx.fill(thumbRect)
+            ctx.restoreGState()
+        }
+
+        // Bulina de status Pass/Fail (MHL), colorata, langa numele fisierului.
+        let badgeColor = statusBadgeColor(row.status)
+        ctx.saveGState()
+        ctx.setFillColor(badgeColor.cgColor)
+        ctx.fillEllipse(in: CGRect(x: textX, y: rowTop - 9, width: 6, height: 6))
+        ctx.restoreGState()
+
+        y = rowTop - 1
+        draw(truncate(row.file, maxChars: 46), size: 9, bold: true, x: textX + 10)
+        draw(row.status, size: 8, color: badgeColor, x: pageWidth - margin - 90)
+        y -= 12
+
+        let media = MediaInspector.probe(path: row.destPath)
+        var metaParts: [String] = [formatBytes(row.sizeBytes)]
+        if let m = media {
+            if let r = m.resolutionText { metaParts.append(r) }
+            if let fps = m.frameRate { metaParts.append(String(format: "%.2f fps", fps)) }
+            if let codec = m.videoCodec { metaParts.append(codec) }
+            if let tc = m.timecode { metaParts.append("TC \(tc)") }
+            if let ch = m.audioChannels { metaParts.append("\(ch)ch audio") }
+        }
+        draw(metaParts.joined(separator: "  ·  "), size: 8, color: .darkGray, x: textX + 10)
+        y -= 12
+
+        if !row.error.isEmpty {
+            draw(truncate(row.error, maxChars: 70), size: 8, color: .systemRed, x: textX + 10)
+        }
+
+        y = rowTop - rowHeight
     }
     ctx.endPDFPage()
     ctx.closePDF()

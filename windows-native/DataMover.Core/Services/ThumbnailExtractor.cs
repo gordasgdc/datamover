@@ -69,12 +69,21 @@ public static class ThumbnailExtractor
     /// fel de valid, doar fara previzualizare.
     public static string? ThumbnailDataUri(string path)
     {
+        var bytes = ThumbnailJpegBytes(path, 160, 90);
+        return bytes == null ? null : $"data:image/jpeg;base64,{Convert.ToBase64String(bytes)}";
+    }
+
+    /// [M4, 2026-09-06] Aceeasi extragere, dar octeti JPEG bruti — pentru
+    /// raportul PDF (QuestPDF), care are nevoie de un `byte[]` de imagine,
+    /// nu de un data URI HTML. Cod comun extras din `ThumbnailDataUri`.
+    public static byte[]? ThumbnailJpegBytes(string path, int width, int height)
+    {
         if (string.IsNullOrEmpty(path) || !File.Exists(path)) return null;
         IntPtr hBitmap = IntPtr.Zero;
         try
         {
             SHCreateItemFromParsingName(path, IntPtr.Zero, ImageFactoryGuid, out var factory);
-            var hr = factory.GetImage(new SIZE { cx = 160, cy = 90 },
+            var hr = factory.GetImage(new SIZE { cx = width, cy = height },
                 SIIGBF.ThumbnailOnly | SIIGBF.BiggerSizeOk, out hBitmap);
             if (hr != 0 || hBitmap == IntPtr.Zero) return null;
 
@@ -84,7 +93,7 @@ public static class ThumbnailExtractor
             using var encParams = new EncoderParameters(1);
             encParams.Param[0] = new EncoderParameter(Encoder.Quality, 60L);
             bitmap.Save(ms, jpegEncoder, encParams);
-            return $"data:image/jpeg;base64,{Convert.ToBase64String(ms.ToArray())}";
+            return ms.ToArray();
         }
         catch
         {

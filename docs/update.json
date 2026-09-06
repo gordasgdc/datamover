@@ -1,5 +1,5 @@
 {
-  "version": "2.13.0",
+  "version": "2.14.0",
   "release_date": "2026-09-06",
   "changes": "Flush fizic pe disc inainte de a marca fisierul OK",
   "download_url": {

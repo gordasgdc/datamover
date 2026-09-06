@@ -1,5 +1,13 @@
 # Changelog — DataMover
 
+## v2.14.0 — Raport DIT: thumbnail-uri + metadate video în PDF (2026-09-06)
+
+Raportul PDF de la finalul unui offload arată acum, pentru fiecare fișier
+video: o previzualizare reală a conținutului, rezoluție, cadre/secundă,
+codec video, canale audio (și timecode-ul embedat, pe Mac) — pe lângă
+starea Pass/Fail deja existentă (verde/roșu). Fișierele non-video rămân
+afișate normal, doar fără metadate/thumbnail.
+
 ## v2.13.0 — Flush fizic pe disc înainte de „OK” (2026-09-06)
 
 Fiecare fișier copiat e acum forțat fizic pe disc (nu doar în cache-ul

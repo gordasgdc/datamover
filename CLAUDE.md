@@ -1704,3 +1704,66 @@ erori/avertismente; `dotnet build` (Core) — 0 erori/avertismente.
 
 Versiune 2.12.0 → 2.13.0 (MINOR — funcționalitate de siguranță nouă,
 fără schimbare de UI, Regula 14).
+
+## Etapa 2026-09-06 (9) — M4: Metadate video + Raport DIT PDF (v2.14.0)
+
+Continuare M1/M2 (confirmate funcționale pe date reale de Cristi). Cerere:
+port `MediaInspector` (CGConvertor) pentru metadate video (Timecode, FPS,
+Rezoluție, Codec, Cameră/Reel, Audio Channels) + thumbnail-uri + status
+Pass/Fail MHL în raportul PDF.
+
+**Decizie de arhitectură conștientă, comunicată explicit**: CGConvertor
+folosește `ffprobe` (are deja `ffmpeg` bundle-uit pentru transcodare).
+DataMover NU are `ffmpeg` — motor de extragere DIFERIT pe fiecare
+platformă, ambele fără nicio dependință nouă:
+
+**Mac** (`MediaInspector.swift`, nou) — `AVFoundation` (framework de
+sistem): rezoluție, fps, codec video/audio, durată, canale audio — toate
+directe din track-uri. **Timecode**: track QuickTime dedicat (`tmcd`),
+citit prin `AVAssetReader` — bug real găsit la testare (nu presupus):
+primul eșantion al track-ului e un marker gol "edit boundary"
+(`dataBuffer=nil`), nu timecode-ul real; fix: continuă până la primul
+eșantion cu date efective. **Camera/Reel**: best-effort din metadatele
+QuickTime comune — funcționează pentru camere care le scriu acolo (multe
+prosumer Sony/Canon/Panasonic), NU pentru formate proprietare (Sony rtmd
+binar, RED) — ar cere portul complet al `SonyMetadata.swift`
+(CGConvertor), scop separat, nemenționat ca gata.
+
+**Windows** (`MediaInspector.cs`, nou) — parser MP4/ISO-BMFF PROPRIU
+(zero dependință): citește direct structura de "boxes" (`moov/trak/mdia/
+mdhd/minf/stbl/stsd/stts`) pentru rezoluție/codec/durată/fps/canale audio.
+**2 bug-uri reale de offset găsite la testare** (nu presupuse) — formula
+`SampleEntry` (box header + reserved[6] + data_reference_index[2] = 16
+octeți) fusese omisă din calculul poziției `width`/`height` (Video) și
+`channelcount` (Audio) — corectat, verificat cu 2 fișiere reale diverse
+(ProRes/.mov 1920×1080@25fps/2ch, H.264/.mp4 1280×720@30fps/1ch), ambele
+exacte. Timecode/Camera/Reel NEACOPERITE pe Windows (spus explicit, TODO
+real — ar cere parsarea track-ului `tmcd` separat).
+
+**Thumbnail-uri**: Mac — `QLThumbnailGenerator` (deja folosit pentru
+raportul HTML, extras acum ca sursă comună). Windows — `ThumbnailExtractor.cs`
+(deja exista pentru raportul HTML, v2.11.3) — extins cu o metodă nouă
+(`ThumbnailJpegBytes`) care întoarce octeți JPEG bruți, pentru QuestPDF.
+
+**Raport PDF redesenat** (ambele platforme): rânduri "DIT" — thumbnail +
+nume fișier + bulină/etichetă Pass/Fail colorată (verde=OK, roșu=eroare/
+nepotrivire, gri=sărit) + linie de metadate (mărime · rezoluție · fps ·
+codec · timecode dacă există · canale audio) + eroarea, dacă există.
+Extragerea rulează DOAR la generarea raportului (eșantionul deja
+plafonat, max. 500 fișiere), NICIODATĂ în timpul copierii — motorul de
+transfer (`FanOutCopier`) rămâne complet neatins, zero latență nouă pe
+calea critică de I/O.
+
+**Verificat REAL, nu presupus** (ambele platforme): metadate extrase din
+fișiere video reale generate cu `ffmpeg` (folosit DOAR pentru testare,
+nu devine dependință a aplicației), comparate cu valorile reale știute
+(rezoluție/fps/canale audio/durată/timecode) — toate exacte. PDF generat
+și verificat VIZUAL (randat la PNG) pe ambele platforme — layout corect,
+metadate afișate, status colorat corect. `swift build` — 0 erori/
+avertismente (în afară de deprecări API sincron AVFoundation, alegere
+deliberată — refactorul la variantele async ar afecta întreg lanțul
+sincron `finalize()`/`writePDFReport`, disproporționat pentru acest
+milestone). `dotnet build` (Core + Client) — 0 erori/avertismente.
+
+Versiune 2.13.0 → 2.14.0 (MINOR — funcționalitate nouă vizibilă, fără
+schimbare de arhitectură a motorului de transfer, Regula 14).
