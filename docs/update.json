@@ -1,7 +1,7 @@
 {
   "version": "2.11.5",
-  "release_date": "2026-09-03",
-  "changes": "Ghidurile PDF (RO/EN/ES) rescrise complet: pas cu pas, cu cuprins, toate optiunile explicate una cate una. Pagina web: capturi noi, functiile noi si link catre ghid.",
+  "release_date": "2026-09-06",
+  "changes": "Corectare etichete coloane in raportul HTML (Hash sursa/Hash destinatie)",
   "download_url": {
     "windows": "https://github.com/gordasgdc/datamover/releases/latest/download/DataMover-Windows.zip",
     "mac": "https://github.com/gordasgdc/datamover/releases/latest/download/DataMover-Mac.zip",
