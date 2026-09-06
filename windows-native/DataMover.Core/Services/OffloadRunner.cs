@@ -81,7 +81,7 @@ public sealed class OffloadRunner : INotifyPropertyChanged
     private PauseToken _pauseToken = new();
     private DateTime _startTime;
     private long _bytesDone;
-    public List<DestinationJob> Jobs { get; private set; } = new();
+    public List<DestinationContext> Contexts { get; private set; } = new();
 
     public int ChunkSizeMB { get; set; } = IOSettings.DefaultChunkSizeMB;
     public int RamLimitMB { get; set; } = 1024;
@@ -365,46 +365,182 @@ public sealed class OffloadRunner : INotifyPropertyChanged
         var token = _cancelToken;
         var pauseTok = _pauseToken;
         var results = new List<DestinationResult>();
-        var resultsLock = new object();
 
         // Cloud secondary destination (2026-08-30) - o coada NOUA per
         // destinatie locala, ca fiecare disc/destinatie sa urce independent.
         var trimmedRemote = cloudRemote.Trim();
 
-        Jobs = destinations.Select(dest =>
+        var started = DateTime.Now;
+        Contexts = destinations.Select(dest =>
         {
-            var job = new DestinationJob(dest, folderName, files, token, pauseTok, model, resume, sourceRoot, chunkBytes, RamLimitMB)
-            {
-                GenerateMhl = generateMhl,
-                RetryFailedFiles = retryFailedFiles,
-                Meta = meta,
-                AppVersion = appVersion,
-            };
-            job.OnFileDone = size => Advance(size);
-            job.OnActivity = line => LogActivity(line);
-            job.OnPermissionError = path =>
-            {
-                // Doar prima eroare conteaza pentru dialog - restul, din
-                // aceeasi cauza, sunt zgomot odata ce userul stie problema.
-                if (PermissionErrorPath is null) PermissionErrorPath = path;
-            };
-            if (trimmedRemote.Length > 0)
-            {
-                job.CloudUploadQueue = new CloudUploadQueue(trimmedRemote, cloudRemoteFolder, Path.Combine(dest, folderName), line => LogActivity(line));
-            }
-            return job;
+            CloudUploadQueue? cloudQueue = trimmedRemote.Length > 0
+                ? new CloudUploadQueue(trimmedRemote, cloudRemoteFolder, Path.Combine(dest, folderName), line => LogActivity(line))
+                : null;
+            return new DestinationContext(dest, folderName, model, generateMhl, meta, sourceRoot,
+                cloudQueue, started, appVersion,
+                onActivity: line => LogActivity(line),
+                onPermissionError: path =>
+                {
+                    // Doar prima eroare conteaza pentru dialog - restul, din
+                    // aceeasi cauza, sunt zgomot odata ce userul stie problema.
+                    if (PermissionErrorPath is null) PermissionErrorPath = path;
+                });
         }).ToList();
 
-        var tasks = Jobs.Select(job => Task.Run(() =>
+        Task.Run(() =>
         {
-            var result = job.Run();
-            lock (resultsLock) { results.Add(result); }
-        })).ToArray();
+            foreach (var ctx in Contexts) ctx.Prepare(resume);
 
-        Task.WhenAll(tasks).ContinueWith(_ =>
-        {
+            bool cancelledFlag = false;
+
+            // [M1 FAZA 2] O SINGURA trecere peste `entries`, cu fan-out per
+            // fisier — folosita ATAT pentru bucla principala CAT si pentru
+            // reincercarea automata de la final (acelasi cod, ca cele doua
+            // cai sa nu diveraga).
+            void RunPass(IReadOnlyList<FileEntry> entries, bool isRetry)
+            {
+                foreach (var entry in entries)
+                {
+                    if (token.IsCancelled) { cancelledFlag = true; return; }
+                    if (pauseTok.IsPaused)
+                    {
+                        LogActivity("Pauza — transferul e oprit temporar de utilizator.");
+                        pauseTok.WaitWhilePaused(token);
+                        if (token.IsCancelled) { cancelledFlag = true; return; }
+                    }
+                    IOSettings.WaitIfOverRamLimit(RamLimitMB, token, LogActivity);
+
+                    var toCopy = new List<DestinationContext>();
+                    var toVerify = new List<DestinationContext>();
+                    foreach (var ctx in Contexts)
+                    {
+                        if (isRetry)
+                        {
+                            if (!ctx.FailedRelPaths.Contains(entry.RelPath)) continue;
+                            ctx.PrepareForRetry(entry);
+                            toCopy.Add(ctx);
+                            continue;
+                        }
+                        switch (ctx.Classify(entry, resume))
+                        {
+                            case DestinationContext.Classification.AlreadyDone:
+                                ctx.RecordSkippedViaCheckpoint(entry);
+                                Advance(entry.Size);
+                                break;
+                            case DestinationContext.Classification.ExistingSameSize:
+                                toVerify.Add(ctx);
+                                break;
+                            case DestinationContext.Classification.NeedsCopy:
+                                toCopy.Add(ctx);
+                                break;
+                        }
+                    }
+
+                    // Fisiere deja existente, cu marime identica — verificate
+                    // fara recopiere. Hash-ul sursei se calculeaza O SINGURA
+                    // DATA si e reutilizat pentru toate destinatiile din
+                    // acest bucket, daca sunt mai multe.
+                    if (toVerify.Count > 0)
+                    {
+                        string? verifiedSourceHash = null;
+                        foreach (var ctx in toVerify)
+                        {
+                            ctx.OnActivity($"Verificare fisier existent: {entry.RelPath}…");
+                            verifiedSourceHash ??= TryHash(entry.FullPath, model, chunkBytes, token);
+                            var dstHash = TryHash(ctx.DestPath(entry), model, chunkBytes, token) ?? "";
+                            if (verifiedSourceHash != null && verifiedSourceHash == dstHash)
+                            {
+                                ctx.RecordVerifiedExisting(entry, verifiedSourceHash, dstHash);
+                                Advance(entry.Size);
+                            }
+                            else
+                            {
+                                toCopy.Add(ctx); // marimea coincidea dar continutul nu - recopiem normal
+                            }
+                        }
+                        if (token.IsCancelled) { cancelledFlag = true; return; }
+                    }
+
+                    // Copiere REALA prin fan-out — o singura citire a sursei
+                    // pentru TOATE destinatiile care au nevoie de copiere la
+                    // acest fisier (vezi FanOutCopier.cs).
+                    if (toCopy.Count > 0)
+                    {
+                        var destPaths = new List<string>();
+                        foreach (var ctx in toCopy)
+                        {
+                            var destPath = ctx.DestPath(entry);
+                            Directory.CreateDirectory(Path.GetDirectoryName(destPath)!);
+                            destPaths.Add(destPath);
+                            ctx.OnActivity($"Copiere: {entry.RelPath} ({FormatBytesLocal(entry.Size)})");
+                        }
+                        try
+                        {
+                            var copier = new FanOutCopier(entry.FullPath, destPaths, chunkBytes, model, token, pauseTok);
+                            var result = copier.Run(_ => { });
+                            foreach (var ctx in toCopy) ctx.OnActivity($"Verificare checksum: {entry.RelPath}…");
+                            for (int i = 0; i < toCopy.Count; i++)
+                            {
+                                var ctx = toCopy[i];
+                                var outcome = result.Destinations.TryGetValue(destPaths[i], out var o) ? o
+                                    : new FanOutDestResult { Success = false, Error = new Exception("Fara rezultat de la motorul de copiere") };
+                                ctx.RecordCopyOutcome(entry, result.SourceHash, outcome, isRetry);
+                                Advance(entry.Size);
+                            }
+                        }
+                        catch (OffloadCancelledException)
+                        {
+                            cancelledFlag = true; return;
+                        }
+                        catch (Exception ex)
+                        {
+                            foreach (var ctx in toCopy)
+                            {
+                                ctx.RecordSourceReadFailure(entry, ex, isRetry);
+                                Advance(entry.Size);
+                            }
+                        }
+                    }
+                }
+            }
+
+            RunPass(files, isRetry: false);
+
+            // [2026-09-03, pastrat identic] Pas automat de reincercare,
+            // INAINTE de rapoarte — rapoartele trebuie sa reflecte starea
+            // finala, nu una intermediara.
+            if (!cancelledFlag && retryFailedFiles)
+            {
+                var retryPaths = new HashSet<string>();
+                foreach (var ctx in Contexts) retryPaths.UnionWith(ctx.FailedRelPaths);
+                if (retryPaths.Count > 0)
+                {
+                    LogActivity($"Reîncercare automată: {retryPaths.Count} fișier(e) care au eșuat la prima trecere…");
+                    var retryEntries = files.Where(f => retryPaths.Contains(f.RelPath)).ToList();
+                    RunPass(retryEntries, isRetry: true);
+                }
+            }
+
+            if (cancelledFlag) foreach (var ctx in Contexts) ctx.MarkCancelled();
+            foreach (var ctx in Contexts) results.Add(ctx.Finalize(files.Count));
+
             Finish(results, folderName, sources, destinations, ejectSourceWhenDone);
         });
+    }
+
+    private static string? TryHash(string path, VerificationModel model, int chunkSize, CancelToken cancel)
+    {
+        try { return FileHashing.HashOfFile(path, model, chunkSize, cancel); }
+        catch { return null; }
+    }
+
+    private static string FormatBytesLocal(long bytes)
+    {
+        double b = bytes;
+        string[] units = { "B", "KB", "MB", "GB", "TB" };
+        int i = 0;
+        while (b >= 1024 && i < units.Length - 1) { b /= 1024; i++; }
+        return $"{b:0.0} {units[i]}";
     }
 
     /// MainWindow apeleaza asta dupa ce a aratat dialogul de spatiu, ca

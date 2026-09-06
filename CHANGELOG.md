@@ -1,5 +1,15 @@
 # Changelog — DataMover
 
+## v2.12.0 — Motor de copiere reconstruit: o singură citire a cardului (2026-09-06)
+
+Motorul de offload a fost reconstruit: până acum, cu 2 destinații alese,
+cardul sursă era citit efectiv de 4 ori (2× la copiere, 2× la verificare).
+Acum se citește O SINGURĂ DATĂ, indiferent de câte destinații alegi —
+copiere mai rapidă, mai puțină uzură a cardului, verificarea checksum-ului
+se face din datele deja citite, nu printr-o recitire separată. Checkpoint,
+reluare, reîncercare automată, MHL și rapoartele rămân neschimbate ca
+funcționalitate.
+
 ## v2.11.5 — Etichete corecte în raportul HTML (2026-09-06)
 Coloanele „Sursă”/„Destinație” din raportul HTML arătau de fapt valori de
 hash (verificare), nu căi de fișiere — redenumite „Hash sursă”/

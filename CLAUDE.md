@@ -1614,3 +1614,62 @@ explicativ langa antetul tabelului.
 Versiune 2.11.4 -> 2.11.5 (PATCH), sincronizata in toate cele 4 puncte.
 Verificat: `swift build` (Mac) si `dotnet build` (Windows.Core) - 0 erori
 pe ambele.
+
+## Etapa 2026-09-06 (7) — M1: Motor "citire unică, scriere multiplă" (FanOutCopier) + Faza 2: integrare în orchestrator (v2.12.0)
+
+Cerere directă a lui Cristi (context extern: analiză de arhitectură
+Data Mover vs. Silverstack/OffShoot) — verdict confirmat: ADAPTĂM, NU
+RESCRIEM. Bug real găsit prin citire directă a codului (nu presupus):
+`DestinationJob` (Mac)/`DestinationJob` (Windows) rula câte un job SEPARAT
+per destinație, fiecare citind sursa complet pentru copiere, apoi DIN NOU
+pentru `srcHash` la verificare — cu 2 destinații, cardul se citea efectiv
+de 4 ori (2× copiere + 2× verificare surse), plus 2 citiri ale
+destinațiilor pentru `dstHash`.
+
+**M1 — motor nou, izolat** (`FanOutCopier.swift`/`FanOutCopier.cs`, ambele
+platforme): UN thread de citire din sursă, distribuie fiecare bucată (8MB,
+configurabil) către N cozi mărginite (ring buffer, adâncime 3) — Swift:
+`BoundedChunkQueue` (`NSCondition`); Windows: `BlockingCollection<T>`
+(nativ .NET). Hash-ul sursei se calculează O SINGURĂ DATĂ din bucățile
+citite; hash-ul fiecărei destinații se calculează LA SCRIERE (nu prin
+recitire de pe disc). Backpressure real: o destinație lentă umple propria
+coadă, thread-ul de citire se blochează, viteza de pe card se aliniază la
+cea mai lentă destinație. Eșec izolat pe destinație — nu blochează
+celelalte, nu agață thread-ul de citire.
+
+**Verificat REAL, nu presupus** (fișier 37MB `/dev/urandom`, hash de
+referință calculat INDEPENDENT de motor — `shasum -a 256`/`SHA256.Create()`
+direct pe fișierele de pe disc): hash identic pe Swift, .NET, și referința
+externă (`add31de32a1466de...`), pe toate trei. `bytesRead == mărimea
+reală` confirmă o singură trecere. Test de eșec parțial (director
+inexistent ca a doua destinație): prima destinație reușește, a doua
+raportează eroare clar, 0.025s, fără blocaj.
+
+**Faza 2 — integrare în orchestrator** (`DestinationContext.swift`/`.cs`,
+noi, înlocuiesc `DestinationJob`): bucla de orchestrare INVERSATĂ — de la
+"N job-uri, fiecare iterează toate fișierele" la "o buclă pe fișiere,
+fiecare cu fan-out către N destinații". `DestinationContext` păstrează
+DOAR bookkeeping-ul per destinație (CSV, MHL, checkpoint, contoare, coadă
+Cloud) — FĂRĂ propria buclă de copiere. Checkpoint-ul rămâne per
+destinație (pot diferi — o destinație poate avea deja progres dintr-o
+rulare întreruptă, alta nu). Clasificare per fișier/destinație în 3
+categorii: `alreadyDone` (checkpoint), `existingSameSize` (verificare fără
+recopiere — hash-ul sursei calculat o singură dată și reutilizat pentru
+toate destinațiile din acest bucket), `needsCopy` (trece prin
+`FanOutCopier`, doar către destinațiile care au nevoie efectiv). Reîncercarea
+automată e unificată similar — o singură citire per fișier reîncercat,
+fan-out doar către destinațiile care au eșuat efectiv la acel fișier
+(destinații diferite pot eșua la fișiere diferite).
+
+**Verificat**: `swift build` (Mac) — 0 erori, 0 avertismente (după
+`@unchecked Sendable` pe `DestinationContext`, același tipar deja folosit
+de `CancelToken`/`PauseToken`). `dotnet build` (Core + Client, de pe Mac)
+— 0 erori, 0 avertismente pe ambele. **Rămas de verificat REAL, pe un
+card real** — cerut explicit de Cristi să sară peste un test intermediar
+izolat suplimentar și să treacă direct la validare cap-coadă pe date
+reale, per noua regulă de livrare pe etape (build+urcare+confirmare
+înainte de următoarea fază).
+
+Versiune 2.11.5 → 2.12.0 (MINOR — schimbare reală de arhitectură a
+motorului, fără schimbare de UI/funcționalitate vizibilă pentru
+utilizator, Regula 14).

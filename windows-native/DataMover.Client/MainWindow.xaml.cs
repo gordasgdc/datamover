@@ -590,7 +590,7 @@ public partial class MainWindow : FluentWindow
 
     private void OpenLastDestinations()
     {
-        foreach (var job in _runner.Jobs)
+        foreach (var job in _runner.Contexts)
         {
             var target = Path.Combine(job.DestRoot, job.FolderName);
             if (Directory.Exists(target))
