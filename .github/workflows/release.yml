@@ -18,97 +18,18 @@ permissions:
   contents: write
 
 jobs:
-  build-windows:
-    runs-on: windows-latest
-    steps:
-      - name: Descarca codul din repo
-        uses: actions/checkout@v4
-
-      - name: Instaleaza Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Instaleaza dependintele
-        run: |
-          python -m pip install --upgrade pip
-          pip install pyinstaller reportlab tkinterdnd2 plyer pystray pillow cryptography pypdf
-
-      - name: Compileaza .exe cu PyInstaller
-        run: |
-          pyinstaller --onefile --windowed --name "DataMover" `
-            --icon=DataMover.ico `
-            --hidden-import=offload_engine `
-            --hidden-import=pdf_report `
-            --hidden-import=config `
-            --hidden-import=theme `
-            --hidden-import=tooltip `
-            --hidden-import=checkpoint `
-            --hidden-import=update_config `
-            --hidden-import=updater `
-            --hidden-import=translations `
-            --hidden-import=license_core `
-            --hidden-import=license_validator `
-            --hidden-import=machine_id `
-            --hidden-import=activation `
-            --collect-all reportlab `
-            --collect-all tkinterdnd2 `
-            --collect-all cryptography `
-            main.py
-
-      - name: Compileaza modulul de Monitorizare (executabil insotitor)
-        run: |
-          pyinstaller --onefile --windowed --name "DataMover Monitor" `
-            --icon=DataMover.ico `
-            --hidden-import=offload_engine `
-            --hidden-import=config `
-            --collect-all pystray `
-            --collect-all PIL `
-            tray_monitor.py
-
-      - name: Pregateste folderul de distributie (exe + monitor, la un loc, pt. installer.iss)
-        run: |
-          mkdir dist_release
-          copy "dist\DataMover.exe" dist_release\
-          copy "dist\DataMover Monitor.exe" dist_release\
-
-      - name: Compileaza instalatorul (Inno Setup - preinstalat pe runner-ul windows-latest)
-        run: |
-          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss
-
-      - name: Uneste ghidurile RO/EN/ES intr-un singur PDF
-        # AUDIT 2026-08-26 (CLAUDE.md Partea 1, Regula 8): arhiva Windows
-        # avea 3 fisiere PDF separate (RO/EN/ES) - unificat intr-unul
-        # singur, acelasi tipar ca varianta Mac (mac-native/build_installer.sh)
-        # si gdc-production-manager.
-        run: |
-          python -c "
-          from pypdf import PdfWriter
-          w = PdfWriter()
-          for f in ['docs/guides/DataMover_Ghid_RO.pdf', 'docs/guides/DataMover_Guide_EN.pdf', 'docs/guides/DataMover_Guia_ES.pdf']:
-              w.append(f)
-          w.write('Ghid-de-Utilizare.pdf')
-          "
-
-      - name: Arhiveaza instalatorul + ghidul PDF intr-un singur .zip
-        run: |
-          mkdir dist_final
-          copy "Output\DataMoverSetup.exe" dist_final\
-          copy "Ghid-de-Utilizare.pdf" dist_final\
-          Compress-Archive -Path "dist_final\*" -DestinationPath "DataMover-Windows.zip"
-
-      - name: Salveaza pentru pasul de release
-        uses: actions/upload-artifact@v4
-        with:
-          retention-days: 1
-          name: windows-build
-          path: DataMover-Windows.zip
-
-  # Client Windows NOU (windows-native/, WPF + Wpf.Ui) - coexista cu
-  # clientul Python de mai sus pana la validare completa (vezi CLAUDE.md).
-  # Nu inlocuieste build-windows - produce un artefact SEPARAT.
+  # Client Windows WPF (.NET 8, Wpf.Ui) - SINGURUL client Windows activ.
+  # Job-ul vechi "build-windows" (Python/PyInstaller) a fost RETRAS
+  # 2026-09-06, decizie explicita a lui Cristi - vezi CLAUDE.md, sectiunea
+  # "Etapa 2026-09-06 (10)".
   build-windows-wpf:
     runs-on: windows-latest
+    # [CLAUDE.md Regula 34] `secrets` nu e permis direct intr-un `if:` de
+    # pas (confirmat cu actionlint) - valoarea trece printr-un `env:` la
+    # nivel de JOB (aici `secrets` E permis), pasii citesc
+    # `env.HAS_WIN_SELFSIGN` (context permis in `if:`).
+    env:
+      HAS_WIN_SELFSIGN: ${{ secrets.WIN_SELFSIGN_PFX_BASE64 != '' }}
     steps:
       - name: Descarca codul din repo
         uses: actions/checkout@v4
@@ -125,9 +46,29 @@ jobs:
             -p:PublishSingleFile=false `
             -o windows-native/publish
 
+      # [CLAUDE.md Regula 34, 2026-09-06] Semnare Self-Signed, DOAR pentru
+      # testare interna/cerc restrans - vezi mac-native/codesigning/
+      # README-windows.md. Ruleaza DOAR daca secretele exista - altfel
+      # build-ul continua NESEMNAT, exact ca inainte, fara nicio eroare.
+      - name: Semneaza DataMover.Client.exe (Self-Signed, test intern)
+        if: ${{ env.HAS_WIN_SELFSIGN == 'true' }}
+        shell: pwsh
+        env:
+          WIN_SELFSIGN_PFX_BASE64: ${{ secrets.WIN_SELFSIGN_PFX_BASE64 }}
+          WIN_SELFSIGN_PFX_PASSWORD: ${{ secrets.WIN_SELFSIGN_PFX_PASSWORD }}
+        run: .\mac-native\codesigning\sign-windows.ps1 -TargetPath "windows-native\publish\DataMover.Client.exe"
+
       - name: Compileaza instalatorul (Inno Setup)
         run: |
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" windows-native\installer.iss
+
+      - name: Semneaza installer-ul final (Self-Signed, test intern)
+        if: ${{ env.HAS_WIN_SELFSIGN == 'true' }}
+        shell: pwsh
+        env:
+          WIN_SELFSIGN_PFX_BASE64: ${{ secrets.WIN_SELFSIGN_PFX_BASE64 }}
+          WIN_SELFSIGN_PFX_PASSWORD: ${{ secrets.WIN_SELFSIGN_PFX_PASSWORD }}
+        run: .\mac-native\codesigning\sign-windows.ps1 -TargetPath "windows-native\Output\DataMoverSetup.exe"
 
       - name: Arhiveaza instalatorul intr-un .zip
         run: |
@@ -155,16 +96,10 @@ jobs:
   # 3. `gh release create` cu ambele artefacte (pkg+zip Mac local +
   #    zip Windows descarcat din acest workflow) — vezi CLAUDE.md.
   create-release:
-    needs: [build-windows, build-windows-wpf]
+    needs: [build-windows-wpf]
     runs-on: ubuntu-latest
     steps:
-      - name: Descarca fisierul Windows compilat (client Python vechi)
-        uses: actions/download-artifact@v4
-        with:
-          name: windows-build
-          path: release-files
-
-      - name: Descarca fisierul Windows compilat (client WPF nou)
+      - name: Descarca fisierul Windows compilat (client WPF)
         uses: actions/download-artifact@v4
         with:
           name: windows-wpf-build

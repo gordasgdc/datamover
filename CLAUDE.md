@@ -805,6 +805,69 @@ sau atinsă de-acum înainte:
   sub această regulă — e un indicator de stare semantic (verde =
   verificat), nu o iconiță de conținut, poate rămâne CSS pur.
 
+**34. Semnare Windows (Code Signing) obligatorie la build — Self-Signed
+ca implicit pentru testare internă, real (comercial) la lansare publică
+(2026-09-06).** Cerut explicit de Cristi, după clarificarea (verificată
+tehnic, nu presupusă) că un certificat self-signed NU elimină avertismentul
+SmartScreen/"Unknown Publisher" pentru publicul larg — doar un certificat
+real de la o CA publică (cu reputație acumulată) sau un certificat EV fac
+asta; din iunie 2023, CA/Browser Forum obligă orice certificat OV/EV nou
+să fie stocat pe token hardware/HSM cloud (Azure Trusted Signing, DigiCert
+KeyLocker, SSL.com eSigner), NU ca `.pfx` exportabil. Decizie explicită
+Cristi: self-signed ACUM (testare internă + cerc restrâns, cu `.cer`
+importat manual de colaboratori în Trusted Root), evaluare Azure Trusted
+Signing/EV la lansarea comercială publică — regula de mai jos NU
+presupune că self-signed rezolvă SmartScreen pentru clienți finali, e
+DOAR pentru etapa de testare.
+- **Certificatul (privat, cu cheie) NU trece NICIODATĂ prin conversația cu
+  Claude** — generarea (`New-SelfSignedCertificate`, doar posibilă pe
+  Windows real, Claude nu poate rula asta de pe Mac) și încărcarea ca
+  secret CI (`gh secret set`, valoare base64 a `.pfx` + parola) se fac
+  DIRECT de Cristi, pe mașina lui Windows — identic cu regula deja
+  existentă pentru parole/chei (Claude nu vede/manipulează credențiale).
+- **CI-ul de build Windows verifică ÎNTÂI existența secretelor** (ex.
+  `WIN_SELFSIGN_PFX_BASE64`/`WIN_SELFSIGN_PFX_PASSWORD`) — dacă lipsesc,
+  build-ul continuă NESEMNAT (exact ca varianta Mac, `APPLE_SIGN_IDENTITY_APP`
+  nesetat → semnare ad-hoc, niciodată o eroare de build). Dacă sunt
+  prezente: decodează `.pfx`-ul temporar, semnează cu `signtool.exe`
+  (localizat dinamic din Windows Kits, NU hardcodat o versiune) atât
+  executabilul cât și installer-ul final Inno Setup, cu timestamp
+  (`/tr .../td sha256`) ca semnătura să rămână validă și după expirarea
+  certificatului, apoi ȘTERGE fișierul `.pfx` temporar de pe disc imediat
+  după folosire.
+- **Verificare post-semnare obligatorie în CI**: `Get-AuthenticodeSignature`
+  (confirmă DOAR că fișierul are efectiv o semnătură atașată — NU
+  `signtool verify /pa`, care validează lanțul de încredere complet și
+  eșuează mereu pe un runner CI proaspăt, unde certificatul self-signed
+  nu e importat în Trusted Root; asta e normal pentru testare internă,
+  nu un eșec real) pe fiecare executabil semnat, ÎNAINTE ca pasul de
+  build să fie considerat trecut.
+- **Certificatul e COMUN tuturor aplicațiilor GDC** — secrete numite
+  IDENTIC (`WIN_SELFSIGN_PFX_BASE64`/`WIN_SELFSIGN_PFX_PASSWORD`) în
+  fiecare repo, același `.pfx` reîncărcat, NU regenerat per proiect — un
+  colaborator care a importat deja `.cer`-ul o dată (ex. la CGConvertor)
+  rămâne de încredere pentru orice altă aplicație GDC semnată cu același
+  certificat, fără reimport.
+- **Aplicare**: la fiecare build de release/actualizare Windows, pe orice
+  aplicație din `~/Developer/` care produce un `.exe`/installer Windows —
+  aplicată incremental, la următoarea atingere reală a fiecărui repo
+  (Regula 11), nu retroactiv peste tot dintr-o sesiune dedicată.
+- **Implementare de referință**: CGConvertor (`codesigning/sign-windows.ps1`
+  + `.github/workflows/build-windows.yml`, 2026-09-06).
+
+**Status acest repo (2026-09-06): IMPLEMENTAT.** `mac-native/codesigning/
+sign-windows.ps1` + `generate-self-signed-cert.ps1` + `README-windows.md`
+(nou, alături de fișierele Mac deja existente în același folder — nu
+suprascrise). Cei doi pași de semnare (exe WPF + installer final Inno
+Setup) adăugați DOAR în `build-windows-wpf.yml` și în job-ul
+`build-windows-wpf` din `release.yml` (job-ul vechi `build-windows` nu mai
+există — vezi retragerea de mai jos, secțiunea Partea 2). Secretele
+(`WIN_SELFSIGN_PFX_BASE64`/`WIN_SELFSIGN_PFX_PASSWORD`) NU sunt încă
+încărcate în acest repo — Cristi trebuie să ruleze pasul 2 din
+`README-windows.md` (reîncărcarea `.pfx`-ului comun GDC, dacă există deja
+din CGConvertor) înainte ca semnarea reală să înceapă să funcționeze; până
+atunci, CI-ul continuă nesemnat, fără nicio eroare.
+
 ## [PARTEA 2: SPECIFICAȚII TEHNICE PROIECT]
 
 ## REGULĂ PERMANENTĂ: Locația proiectului pe disc (2026-08-25)
@@ -1767,3 +1830,65 @@ milestone). `dotnet build` (Core + Client) — 0 erori/avertismente.
 
 Versiune 2.13.0 → 2.14.0 (MINOR — funcționalitate nouă vizibilă, fără
 schimbare de arhitectură a motorului de transfer, Regula 14).
+
+## Etapa 2026-09-06 (10) — Retragerea build-ului Windows vechi (Python/PyInstaller) + Semnare Self-Signed pentru clientul WPF
+
+**Decizie explicită a lui Cristi**: clientul Windows WPF (`windows-native/`,
+subiectul întregii sesiuni recente M1-M4 — FanOutCopier, physical flush,
+MediaInspector, DIT PDF) devine SINGURUL client Windows livrat. Job-ul CI
+vechi (`build-windows`, Python/PyInstaller — cel care compila `main.py`/
+`tray_monitor.py` cu PyInstaller și `installer.iss` de la rădăcină) e
+RETRAS din `release.yml` — nu se mai livrează niciun artefact Windows
+Python la niciun release viitor.
+
+**Ce s-a șters exact:**
+- Job-ul `build-windows` din `.github/workflows/release.yml` (compilare
+  PyInstaller + Inno Setup + arhivare `DataMover-Windows.zip`), inclus în
+  `needs` al `create-release` — acum `needs: [build-windows-wpf]`. Pasul
+  de download al artefactului vechi (`windows-build`) eliminat din
+  `create-release`.
+- `.github/workflows/build-windows.yml` (workflow separat, `push` pe
+  `main` — construia ACELAȘI job, independent de release, doar pentru
+  verificare continuă) — șters complet, fișierul nu mai există.
+- `installer.iss` de la rădăcina repo-ului — CONFIRMAT (grep pe tot
+  repo-ul) că era referit EXCLUSIV de cele două workflow-uri de mai sus și
+  de `release.sh` (doar pentru bump de versiune sincron) — nimic altceva
+  îl folosea, sigur de șters.
+
+**Ce NU s-a atins, și de ce (ambiguu/riscant, per instrucțiune explicită
+de a nu ghici):** `main.py`, `core/` (tot backend-ul: `offload_engine.py`,
+`pdf_report.py`, `license_core.py`, etc.), `ui/` (INCLUSIV `ui/mac/app.py`
+— clientul Python Mac, separat de `ui/windows/app.py`), `setup.py`,
+`tray_monitor.py`, `DataMover.ico` — acest cod sursă e PARTAJAT, nu
+exclusiv build-ului Windows retras. Confirmat direct din fișiere: `main.py`
+alege explicit `ui/mac/app.py` pe `sys.platform == "darwin"`, iar
+scripturile de lansare locală (`Porneste DataMover.command`,
+`Porneste DataMover (Windows).bat`, `build_and_sign.sh` cu `py2app`,
+`Lanseaza_DataMover.command`) rulează/împachetează acest cod independent
+de CI, pe ambele platforme — ștergerea lui ar fi distrus și clientul
+Python Mac de rezervă/local, scop nemenționat de Cristi. Rămâne cod viu
+pe disc, dar nu mai e construit/livrat de niciun CI pentru Windows.
+`docs/guides/*.pdf` (RO/EN/ES) și scripturile lor de generare (`docs/guides/
+generate_guides.py` etc.) nu s-au atins — sunt folosite ȘI de clientul WPF
+(buton "Ghid", v2.11.4).
+
+**Semnare Self-Signed adăugată** (Regula 34, Partea 1) — DOAR în
+`build-windows-wpf.yml` și în job-ul `build-windows-wpf` din `release.yml`:
+`mac-native/codesigning/sign-windows.ps1` + `generate-self-signed-cert.ps1`
++ `README-windows.md` (noi, alături de fișierele Mac deja existente în
+același folder, neatinse). Doi pași de semnare per workflow (exe WPF
+publicat + `DataMoverSetup.exe` final), condiționați de
+`env.HAS_WIN_SELFSIGN` (derivat din `secrets.WIN_SELFSIGN_PFX_BASE64` la
+nivel de JOB — `secrets` nu e permis direct într-un `if:` de pas). Fără
+secrete încărcate încă în acest repo, CI-ul continuă nesemnat, fără nicio
+eroare — Cristi trebuie să reîncarce `.pfx`-ul comun GDC (dacă există deja
+din CGConvertor) ca secrete în `DataMover`, pas descris în
+`README-windows.md`.
+
+**Verificat**: `actionlint .github/workflows/release.yml
+.github/workflows/build-windows-wpf.yml` → 0 erori. `python3 -c "import
+yaml; yaml.safe_load(...)"` pe ambele → OK. `git log --all --format="%B" |
+grep -c "Co-Authored-By: Claude"` → 0 (Regula 32, verificat înainte de
+commit). **Nu s-a rulat un release real** — job-ul retras/modificat nu a
+fost declanșat printr-un tag nou în această sesiune, doar validare
+statică a workflow-urilor.

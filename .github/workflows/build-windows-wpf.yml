@@ -16,6 +16,12 @@ on:
 jobs:
   build-windows-wpf:
     runs-on: windows-latest
+    # [CLAUDE.md Regula 34] `secrets` nu e permis direct intr-un `if:` de
+    # pas (confirmat cu actionlint) - valoarea trece printr-un `env:` la
+    # nivel de JOB (aici `secrets` E permis), pasii citesc
+    # `env.HAS_WIN_SELFSIGN` (context permis in `if:`).
+    env:
+      HAS_WIN_SELFSIGN: ${{ secrets.WIN_SELFSIGN_PFX_BASE64 != '' }}
 
     steps:
       - name: Descarca codul din repo
@@ -33,9 +39,30 @@ jobs:
             -p:PublishSingleFile=false `
             -o windows-native/publish
 
+      # [CLAUDE.md Regula 34, 2026-09-06] Semnare Self-Signed, DOAR pentru
+      # testare interna/cerc restrans (NU elimina SmartScreen pentru
+      # publicul larg - vezi mac-native/codesigning/README-windows.md).
+      # Ruleaza DOAR daca secretele exista - altfel build-ul continua
+      # NESEMNAT, exact ca inainte, fara nicio eroare.
+      - name: Semneaza DataMover.Client.exe (Self-Signed, test intern)
+        if: ${{ env.HAS_WIN_SELFSIGN == 'true' }}
+        shell: pwsh
+        env:
+          WIN_SELFSIGN_PFX_BASE64: ${{ secrets.WIN_SELFSIGN_PFX_BASE64 }}
+          WIN_SELFSIGN_PFX_PASSWORD: ${{ secrets.WIN_SELFSIGN_PFX_PASSWORD }}
+        run: .\mac-native\codesigning\sign-windows.ps1 -TargetPath "windows-native\publish\DataMover.Client.exe"
+
       - name: Compileaza instalatorul (Inno Setup - preinstalat pe windows-latest)
         run: |
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" windows-native\installer.iss
+
+      - name: Semneaza installer-ul final (Self-Signed, test intern)
+        if: ${{ env.HAS_WIN_SELFSIGN == 'true' }}
+        shell: pwsh
+        env:
+          WIN_SELFSIGN_PFX_BASE64: ${{ secrets.WIN_SELFSIGN_PFX_BASE64 }}
+          WIN_SELFSIGN_PFX_PASSWORD: ${{ secrets.WIN_SELFSIGN_PFX_PASSWORD }}
+        run: .\mac-native\codesigning\sign-windows.ps1 -TargetPath "windows-native\Output\DataMoverSetup.exe"
 
       - name: Arhiveaza instalatorul intr-un .zip
         run: |
