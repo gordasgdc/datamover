@@ -1,7 +1,7 @@
 {
   "version": "2.14.0",
   "release_date": "2026-09-06",
-  "changes": "Flush fizic pe disc inainte de a marca fisierul OK",
+  "changes": "Metadate video si thumbnail-uri in raportul DIT PDF",
   "download_url": {
     "windows": "https://github.com/gordasgdc/datamover/releases/latest/download/DataMover-Windows.zip",
     "mac": "https://github.com/gordasgdc/datamover/releases/latest/download/DataMover-Mac.zip",
