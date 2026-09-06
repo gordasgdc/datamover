@@ -1,7 +1,7 @@
 {
   "version": "2.12.0",
   "release_date": "2026-09-06",
-  "changes": "Corectare etichete coloane in raportul HTML (Hash sursa/Hash destinatie)",
+  "changes": "Motor de copiere reconstruit: o singura citire a cardului, indiferent de numarul de destinatii",
   "download_url": {
     "windows": "https://github.com/gordasgdc/datamover/releases/latest/download/DataMover-Windows.zip",
     "mac": "https://github.com/gordasgdc/datamover/releases/latest/download/DataMover-Mac.zip",
