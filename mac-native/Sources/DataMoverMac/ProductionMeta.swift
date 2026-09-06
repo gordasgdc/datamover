@@ -125,7 +125,11 @@ enum HTMLReport {
             html += "<div class=\"notes\">\(escape(meta.notes))</div>"
         }
 
-        html += "<table><thead><tr><th></th><th>Fișier</th><th>Mărime</th><th>Sursă</th><th>Destinație</th><th>Status</th><th>Eroare</th></tr></thead><tbody>"
+        // [2026-09-06] "Sursă"/"Destinație" era un nume gresit - coloanele
+        // arata de fapt hash-urile de verificare (srcHash/dstHash), nu caile
+        // fisierelor (calea completa nu era retinuta separat de `file`,
+        // care e deja calea relativa afisata in prima coloana).
+        html += "<table><thead><tr><th></th><th>Fișier</th><th>Mărime</th><th>Hash sursă</th><th>Hash destinație</th><th>Status</th><th>Eroare</th></tr></thead><tbody>"
         for row in rows {
             let cls = row.status.hasPrefix("OK") ? "s-ok" : (row.status.hasPrefix("SARIT") ? "s-skip" : "s-fail")
             let thumbCell = thumbnailDataURI(path: row.destPath).map { "<img class=\"thumb\" src=\"\($0)\">" } ?? ""

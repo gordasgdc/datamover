@@ -1600,3 +1600,17 @@ Versiune 2.11.3 -> 2.11.4 (PATCH), sincronizata in toate cele 4 puncte
 (Info.plist Mac, docs/update.json, DataMover.Client.csproj, installer.iss)
 desi schimbarea e doar pe Windows - Regula 14, acelasi tipar deja folosit
 in acest repo la fiecare bump anterior.
+
+## Etapa 2026-09-06 (6) — Etichete gresite in raportul HTML (v2.11.5)
+
+Coloanele "Sursa"/"Destinatie" din tabelul raportului HTML
+(`ProductionMeta.swift` Mac, `ProductionMeta.cs` Windows) afisau de fapt
+`srcHash`/`dstHash` (valori de verificare truncheate), nu cai de fisiere -
+`row.file` (prima coloana) e deja calea relativa afisata, iar o cale
+COMPLETA nu era retinuta separat in `ReportRow` pentru a fi afisata acolo.
+Redenumite "Hash sursa"/"Hash destinatie" pe ambele platforme, cu comentariu
+explicativ langa antetul tabelului.
+
+Versiune 2.11.4 -> 2.11.5 (PATCH), sincronizata in toate cele 4 puncte.
+Verificat: `swift build` (Mac) si `dotnet build` (Windows.Core) - 0 erori
+pe ambele.

@@ -112,7 +112,10 @@ footer { margin-top:24px; color:#6B737D; font-size:11px; }
             if (meta.Notes.Length > 0)
                 html.Append($"<div class=\"notes\">{Escape(meta.Notes)}</div>");
 
-            html.Append("<table><thead><tr><th></th><th>Fișier</th><th>Mărime</th><th>Sursă</th><th>Destinație</th><th>Status</th><th>Eroare</th></tr></thead><tbody>");
+            // [2026-09-06] "Sursă"/"Destinație" era un nume gresit -
+            // coloanele arata de fapt hash-urile de verificare
+            // (SrcHash/DstHash), nu caile fisierelor.
+            html.Append("<table><thead><tr><th></th><th>Fișier</th><th>Mărime</th><th>Hash sursă</th><th>Hash destinație</th><th>Status</th><th>Eroare</th></tr></thead><tbody>");
             foreach (var row in rows)
             {
                 var cls = row.Status.StartsWith("OK") ? "s-ok" : (row.Status.StartsWith("SARIT") ? "s-skip" : "s-fail");

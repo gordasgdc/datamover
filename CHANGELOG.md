@@ -1,5 +1,10 @@
 # Changelog — DataMover
 
+## v2.11.5 — Etichete corecte în raportul HTML (2026-09-06)
+Coloanele „Sursă”/„Destinație” din raportul HTML arătau de fapt valori de
+hash (verificare), nu căi de fișiere — redenumite „Hash sursă”/
+„Hash destinație”, pe Mac și Windows.
+
 ## v2.11.4 — Buton „Ghid” în clientul Windows (2026-09-06)
 Clientul Windows (WPF) nu avea niciun acces la ghidul PDF, deși există de
 mult pentru Mac. Buton nou „Ghid” în fereastra principală, lângă
