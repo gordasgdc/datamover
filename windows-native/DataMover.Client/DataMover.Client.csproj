@@ -25,12 +25,24 @@
     <!-- Rescriere WPF/Fluent (2026-08-28) - inlocuieste treptat ui/windows
          (Python/Tkinter). Versiune sincronizata cu varianta Mac/Python -
          vezi Regula 14 din CLAUDE.md. -->
-    <Version>2.11.3</Version>
+    <Version>2.11.4</Version>
     <ApplicationIcon>app.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="WPF-UI" Version="3.0.5" />
+  </ItemGroup>
+
+  <!-- [2026-09-06] Ghidurile PDF (RO/EN/ES, deja existente in docs/guides/
+       pentru Mac) - clientul WPF nu avea NICIUN acces la ele. App-ul e
+       RO-only azi (fara selector de limba), deci butonul "Ghid" deschide
+       mereu varianta RO - celelalte doua raman bundle-uite pentru ziua in
+       care se adauga un selector de limba (Regula 30 - nu se lasa pe
+       jumatate facut). -->
+  <ItemGroup>
+    <Content Include="..\..\docs\guides\DataMover_Ghid_RO.pdf" Link="DataMover_Ghid_RO.pdf" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\docs\guides\DataMover_Guide_EN.pdf" Link="DataMover_Guide_EN.pdf" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\docs\guides\DataMover_Guia_ES.pdf" Link="DataMover_Guia_ES.pdf" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

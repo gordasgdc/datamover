@@ -245,6 +245,18 @@ public partial class MainWindow : FluentWindow
     private async void OnCheckUpdatesClicked(object sender, RoutedEventArgs e) =>
         await CheckForUpdatesAsync(this, respectDismissal: false);
 
+    /// [2026-09-06] Deschide ghidul PDF mare (port 1:1 al `GuidePDF.swift`,
+    /// Mac) - clientul WPF nu avea NICIUN acces la ghid pana acum, desi
+    /// PDF-urile RO/EN/ES exista deja in docs/guides/ (bundle-uite acum
+    /// langa exe, vezi DataMover.Client.csproj). App-ul e RO-only azi,
+    /// deci deschide mereu varianta RO.
+    private void OnShowGuideClicked(object sender, RoutedEventArgs e)
+    {
+        var path = Path.Combine(AppContext.BaseDirectory, "DataMover_Ghid_RO.pdf");
+        if (!File.Exists(path)) return;
+        Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
+    }
+
     private void OnShowProfileClicked(object sender, RoutedEventArgs e) =>
         new ProfileWindow { Owner = this }.ShowDialog();
 

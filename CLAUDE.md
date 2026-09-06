@@ -1576,3 +1576,27 @@ Versiune 2.11.2 → 2.11.3 (PATCH — adăugare vizibilă la o funcție
 existentă, fără schimbare de arhitectură, Regula 14) — sincronizată în
 `Info.plist` (Mac, + `CFBundleVersion` 22→23), `DataMover.Client.csproj`,
 `installer.iss`, `docs/update.json`.
+
+## Etapa 2026-09-06 (5) — Buton "Ghid" in clientul Windows (v2.11.4)
+
+Audit ecosistem (cerut de Cristi): clientul WPF nu avea NICIUN acces la
+ghidul PDF, desi `docs/guides/DataMover_Ghid_RO.pdf`/EN/ES exista deja de
+la etapa "Ghiduri PDF rescrise complet" (v2.11.2) - erau generate, dar
+niciodata bundle-uite/deschise din clientul Windows.
+
+**Fix**: `DataMover.Client.csproj` - 3 PDF-uri adaugate ca `Content`
+(`CopyToOutputDirectory=PreserveNewest`), langa exe la publish. Buton nou
+"Ghid" (`MainWindow.xaml`, langa "Actualizari") -> `OnShowGuideClicked`
+(`MainWindow.xaml.cs`, port 1:1 al `GuidePDF.swift` Mac) - `Process.Start`
+cu `UseShellExecute=true`, deschide `DataMover_Ghid_RO.pdf` (clientul WPF
+e RO-only azi, fara selector de limba - EN/ES raman bundle-uite pentru
+cand se adauga unul, Regula 30).
+
+**Verificat**: `dotnet build` (Core+Client) - 0 erori, 0 avertismente,
+XAML->BAML compilat real (validarea `ui:SymbolIcon QuestionCircle24` s-ar
+fi stricat la compilare daca numele simbolului era gresit).
+
+Versiune 2.11.3 -> 2.11.4 (PATCH), sincronizata in toate cele 4 puncte
+(Info.plist Mac, docs/update.json, DataMover.Client.csproj, installer.iss)
+desi schimbarea e doar pe Windows - Regula 14, acelasi tipar deja folosit
+in acest repo la fiecare bump anterior.

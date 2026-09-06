@@ -1,5 +1,10 @@
 # Changelog — DataMover
 
+## v2.11.4 — Buton „Ghid” în clientul Windows (2026-09-06)
+Clientul Windows (WPF) nu avea niciun acces la ghidul PDF, deși există de
+mult pentru Mac. Buton nou „Ghid” în fereastra principală, lângă
+„Actualizări”, deschide ghidul de utilizare complet (RO).
+
 ## v2.11.3 — Thumbnail real per fișier în raportul HTML (Mac + Windows, 2026-09-06)
 Raportul HTML generat la finalul unui transfer arată acum, lângă fiecare
 fișier, o previzualizare reală a conținutului lui (cadru de video, pagina

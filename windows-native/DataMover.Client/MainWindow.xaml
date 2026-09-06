@@ -307,6 +307,7 @@
                      buton vizibil doar dupa un transfer finalizat. -->
                 <ui:Button x:Name="OpenDestinationButton" Content="Deschide destinatia" Icon="{ui:SymbolIcon FolderOpen24}"
                            Click="OnOpenLastDestinationClicked" Visibility="Collapsed" Margin="0,0,6,4" />
+                <ui:Button Content="Ghid" Icon="{ui:SymbolIcon QuestionCircle24}" Click="OnShowGuideClicked" Margin="0,0,6,4" />
                 <ui:Button Content="Actualizari" Icon="{ui:SymbolIcon ArrowSync24}" Click="OnCheckUpdatesClicked" Margin="0,0,6,4" />
                 <!-- Indicator global de dependinte (Regula 4, CLAUDE.md) - rosu doar daca
                      lipseste o dependinta OBLIGATORIE (vezi SystemDependencyChecker.cs);
