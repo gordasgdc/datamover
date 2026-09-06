@@ -291,6 +291,12 @@ struct ReportRow {
     let dstHash: String
     let status: String
     let error: String
+    /// [2026-09-06] Calea REALA a fisierului copiat la destinatie — pana
+    /// acum lipsea (coloanele "Sursa"/"Destinatie" din HTMLReport arata de
+    /// fapt hash-urile, nu caile). Necesara ca sa poata genera un thumbnail
+    /// real (QLThumbnailGenerator) pentru raportul HTML, cerut de Cristi
+    /// dupa ce a vazut thumbnail-urile din raportul CG Convertor.
+    let destPath: String
 }
 
 /// Rezultatul unei singure destinatii, la final — folosit de OffloadRunner
@@ -517,7 +523,7 @@ final class DestinationJob {
                 skipCount += 1
                 filesStatus[entry.relPath] = "sarit"
                 logRow(ReportRow(file: entry.relPath, sizeBytes: entry.size,
-                                  srcHash: outcome.srcHash, dstHash: outcome.dstHash, status: "SARIT", error: ""))
+                                  srcHash: outcome.srcHash, dstHash: outcome.dstHash, status: "SARIT", error: "", destPath: destPath))
                 recordInMHL(entry: entry, hash: outcome.srcHash)
                 cloudUploadQueue?.enqueue(relPath: entry.relPath)
                 onFileDone(entry.size)
@@ -542,7 +548,7 @@ final class DestinationJob {
             }
             logRow(ReportRow(file: entry.relPath, sizeBytes: entry.size,
                               srcHash: outcome.srcHash, dstHash: outcome.dstHash,
-                              status: status, error: outcome.error))
+                              status: status, error: outcome.error, destPath: destPath))
             // Urcare Cloud (2026-08-30): doar fisierele copiate cu succes
             // local (OK/SARIT) - un fisier cu NEPOTRIVIRE/EROARE local nu se
             // urca, la fel cum nu s-ar considera "transferat" nici pe disc.
@@ -667,12 +673,12 @@ final class DestinationJob {
                 onActivity("Recuperat la reîncercare: \(entry.relPath)")
                 logRow(ReportRow(file: entry.relPath, sizeBytes: entry.size,
                                   srcHash: outcome.srcHash, dstHash: outcome.dstHash,
-                                  status: "OK (reîncercat)", error: ""))
+                                  status: "OK (reîncercat)", error: "", destPath: destPath))
             } else {
                 onActivity("Eșuat și la reîncercare: \(entry.relPath)")
                 logRow(ReportRow(file: entry.relPath, sizeBytes: entry.size,
                                   srcHash: outcome.srcHash, dstHash: outcome.dstHash,
-                                  status: outcome.status + " (reîncercat)", error: outcome.error))
+                                  status: outcome.status + " (reîncercat)", error: outcome.error, destPath: destPath))
             }
             maybeWriteCheckpoint(targetRoot: targetRoot)
         }

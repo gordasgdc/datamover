@@ -26,6 +26,10 @@ public sealed class ReportRow
     public string DstHash { get; init; } = "";
     public string Status { get; init; } = "";
     public string Error { get; init; } = "";
+    /// [2026-09-06] Calea REALA a fisierului copiat la destinatie — port
+    /// 1:1 al `ReportRow.destPath` (Mac), necesara pentru thumbnail-ul
+    /// real din raportul HTML (Regula 31).
+    public string DestPath { get; init; } = "";
 }
 
 public sealed class DestinationResult

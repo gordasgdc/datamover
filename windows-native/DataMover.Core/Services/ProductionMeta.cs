@@ -77,6 +77,7 @@ h1 { font-size:20px; margin:0 0 4px; }
 table { width:100%; border-collapse:collapse; margin-top:16px; font-size:12px; }
 th { text-align:left; color:#9AA3AE; font-weight:600; border-bottom:1px solid #2A2F36; padding:6px 8px; }
 td { padding:6px 8px; border-bottom:1px solid #20242A; word-break:break-all; }
+td .thumb { display:block; width:64px; max-width:100%; height:36px; object-fit:cover; border-radius:4px; border:1px solid #2A2F36; }
 .s-ok { color:#4ADE80; } .s-fail { color:#F87171; } .s-skip { color:#9AA3AE; }
 footer { margin-top:24px; color:#6B737D; font-size:11px; }
 @media (max-width:700px){ body{padding:14px} table{font-size:11px} }
@@ -111,11 +112,13 @@ footer { margin-top:24px; color:#6B737D; font-size:11px; }
             if (meta.Notes.Length > 0)
                 html.Append($"<div class=\"notes\">{Escape(meta.Notes)}</div>");
 
-            html.Append("<table><thead><tr><th>Fișier</th><th>Mărime</th><th>Sursă</th><th>Destinație</th><th>Status</th><th>Eroare</th></tr></thead><tbody>");
+            html.Append("<table><thead><tr><th></th><th>Fișier</th><th>Mărime</th><th>Sursă</th><th>Destinație</th><th>Status</th><th>Eroare</th></tr></thead><tbody>");
             foreach (var row in rows)
             {
                 var cls = row.Status.StartsWith("OK") ? "s-ok" : (row.Status.StartsWith("SARIT") ? "s-skip" : "s-fail");
-                html.Append($"<tr><td>{Escape(row.File)}</td><td>{FormatBytes(row.SizeBytes)}</td>");
+                var thumbUri = ThumbnailExtractor.ThumbnailDataUri(row.DestPath);
+                var thumbCell = thumbUri != null ? $"<img class=\"thumb\" src=\"{thumbUri}\">" : "";
+                html.Append($"<tr><td>{thumbCell}</td><td>{Escape(row.File)}</td><td>{FormatBytes(row.SizeBytes)}</td>");
                 html.Append($"<td>{Escape(Short(row.SrcHash))}</td><td>{Escape(Short(row.DstHash))}</td>");
                 html.Append($"<td class=\"{cls}\">{Escape(row.Status)}</td><td>{Escape(row.Error)}</td></tr>");
             }

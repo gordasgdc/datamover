@@ -1,5 +1,6 @@
 import Foundation
 import AppKit
+import QuickLookThumbnailing
 
 /// [2026-09-03] Metadatele productiei, atasate unui transfer.
 ///
@@ -82,6 +83,7 @@ enum HTMLReport {
         table { width:100%; border-collapse:collapse; margin-top:16px; font-size:12px; }
         th { text-align:left; color:#9AA3AE; font-weight:600; border-bottom:1px solid #2A2F36; padding:6px 8px; }
         td { padding:6px 8px; border-bottom:1px solid #20242A; word-break:break-all; }
+        td .thumb { display:block; width:64px; max-width:100%; height:36px; object-fit:cover; border-radius:4px; border:1px solid #2A2F36; }
         .s-ok { color:#4ADE80; } .s-fail { color:#F87171; } .s-skip { color:#9AA3AE; }
         footer { margin-top:24px; color:#6B737D; font-size:11px; }
         @media (max-width:700px){ body{padding:14px} table{font-size:11px} }
@@ -123,10 +125,11 @@ enum HTMLReport {
             html += "<div class=\"notes\">\(escape(meta.notes))</div>"
         }
 
-        html += "<table><thead><tr><th>Fișier</th><th>Mărime</th><th>Sursă</th><th>Destinație</th><th>Status</th><th>Eroare</th></tr></thead><tbody>"
+        html += "<table><thead><tr><th></th><th>Fișier</th><th>Mărime</th><th>Sursă</th><th>Destinație</th><th>Status</th><th>Eroare</th></tr></thead><tbody>"
         for row in rows {
             let cls = row.status.hasPrefix("OK") ? "s-ok" : (row.status.hasPrefix("SARIT") ? "s-skip" : "s-fail")
-            html += "<tr><td>\(escape(row.file))</td><td>\(formatBytes(row.sizeBytes))</td>"
+            let thumbCell = thumbnailDataURI(path: row.destPath).map { "<img class=\"thumb\" src=\"\($0)\">" } ?? ""
+            html += "<tr><td>\(thumbCell)</td><td>\(escape(row.file))</td><td>\(formatBytes(row.sizeBytes))</td>"
             html += "<td>\(escape(short(row.srcHash)))</td><td>\(escape(short(row.dstHash)))</td>"
             html += "<td class=\"\(cls)\">\(escape(row.status))</td><td>\(escape(row.error))</td></tr>"
         }
@@ -157,6 +160,38 @@ enum HTMLReport {
         let ext = (path as NSString).pathExtension.lowercased()
         let mime = (ext == "jpg" || ext == "jpeg") ? "image/jpeg" : (ext == "gif" ? "image/gif" : "image/png")
         return "data:\(mime);base64,\(data.base64EncodedString())"
+    }
+
+    /// [2026-09-06] Thumbnail real per fisier, cerut de Cristi dupa ce a
+    /// vazut cat de bine arata cele din raportul CG Convertor ("arata
+    /// foarte pro"). Foloseste QLThumbnailGenerator (framework de sistem
+    /// macOS, ZERO dependinta noua — DataMover ramane fara FFmpeg/librarii
+    /// grele, spre deosebire de CGConvertor) — genereaza o previzualizare
+    /// reala a CONTINUTULUI (cadru de video, pagina 1 de PDF, imaginea
+    /// insasi), nu doar iconita generica de tip de fisier. API-ul e
+    /// asincron; `writeReports` ruleaza deja pe un thread de fundal
+    /// (Regula 21 — offload-ul intreg e background), deci blocam scurt cu
+    /// un semafor, per fisier, fara sa afectam UI-ul principal.
+    private static func thumbnailDataURI(path: String) -> String? {
+        guard !path.isEmpty, FileManager.default.fileExists(atPath: path) else { return nil }
+        let size = CGSize(width: 160, height: 90)
+        let request = QLThumbnailGenerator.Request(fileAt: URL(fileURLWithPath: path),
+                                                     size: size, scale: 2,
+                                                     representationTypes: .thumbnail)
+        let semaphore = DispatchSemaphore(value: 0)
+        var jpegData: Data?
+        QLThumbnailGenerator.shared.generateBestRepresentation(for: request) { representation, _ in
+            defer { semaphore.signal() }
+            guard let representation else { return }
+            let image = NSImage(cgImage: representation.cgImage, size: size)
+            guard let tiff = image.tiffRepresentation, let bitmap = NSBitmapImageRep(data: tiff) else { return }
+            jpegData = bitmap.representation(using: .jpeg, properties: [.compressionFactor: 0.6])
+        }
+        // Plafon de asteptare: un fisier corupt/blocat nu trebuie sa
+        // inghete generarea raportului la nesfarsit.
+        _ = semaphore.wait(timeout: .now() + 3)
+        guard let jpegData else { return nil }
+        return "data:image/jpeg;base64,\(jpegData.base64EncodedString())"
     }
 
     private static func short(_ hash: String) -> String {

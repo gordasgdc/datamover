@@ -1519,3 +1519,60 @@ material).
 - **Verificat**: `swift build` (Mac, 0 erori) + `dotnet build` pe
   `DataMover.Core` (0 erori, 0 warning-uri). Clientul WPF (net8.0-windows)
   nu se poate compila pe Mac — verificat de CI la release.
+
+## Etapa 2026-09-06 — Thumbnail real per fișier în raportul HTML (v2.11.3, paritate Mac/Windows)
+
+Cerință directă a lui Cristi, în timp ce testa fix-ul de comparație
+metadate al CGConvertor: *"nici în aplicația Data Mover nu îmi apar aceste
+thumbnail-uri în generarea rapoartelor... arată foarte pro și dă o senzație
+foarte plăcută"*. Raportul HTML (`HTMLReport`/`HtmlReport`, alături de CSV
+și PDF) arăta doar text — nume, mărime, hash-uri, status — fără nicio
+previzualizare vizuală a conținutului copiat.
+
+**Descoperire la implementare, nu presupusă**: `ReportRow` (ambele
+platforme) NU avea calea reală a fișierului la destinație — doar hash-uri
+și numele relativ. Coloanele „Sursă"/„Destinație" din raportul HTML arătau
+de fapt hash-uri trunchiate, nu căi — nume derutant, păstrat neschimbat
+aici (schimbarea lor ar fi scop separat, nemenționat de Cristi). A fost
+nevoie de un câmp nou, `destPath`/`DestPath`, adăugat la toate cele 4
+puncte unde se construiește un `ReportRow` (bucla principală + pasul de
+reîncercare), pe ambele platforme.
+
+**Mac**: `QuickLookThumbnailing` (framework de sistem, ZERO dependință
+nouă — DataMover rămâne fără FFmpeg/librării grele, spre deosebire de
+CGConvertor). `thumbnailDataURI(path:)` (nou, `ProductionMeta.swift`)
+cere o reprezentare de 160×90 prin `QLThumbnailGenerator.shared.
+generateBestRepresentation` (API asincron, blocat scurt cu un
+`DispatchSemaphore` — `writeReports` rulează deja pe fundal, Regula 21),
+convertită la JPEG (`NSBitmapImageRep`, compresie 0.6) și embedată ca
+data URI, cu plafon de așteptare de 3s per fișier (un fișier corupt/blocat
+nu trebuie să înghețe generarea raportului).
+
+**Windows**: fără echivalent direct al QuickLook — `ThumbnailExtractor.cs`
+(nou, `DataMover.Core`) folosește COM-ul nativ al Shell-ului,
+`IShellItemImageFactory::GetImage` (ACELAȘI mecanism din spatele
+previzualizărilor "Large icons" din Explorer — o previzualizare REALĂ a
+conținutului, nu iconița generică de tip fișier ca la `ShellIcon.cs`,
+folosit doar pentru iconițe de disc). `HBITMAP` → `System.Drawing.Bitmap`
+→ JPEG (pachet nou, `System.Drawing.Common` — funcțional doar pe Windows,
+`net8.0-windows` deja țintă exclusivă a acestui proiect).
+
+**Verificat REAL, nu doar citire de cod (Mac)**: harness standalone
+(`ReportRowShim.swift` + `ProductionMeta.swift` + `main.swift`, compilat cu
+`swiftc -framework AppKit -framework QuickLookThumbnailing`) — un clip
+`.mp4` real generat cu ffmpeg, `HTMLReport.write(...)` apelat cu
+`destPath` către el, HTML-ul rezultat conține efectiv `class="thumb"` +
+`data:image/jpeg;base64` — thumbnail-ul chiar s-a extras din cadrul
+video, nu doar cod care compilează.
+
+**Verificat parțial (Windows)**: `dotnet build` (Core + Client, de pe
+Mac) — 0 erori, 0 avertismente. **Extragerea COM efectivă (`SHCreateItemFromParsingName`/
+`IShellItemImageFactory`) NU a putut fi testată** — necesită Windows real
+(interop COM nu rulează sub `EnableWindowsTargeting` pe Mac). Cristi
+trebuie să confirme manual, la următorul transfer real pe Windows, că
+thumbnail-urile chiar apar în `offload_report_*.html`.
+
+Versiune 2.11.2 → 2.11.3 (PATCH — adăugare vizibilă la o funcție
+existentă, fără schimbare de arhitectură, Regula 14) — sincronizată în
+`Info.plist` (Mac, + `CFBundleVersion` 22→23), `DataMover.Client.csproj`,
+`installer.iss`, `docs/update.json`.

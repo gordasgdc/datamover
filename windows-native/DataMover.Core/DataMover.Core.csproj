@@ -18,6 +18,11 @@
          (gratuita, companii sub 1M USD venit anual - cazul acestui proiect). -->
     <PackageReference Include="QuestPDF" Version="2024.10.3" />
 
+    <!-- Thumbnail real per fisier in raportul HTML (2026-09-06, cerut de
+         Cristi dupa ce a vazut cele din raportul CG Convertor) - HBITMAP
+         (IShellItemImageFactory, ThumbnailExtractor.cs) -> Bitmap -> JPEG. -->
+    <PackageReference Include="System.Drawing.Common" Version="8.0.10" />
+
     <!-- Licentiere + Profil/HWID + verificare update.json (2026-08-28) -
          acelasi tipar ca GDCVaultWin/GDCPluginManagerWin, portat aici la
          cererea lui Cristi. -->

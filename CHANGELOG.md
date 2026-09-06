@@ -1,5 +1,12 @@
 # Changelog — DataMover
 
+## v2.11.3 — Thumbnail real per fișier în raportul HTML (Mac + Windows, 2026-09-06)
+Raportul HTML generat la finalul unui transfer arată acum, lângă fiecare
+fișier, o previzualizare reală a conținutului lui (cadru de video, pagina
+1 de PDF, imaginea însăși) — nu doar numele fișierului. Mac: motor nativ
+de sistem (QuickLook), fără nicio dependință nouă. Windows: același
+mecanism folosit de Explorer pentru previzualizări ("Large icons").
+
 ## v2.11.2 — Ghiduri PDF rescrise complet și pagina web actualizată (2026-09-03)
 **Ghidurile PDF (RO/EN/ES)** au fost refăcute de la zero, la cererea lui
 Cristi („pas cu pas și foarte, foarte detaliat, toate opțiunile și toate

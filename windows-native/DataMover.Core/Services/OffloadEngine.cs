@@ -260,7 +260,7 @@ public sealed class DestinationJob
             {
                 SkipCount++;
                 _filesStatus[entry.RelPath] = "sarit";
-                LogRow(new ReportRow { File = entry.RelPath, SizeBytes = entry.Size, SrcHash = outcome.SrcHash, DstHash = outcome.DstHash, Status = "SARIT" });
+                LogRow(new ReportRow { File = entry.RelPath, SizeBytes = entry.Size, SrcHash = outcome.SrcHash, DstHash = outcome.DstHash, Status = "SARIT", DestPath = destPath });
                 RecordInMhl(entry, outcome.SrcHash);
                 CloudUploadQueue?.Enqueue(entry.RelPath);
                 OnFileDone?.Invoke(entry.Size);
@@ -283,7 +283,7 @@ public sealed class DestinationJob
                 // acest tip de esec, care trece la a doua incercare.
                 _failedEntries.Add(entry);
             }
-            LogRow(new ReportRow { File = entry.RelPath, SizeBytes = entry.Size, SrcHash = outcome.SrcHash, DstHash = outcome.DstHash, Status = outcome.Status, Error = outcome.Error });
+            LogRow(new ReportRow { File = entry.RelPath, SizeBytes = entry.Size, SrcHash = outcome.SrcHash, DstHash = outcome.DstHash, Status = outcome.Status, Error = outcome.Error, DestPath = destPath });
             if (outcome.Status == "OK")
             {
                 RecordInMhl(entry, outcome.SrcHash);
@@ -411,12 +411,12 @@ public sealed class DestinationJob
                 RecordInMhl(entry, outcome.SrcHash);
                 CloudUploadQueue?.Enqueue(entry.RelPath);
                 OnActivity?.Invoke($"Recuperat la reîncercare: {entry.RelPath}");
-                LogRow(new ReportRow { File = entry.RelPath, SizeBytes = entry.Size, SrcHash = outcome.SrcHash, DstHash = outcome.DstHash, Status = "OK (reîncercat)" });
+                LogRow(new ReportRow { File = entry.RelPath, SizeBytes = entry.Size, SrcHash = outcome.SrcHash, DstHash = outcome.DstHash, Status = "OK (reîncercat)", DestPath = destPath });
             }
             else
             {
                 OnActivity?.Invoke($"Eșuat și la reîncercare: {entry.RelPath}");
-                LogRow(new ReportRow { File = entry.RelPath, SizeBytes = entry.Size, SrcHash = outcome.SrcHash, DstHash = outcome.DstHash, Status = outcome.Status + " (reîncercat)", Error = outcome.Error });
+                LogRow(new ReportRow { File = entry.RelPath, SizeBytes = entry.Size, SrcHash = outcome.SrcHash, DstHash = outcome.DstHash, Status = outcome.Status + " (reîncercat)", Error = outcome.Error, DestPath = destPath });
             }
             MaybeWriteCheckpoint(targetRoot);
         }
