@@ -1,6 +1,6 @@
 # Changelog — DataMover
 
-## v2.14.1 (2026-09-11) — Semnare digitala a aplicatiei Windows
+## v2.14.2 (2026-09-11) — Semnare digitala a aplicatiei Windows
 
 Clientul Windows si installer-ul sunt acum semnate digital la fiecare build.
 Pipeline-ul vechi de build Windows (Python) a fost retras - ramane un singur
