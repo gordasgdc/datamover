@@ -1,5 +1,16 @@
 # Changelog — DataMover
 
+## v2.14.1 (2026-09-11) — Semnare digitala a aplicatiei Windows
+
+Clientul Windows si installer-ul sunt acum semnate digital la fiecare build.
+Pipeline-ul vechi de build Windows (Python) a fost retras - ramane un singur
+client Windows, cel nativ.
+
+**TODO paritate Mac**: pachetul Mac pentru 2.14.1 se construieste local
+(`cd mac-native && ./build_installer.sh`) si se ataseaza manual la release;
+`docs/update.json` ramane la 2.14.0 pana atunci, ca sa nu trimita userii Mac
+spre un release fara pachet Mac.
+
 ## v2.14.0 — Raport DIT: thumbnail-uri + metadate video în PDF (2026-09-06)
 
 Raportul PDF de la finalul unui offload arată acum, pentru fiecare fișier
