@@ -1892,3 +1892,26 @@ grep -c "Co-Authored-By: Claude"` → 0 (Regula 32, verificat înainte de
 commit). **Nu s-a rulat un release real** — job-ul retras/modificat nu a
 fost declanșat printr-un tag nou în această sesiune, doar validare
 statică a workflow-urilor.
+
+## Etapa 2026-09-11 — v2.14.2 publicat cu semnare Windows activa
+
+**Bug real gasit la primul build de semnare (v2.14.1, esuat)**: pasul de
+semnare tintea `windows-native\publish\DataMover.Client.exe`, dar
+`AssemblyName` din `.csproj` e `DataMover` - executabilul publicat real se
+numeste `DataMover.exe`. Calea fusese presupusa din numele PROIECTULUI, nu
+citita din `AssemblyName`. CI-ul a picat corect ("nu exista - nimic de
+semnat"), nu a produs un binar nesemnat tacut. Corectat in AMBELE workflow-uri
+(`release.yml` + `build-windows-wpf.yml`).
+
+Tag-ul v2.14.1 a fost abandonat (nu produsese niciun release), s-a mers pe
+v2.14.2 - un tag deja publicat nu se muta.
+
+**Lectie generala**: la portarea semnarii pe un repo nou, calea tintei se
+citeste din `AssemblyName`/output-ul real de build, nu se deduce din numele
+proiectului.
+
+**TODO paritate Mac**: pachetul Mac pentru 2.14.2 se construieste local
+(`cd mac-native && ./build_installer.sh`) si se ataseaza manual la release.
+`docs/update.json` a fost lasat INTENTIONAT la 2.14.0 - are un singur camp
+`version` comun ambelor platforme, deci un bump acum ar fi trimis userii Mac
+spre un release fara pachet Mac (404). Se bump-eaza dupa ce Mac-ul e urcat.
