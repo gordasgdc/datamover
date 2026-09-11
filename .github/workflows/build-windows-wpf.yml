@@ -44,13 +44,13 @@ jobs:
       # publicul larg - vezi mac-native/codesigning/README-windows.md).
       # Ruleaza DOAR daca secretele exista - altfel build-ul continua
       # NESEMNAT, exact ca inainte, fara nicio eroare.
-      - name: Semneaza DataMover.Client.exe (Self-Signed, test intern)
+      - name: Semneaza DataMover.exe (Self-Signed, test intern)
         if: ${{ env.HAS_WIN_SELFSIGN == 'true' }}
         shell: pwsh
         env:
           WIN_SELFSIGN_PFX_BASE64: ${{ secrets.WIN_SELFSIGN_PFX_BASE64 }}
           WIN_SELFSIGN_PFX_PASSWORD: ${{ secrets.WIN_SELFSIGN_PFX_PASSWORD }}
-        run: .\mac-native\codesigning\sign-windows.ps1 -TargetPath "windows-native\publish\DataMover.Client.exe"
+        run: .\mac-native\codesigning\sign-windows.ps1 -TargetPath "windows-native\publish\DataMover.exe"
 
       - name: Compileaza instalatorul (Inno Setup - preinstalat pe windows-latest)
         run: |
