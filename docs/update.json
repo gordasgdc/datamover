@@ -1,7 +1,7 @@
 {
-  "version": "2.14.0",
-  "release_date": "2026-09-06",
-  "changes": "Metadate video si thumbnail-uri in raportul DIT PDF",
+  "version": "2.14.2",
+  "release_date": "2026-09-11",
+  "changes": "Semnare digitală a aplicației Windows; raport DIT cu metadate video și thumbnail-uri.",
   "download_url": {
     "windows": "https://github.com/gordasgdc/datamover/releases/latest/download/DataMover-Windows.zip",
     "mac": "https://github.com/gordasgdc/datamover/releases/latest/download/DataMover-Mac.zip",
