@@ -1,7 +1,7 @@
 {
-  "version": "2.14.2",
-  "release_date": "2026-09-11",
-  "changes": "Semnare digitală a aplicației Windows; raport DIT cu metadate video și thumbnail-uri.",
+  "version": "2.14.3",
+  "release_date": "2026-09-14",
+  "changes": "Contrast și teme reparate pe Windows: textul rămâne lizibil în Dark și Light, fereastra de actualizare nu mai apare albă, iar câmpurile dezactivate se citesc.",
   "download_url": {
     "windows": "https://github.com/gordasgdc/datamover/releases/latest/download/DataMover-Windows.zip",
     "mac": "https://github.com/gordasgdc/datamover/releases/latest/download/DataMover-Mac.zip",
