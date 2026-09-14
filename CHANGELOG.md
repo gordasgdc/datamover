@@ -1,5 +1,17 @@
 # Changelog — DataMover
 
+## v2.14.3 (2026-09-14) — Contrast și teme pe Windows
+
+### Fixed
+- **Text ilizibil în Dark Mode** — unele texte rămâneau gri-închis pe fundal
+  închis, indiferent de tema aleasă.
+- **Fereastra de progres a actualizării apărea albă**, cu text negru, chiar și
+  când restul aplicației era pe temă închisă.
+- **Cardurile din Istoric rămâneau închise la culoare pe tema Light**, pe fundal
+  alb.
+- **Butoanele și câmpurile dezactivate** sunt acum lizibile: textul gri rămâne
+  vizibil în loc să se estompeze până la dispariție.
+
 ## v2.14.2 (2026-09-11) — Semnare digitala a aplicatiei Windows
 
 Clientul Windows si installer-ul sunt acum semnate digital la fiecare build.
