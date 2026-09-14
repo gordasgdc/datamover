@@ -1,7 +1,7 @@
 {
-  "version": "2.14.3",
+  "version": "2.14.4",
   "release_date": "2026-09-14",
-  "changes": "Contrast și teme reparate pe Windows: textul rămâne lizibil în Dark și Light, fereastra de actualizare nu mai apare albă, iar câmpurile dezactivate se citesc.",
+  "changes": "Listele si ferestrele folosesc acum tema aleasa in toata aplicatia: gata cu zonele albe si textul invizibil. Selectia unui rand se potriveste cu tema, iar Istoricul a fost refacut cu carduri lizibile.",
   "download_url": {
     "windows": "https://github.com/gordasgdc/datamover/releases/latest/download/DataMover-Windows.zip",
     "mac": "https://github.com/gordasgdc/datamover/releases/latest/download/DataMover-Mac.zip",
