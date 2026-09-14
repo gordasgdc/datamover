@@ -207,7 +207,12 @@ echo "════════════════════════�
 echo " Verificare finala (releases/latest/download + API de update)"
 echo "════════════════════════════════════════════════════════════════"
 FAILED=0
-for f in DataMover-Mac.zip DataMover-Windows.zip DataMover-WPF-Windows.zip; do
+# [2026-09-14] `DataMover-Windows.zip` scos din verificare: e artefactul
+# clientului Python pentru Windows, retras la v2.14.2 impreuna cu pipeline-ul
+# lui. Nu mai e produs de nimeni, deci verificarea lui raporta 404 la FIECARE
+# release — un avertisment permanent si fals, exact genul care face ca
+# verificarea finala sa fie ignorata cand semnaleaza ceva adevarat.
+for f in DataMover-Mac.zip DataMover-WPF-Windows.zip; do
     CODE=$(curl -sIL -o /dev/null -w '%{http_code}' "https://github.com/gordasgdc/datamover/releases/latest/download/$f")
     RESOLVED_TAG=$(curl -sI "https://github.com/gordasgdc/datamover/releases/latest/download/$f" \
         | grep -i '^location:' | grep -oE "v[0-9]+\.[0-9]+\.[0-9]+" | head -1)
