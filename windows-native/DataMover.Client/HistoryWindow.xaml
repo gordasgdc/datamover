@@ -11,12 +11,29 @@
         </Grid.RowDefinitions>
         <ui:TitleBar Grid.Row="0" Title="Istoric" ShowMaximize="False" />
 
-        <ListView x:Name="HistoryList" Grid.Row="1" Margin="16" SelectionMode="Single">
+        <!--
+            Istoricul, refăcut ca exemplu de conformitate (Regula 37).
+            Containerul își ia fundalul din stilul implicit de `ListView`
+            (Styles/ThemeAliases.xaml) — nu mai e nevoie de niciun atribut
+            aici, iar rândurile nu mai desenează selecția albastru-deschis a
+            sistemului. `ItemContainerStyle` rămâne nedeclarat DELIBERAT:
+            stilul implicit îl acoperă, iar unul local ar fi o a doua definiție
+            de întreținut, care s-ar desincroniza tăcut de restul listelor.
+        -->
+        <ListView x:Name="HistoryList" Grid.Row="1" Margin="16" SelectionMode="Single"
+                  ScrollViewer.HorizontalScrollBarVisibility="Disabled">
             <ListView.ItemTemplate>
                 <DataTemplate>
-                    <Border Background="{DynamicResource CardBackground}" CornerRadius="6" Padding="10" Margin="0,0,0,6">
+                    <!-- Cardul e OPAC și are propriul contur: peste o selecție
+                         translucidă trebuie să rămână lizibil, nu să se
+                         amestece cu tenta de dedesubt. -->
+                    <Border Background="{DynamicResource CardBackground}"
+                            BorderBrush="{DynamicResource CardStrokeBrush}" BorderThickness="1"
+                            CornerRadius="6" Padding="10" Margin="0,0,0,6">
                         <StackPanel>
-                            <TextBlock Text="{Binding FolderName}" FontWeight="Bold" FontSize="13" />
+                            <TextBlock Text="{Binding FolderName}" FontWeight="Bold" FontSize="13"
+                                       Foreground="{DynamicResource TextPrimaryBrush}"
+                                       TextWrapping="Wrap" />
                             <TextBlock Text="{Binding DateText}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" />
                             <TextBlock Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11">
                                 <Run Text="Sursa: " /><Run Text="{Binding SourcesSummary}" />
@@ -24,7 +41,7 @@
                             <TextBlock Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11">
                                 <Run Text="Destinatie: " /><Run Text="{Binding DestSummary}" />
                             </TextBlock>
-                            <TextBlock FontSize="11">
+                            <TextBlock FontSize="11" Foreground="{DynamicResource TextPrimaryBrush}">
                                 <Run Text="OK: " /><Run Text="{Binding OkCount}" />
                                 <Run Text="  Sarite: " /><Run Text="{Binding SkipCount}" />
                                 <Run Text="  Probleme: " /><Run Text="{Binding FailCount}" />

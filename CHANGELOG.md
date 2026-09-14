@@ -1,5 +1,18 @@
 # Changelog — DataMover
 
+## v2.14.4 (2026-09-14) — Liste si ferestre pe tema, in toata aplicatia
+
+### Fixed
+- **Zone albe cu text alb** in listele si ferestrele aplicatiei. Cauza:
+  controalele obisnuite de lista pastrau aspectul clasic Windows (fundal alb,
+  selectie albastru-deschis), in timp ce textul era deschis la culoare.
+  Acum orice lista, fereastra sau panou din aplicatie foloseste automat tema
+  aleasa — inclusiv cele adaugate in viitor.
+- **Selectia unui rand** nu mai e dreptunghiul albastru-deschis al sistemului,
+  ci o tenta care se potriveste cu tema.
+- **Istoricul** a fost refacut ca prim ecran conform: carduri opace cu contur,
+  titluri si detalii cu contrast garantat.
+
 ## v2.14.3 (2026-09-14) — Contrast și teme pe Windows
 
 ### Fixed

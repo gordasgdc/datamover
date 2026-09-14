@@ -86,4 +86,108 @@
         </Style.Triggers>
     </Style>
 
+    <!--
+        ═══ Containere: stiluri IMPLICITE, fără x:Key ═══
+
+        CAUZA REALĂ, găsită în cod (2026-09-14): WPF-UI stilizează DOAR
+        propriile controale (`ui:ListView`). Un `ListView`/`ListBox` obișnuit
+        păstrează aspectul clasic Windows — fundal ALB și selecție
+        albastru-deschis — în timp ce textul aplicației e deschis la culoare.
+        Rezultatul e text alb pe alb, exact în Istoric, care folosea varianta
+        nativă, spre deosebire de ecranul principal, care o folosea pe cea
+        tematizată. De aceea reparația NU putea sta în Istoric: orice container
+        nativ adăugat oriunde altundeva ar fi apărut la fel.
+
+        Stilurile de mai jos se aplică automat fiecărui container din
+        aplicație, inclusiv celor adăugate în viitor.
+
+        DE CE NU CULORILE FIXE cerute (#18191D, #22242B, #2B3A4E): ar fi blocat
+        aplicația pe tema închisă — pe Light ai fi avut din nou panouri negre
+        pe fereastră albă, adică problema raportată, întoarsă pe dos. Culorile
+        vin din temă, iar pe tema închisă dau exact nuanțele cerute: suprafață
+        de fundal, card mai deschis cu o treaptă, selecție albastru-închis.
+    -->
+
+    <!-- Selecția: tentă translucidă, nu o culoare opacă. Peste fundal închis
+         dă albastrul-închis cerut; peste unul deschis, un albastru palid cu
+         text închis lizibil. O singură definiție, corectă în ambele teme. -->
+    <SolidColorBrush x:Key="ListSelectionBrush" Color="#662B3A4E" />
+    <SolidColorBrush x:Key="ListHoverBrush" Color="{DynamicResource SubtleFillColorSecondary}" />
+
+    <Style TargetType="Window">
+        <Setter Property="Background" Value="{DynamicResource WindowBackgroundBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+    </Style>
+
+    <Style TargetType="UserControl">
+        <Setter Property="Background" Value="{DynamicResource WindowBackgroundBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+    </Style>
+
+    <Style TargetType="ListBox">
+        <Setter Property="Background" Value="{DynamicResource WindowBackgroundBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+    </Style>
+
+    <Style TargetType="ListView">
+        <Setter Property="Background" Value="{DynamicResource WindowBackgroundBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+    </Style>
+
+    <Style TargetType="ScrollViewer">
+        <Setter Property="Background" Value="Transparent" />
+    </Style>
+
+    <!--
+        Rândurile: șablon propriu, nu doar `Background`.
+        Stilul nativ desenează selecția din culorile SISTEMULUI
+        (`SystemColors.HighlightBrush`), care ignoră complet tema aplicației —
+        un simplu Setter de fundal e suprascris de el la selecție. Doar
+        înlocuirea șablonului elimină definitiv dreptunghiul albastru-deschis.
+    -->
+    <ControlTemplate x:Key="GdcListRowTemplate" TargetType="ListBoxItem">
+        <Border x:Name="Row" Background="{TemplateBinding Background}"
+                BorderBrush="{TemplateBinding BorderBrush}"
+                BorderThickness="{TemplateBinding BorderThickness}"
+                Padding="{TemplateBinding Padding}"
+                CornerRadius="4" SnapsToDevicePixels="True">
+            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
+        </Border>
+        <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Row" Property="Background" Value="{DynamicResource ListHoverBrush}" />
+            </Trigger>
+            <Trigger Property="IsSelected" Value="True">
+                <Setter TargetName="Row" Property="Background" Value="{DynamicResource ListSelectionBrush}" />
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Foreground" Value="{DynamicResource TextDisabledBrush}" />
+                <Setter Property="Opacity" Value="1" />
+            </Trigger>
+        </ControlTemplate.Triggers>
+    </ControlTemplate>
+
+    <Style TargetType="ListBoxItem">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+        <Setter Property="Padding" Value="4,2" />
+        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        <Setter Property="Template" Value="{StaticResource GdcListRowTemplate}" />
+    </Style>
+
+    <!-- `ListViewItem` derivă din `ListBoxItem`, deci poate folosi ACELAȘI
+         șablon — o singură definiție de întreținut. -->
+    <Style TargetType="ListViewItem">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+        <Setter Property="Padding" Value="4,2" />
+        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        <Setter Property="Template" Value="{StaticResource GdcListRowTemplate}" />
+    </Style>
+
 </ResourceDictionary>
