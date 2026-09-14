@@ -1,0 +1,89 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!--
+        Regula 37: nicio culoare literală pe un control. Toate culorile de
+        fundal, text, bordură și carduri trec prin resursele de mai jos.
+
+        CUM FUNCȚIONEAZĂ, și de ce anume așa: fiecare pensulă își ia CULOAREA
+        printr-un DynamicResource către o cheie din tema WPF-UI. La comutarea
+        temei, WPF-UI înlocuiește acele culori, iar pensulele de aici se
+        actualizează singure, fiindcă nu sunt înghețate (`Freeze`) și fiindcă
+        legătura e dinamică.
+
+        Varianta greșită, evitată deliberat: `<SolidColorBrush Color="#1C1C1C"/>`
+        cu o a doua copie pentru tema light. Ar fi însemnat două seturi de
+        culori de ținut sincronizate manual, adică exact problema pe care
+        regula o interzice — doar mutată un nivel mai sus.
+    -->
+
+    <!-- Fundaluri -->
+    <SolidColorBrush x:Key="WindowBackgroundBrush" Color="{DynamicResource ApplicationBackgroundColor}" />
+    <SolidColorBrush x:Key="PrimaryBackground" Color="{DynamicResource ApplicationBackgroundColor}" />
+    <SolidColorBrush x:Key="CardBackground" Color="{DynamicResource CardBackgroundFillColorDefault}" />
+    <SolidColorBrush x:Key="CardBackgroundBrush" Color="{DynamicResource CardBackgroundFillColorDefault}" />
+    <SolidColorBrush x:Key="CardStrokeBrush" Color="{DynamicResource CardStrokeColorDefault}" />
+    <!-- Fundal pentru zone „adâncite": consolă de log, previzualizări. -->
+    <SolidColorBrush x:Key="SunkenBackgroundBrush" Color="{DynamicResource SolidBackgroundFillColorBase}" />
+
+    <!-- Text -->
+    <SolidColorBrush x:Key="TextPrimaryBrush" Color="{DynamicResource TextFillColorPrimary}" />
+    <SolidColorBrush x:Key="PrimaryForeground" Color="{DynamicResource TextFillColorPrimary}" />
+    <SolidColorBrush x:Key="TextSecondaryBrush" Color="{DynamicResource TextFillColorSecondary}" />
+
+    <!--
+        Gri EXPLICIT pentru starea dezactivată, nu opacitate.
+
+        MOTIVUL, verificat ca simptom real: WPF estompează implicit controalele
+        dezactivate reducând opacitatea. Pe un fundal închis, un text deja gri
+        devenit 40% transparent ajunge practic invizibil. #8E8E93 e un gri
+        „de mijloc" — are contrast suficient și pe fundal închis, și pe unul
+        deschis, deci rămâne același în ambele teme. Aici o valoare fixă e
+        alegerea corectă, nu o încălcare a regulii: tocmai independența de
+        temă e scopul.
+    -->
+    <SolidColorBrush x:Key="TextDisabledBrush" Color="#8E8E93" />
+
+    <!--
+        Culori semantice (stare), nu decorative: înseamnă același lucru în
+        ambele teme, deci sunt intenționat fixe — dar definite o singură dată
+        aici, niciodată scrise literal pe un control.
+    -->
+    <SolidColorBrush x:Key="StatusSuccessBrush" Color="#4CD964" />
+    <SolidColorBrush x:Key="StatusWarningBrush" Color="#F0A030" />
+    <SolidColorBrush x:Key="StatusErrorBrush" Color="#E0605E" />
+
+    <!--
+        Stiluri IMPLICITE (fără x:Key): se aplică automat fiecărui TextBlock și
+        TextBox din aplicație, inclusiv celor din ferestre adăugate în viitor.
+        Asta e partea care face regula să se respecte singură — un control nou
+        pornește tematizat, fără ca cineva să-și amintească s-o facă.
+    -->
+    <Style TargetType="TextBlock">
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+        <Style.Triggers>
+            <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Foreground" Value="{DynamicResource TextDisabledBrush}" />
+                <!-- Anulează estomparea implicită: gri-ul de mai sus e deja
+                     ales ca să se vadă, nu trebuie mai transparent. -->
+                <Setter Property="Opacity" Value="1" />
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+    <!--
+        TextBox pornește de la stilul WPF-UI (BasedOn), altfel s-ar pierde
+        complet aspectul Fluent — chenar, colțuri rotunjite, stările de focus.
+        Se adaugă DOAR culoarea textului și starea dezactivată.
+    -->
+    <Style TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+        <Style.Triggers>
+            <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Foreground" Value="{DynamicResource TextDisabledBrush}" />
+                <Setter Property="Opacity" Value="1" />
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+</ResourceDictionary>

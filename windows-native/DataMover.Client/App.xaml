@@ -8,6 +8,11 @@
             <ResourceDictionary.MergedDictionaries>
                 <ui:ControlsDictionary />
                 <ui:ThemesDictionary Theme="Dark" />
+                <!-- DUPĂ dicționarele WPF-UI, niciodată înainte: aliasurile de
+                     mai jos se leagă prin DynamicResource de culorile definite
+                     acolo, iar stilurile implicite trebuie să le poată
+                     suprascrie pe cele din ControlsDictionary. -->
+                <ResourceDictionary Source="Styles/ThemeAliases.xaml" />
             </ResourceDictionary.MergedDictionaries>
         </ResourceDictionary>
     </Application.Resources>

@@ -50,7 +50,7 @@
                                     <Image Source="{Binding IconSource}" Width="24" Height="24" Margin="0,0,6,0" />
                                     <TextBlock Text="{Binding Label}" FontWeight="Bold" FontSize="12" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
                                 </StackPanel>
-                                <TextBlock Text="{Binding FreeSpaceText}" Foreground="Gray" FontSize="11" Margin="0,0,0,6" />
+                                <TextBlock Text="{Binding FreeSpaceText}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" Margin="0,0,0,6" />
                                 <StackPanel Orientation="Horizontal">
                                     <Button Content="+ Sursa" Tag="{Binding Path}" Click="OnAddDriveAsSourceClicked" Margin="0,0,6,0" Padding="6,2" FontSize="11" />
                                     <Button Content="+ Destinatie" Tag="{Binding Path}" Click="OnAddDriveAsDestinationClicked" Padding="6,2" FontSize="11" />
@@ -91,7 +91,7 @@
                          pastreaza numele propriu, deci ajunge in propriul folder
                          la destinatie. -->
                     <Separator Margin="0,10,0,6" />
-                    <TextBlock Text="COADA CARDURI" FontWeight="Bold" FontSize="11" Foreground="Gray" Margin="0,0,0,4" />
+                    <TextBlock Text="COADA CARDURI" FontWeight="Bold" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,4" />
                     <ItemsControl x:Name="CardQueueList" MaxHeight="110">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
@@ -165,16 +165,16 @@
                                          implicit fara sa inteleaga ce livreaza mai departe. -->
                                     <CheckBox x:Name="GenerateMhlCheck" Content="Genereaza fisier MHL (Media Hash List)" Checked="OnToggleSettingChanged" Unchecked="OnToggleSettingChanged" />
                                     <TextBlock Text="Certificat de integritate citit de Silverstack, YoYotta, ShotPut Pro si casele de post — se scrie langa datele copiate. Necesita xxHash64, MD5 sau SHA-1."
-                                               Foreground="Gray" FontSize="10" TextWrapping="Wrap" Margin="24,0,0,6" />
+                                               Foreground="{DynamicResource TextSecondaryBrush}" FontSize="10" TextWrapping="Wrap" Margin="24,0,0,6" />
                                     <CheckBox x:Name="RetryFailedCheck" Content="Reincearca automat fisierele esuate" Checked="OnToggleSettingChanged" Unchecked="OnToggleSettingChanged" />
                                     <TextBlock Text="La finalul transferului, fisierele cu eroare sau nepotrivire se copiaza inca o data — majoritatea esecurilor de pe platou sunt tranzitorii (card miscat, cablu, disc adormit)."
-                                               Foreground="Gray" FontSize="10" TextWrapping="Wrap" Margin="24,0,0,6" />
+                                               Foreground="{DynamicResource TextSecondaryBrush}" FontSize="10" TextWrapping="Wrap" Margin="24,0,0,6" />
                                     <CheckBox x:Name="EjectWhenDoneCheck" Content="Ejecteaza cardul automat la final" Checked="OnToggleSettingChanged" Unchecked="OnToggleSettingChanged" />
                                     <TextBlock Text="Doar daca transferul s-a terminat fara nicio eroare. Ejectarea cere drepturi de Administrator."
-                                               Foreground="Gray" FontSize="10" TextWrapping="Wrap" Margin="24,0,0,6" />
+                                               Foreground="{DynamicResource TextSecondaryBrush}" FontSize="10" TextWrapping="Wrap" Margin="24,0,0,6" />
                                     <CheckBox x:Name="AutoStartOnCardCheck" Content="Porneste automat la introducerea unui card" Checked="OnToggleSettingChanged" Unchecked="OnToggleSettingChanged" />
                                     <TextBlock Text="Cardul intra direct in coada si descarcarea incepe singura. Necesita cel putin o destinatie aleasa."
-                                               Foreground="Gray" FontSize="10" TextWrapping="Wrap" Margin="24,0,0,12" />
+                                               Foreground="{DynamicResource TextSecondaryBrush}" FontSize="10" TextWrapping="Wrap" Margin="24,0,0,12" />
 
                                     <!-- [2026-09-03] Metadate de productie + sablon de denumire.
                                          Toate campurile sunt OPTIONALE — un transfer fara ele
@@ -196,13 +196,13 @@
                                     <WrapPanel Margin="0,0,0,8">
                                         <ui:Button Content="Alege logo..." Click="OnChooseLogoClicked" Margin="0,0,6,0" />
                                         <ui:Button Content="Sterge" Appearance="Secondary" Click="OnClearLogoClicked" Margin="0,0,8,0" />
-                                        <TextBlock x:Name="LogoPathText" Text="(niciun logo)" Foreground="Gray" FontSize="11" VerticalAlignment="Center" />
+                                        <TextBlock x:Name="LogoPathText" Text="(niciun logo)" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" VerticalAlignment="Center" />
                                     </WrapPanel>
                                     <TextBlock Text="Sablon nume folder:" Margin="0,0,0,2" />
                                     <ui:TextBox x:Name="FolderTemplateBox" FontFamily="Consolas" Margin="0,0,0,2" TextChanged="OnProductionMetaChanged" />
-                                    <TextBlock x:Name="FolderPreviewText" Foreground="Gray" FontFamily="Consolas" FontSize="10" TextWrapping="Wrap" Margin="0,0,0,2" />
+                                    <TextBlock x:Name="FolderPreviewText" Foreground="{DynamicResource TextSecondaryBrush}" FontFamily="Consolas" FontSize="10" TextWrapping="Wrap" Margin="0,0,0,2" />
                                     <TextBlock Text="{}{data}  {ora}  {proiect}  {card}  {camera}  {operator}"
-                                               Foreground="Gray" FontFamily="Consolas" FontSize="10" Margin="0,0,0,12" />
+                                               Foreground="{DynamicResource TextSecondaryBrush}" FontFamily="Consolas" FontSize="10" Margin="0,0,0,12" />
 
                                     <TextBlock Text="I/O &amp; Memorie" FontWeight="Bold" Margin="0,0,0,6" />
                                     <WrapPanel Margin="0,0,0,8">
@@ -217,14 +217,14 @@
                                         <TextBlock Text="Limita RAM:" VerticalAlignment="Center" Margin="0,0,8,4" />
                                         <ComboBox x:Name="RamLimitCombo" Width="120" Margin="0,0,0,4" />
                                     </WrapPanel>
-                                    <TextBlock x:Name="IoUsageText" Foreground="Gray" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,12" />
+                                    <TextBlock x:Name="IoUsageText" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,12" />
 
                                     <!-- Destinatie secundara Cloud, powered by Rclone (2026-08-30) -
                                          vezi CloudSyncService.cs. Foloseste ACELEASI conturi configurate
                                          in Cloud Manager-ul din Master Control Studio Pro (rclone.conf
                                          e global, nu izolat per aplicatie). -->
                                     <TextBlock Text="Destinație secundară Cloud (Rclone)" FontWeight="Bold" Margin="0,0,0,6" />
-                                    <TextBlock x:Name="CloudUnavailableText" Foreground="Orange" FontSize="11" TextWrapping="Wrap"
+                                    <TextBlock x:Name="CloudUnavailableText" Foreground="{DynamicResource StatusWarningBrush}" FontSize="11" TextWrapping="Wrap"
                                                Text="Rclone nu e instalat — instalează-l din Master Control Studio Pro (Dependențe) ca să activezi urcarea automată."
                                                Visibility="Collapsed" Margin="0,0,0,8" />
                                     <WrapPanel x:Name="CloudRemotePanel" Margin="0,0,0,4">
@@ -236,7 +236,7 @@
                                         <ui:TextBox x:Name="CloudFolderBox" Width="220"
                                                     PlaceholderText="implicit: numele folderului de transfer" Margin="0,0,0,4" />
                                     </WrapPanel>
-                                    <TextBlock x:Name="CloudHintText" Foreground="Gray" FontSize="10" TextWrapping="Wrap"
+                                    <TextBlock x:Name="CloudHintText" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="10" TextWrapping="Wrap"
                                                Text="Fiecare fișier copiat local se urcă automat, în fundal, imediat după verificare."
                                                Visibility="Collapsed" Margin="0,0,0,12" />
 
@@ -253,12 +253,12 @@
                     </Popup>
 
                     <!-- Feed de activitate stil terminal - vezi terminalActivityFeed (Mac). -->
-                    <Border Background="#0A0A0A" CornerRadius="6" Padding="8" Height="140">
+                    <Border Background="{DynamicResource SunkenBackgroundBrush}" CornerRadius="6" Padding="8" Height="140">
                         <ScrollViewer x:Name="ActivityScroll" VerticalScrollBarVisibility="Auto">
                             <ItemsControl x:Name="ActivityList">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
-                                        <TextBlock Text="{Binding}" Foreground="#4CD964" FontFamily="Consolas" FontSize="11" TextWrapping="NoWrap" />
+                                        <TextBlock Text="{Binding}" Foreground="{DynamicResource StatusSuccessBrush}" FontFamily="Consolas" FontSize="11" TextWrapping="NoWrap" />
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
@@ -295,9 +295,9 @@
             <ProgressBar x:Name="ProgressBar" Grid.Row="0" Height="6" Margin="0,0,0,6" Minimum="0" Maximum="100" />
 
             <StackPanel Grid.Row="1" Margin="0,0,0,6">
-                <TextBlock x:Name="StatusText" Text="Gata de pornire" FontSize="12" Foreground="Gray" TextWrapping="Wrap" />
-                <TextBlock x:Name="SpeedAndUsageText" FontSize="11" Foreground="Gray" TextWrapping="Wrap" />
-                <TextBlock x:Name="VersionText" FontSize="10" Foreground="DimGray" Margin="0,2,0,0" />
+                <TextBlock x:Name="StatusText" Text="Gata de pornire" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
+                <TextBlock x:Name="SpeedAndUsageText" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
+                <TextBlock x:Name="VersionText" FontSize="10" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,2,0,0" />
                 <CheckBox x:Name="AutoOpenDestCheck" Content="Deschide automat destinatia la final" FontSize="11" Margin="0,4,0,0" />
             </StackPanel>
 

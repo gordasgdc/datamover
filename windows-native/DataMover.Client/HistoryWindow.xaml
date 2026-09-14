@@ -14,14 +14,14 @@
         <ListView x:Name="HistoryList" Grid.Row="1" Margin="16" SelectionMode="Single">
             <ListView.ItemTemplate>
                 <DataTemplate>
-                    <Border Background="#161616" CornerRadius="6" Padding="10" Margin="0,0,0,6">
+                    <Border Background="{DynamicResource CardBackground}" CornerRadius="6" Padding="10" Margin="0,0,0,6">
                         <StackPanel>
                             <TextBlock Text="{Binding FolderName}" FontWeight="Bold" FontSize="13" />
-                            <TextBlock Text="{Binding DateText}" Foreground="Gray" FontSize="11" />
-                            <TextBlock Foreground="Gray" FontSize="11">
+                            <TextBlock Text="{Binding DateText}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" />
+                            <TextBlock Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11">
                                 <Run Text="Sursa: " /><Run Text="{Binding SourcesSummary}" />
                             </TextBlock>
-                            <TextBlock Foreground="Gray" FontSize="11">
+                            <TextBlock Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11">
                                 <Run Text="Destinatie: " /><Run Text="{Binding DestSummary}" />
                             </TextBlock>
                             <TextBlock FontSize="11">

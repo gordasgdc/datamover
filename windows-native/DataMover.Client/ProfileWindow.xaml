@@ -41,7 +41,7 @@
                                         </Ellipse>
                                         <TextBlock Text="{Binding Name}" FontWeight="Bold" VerticalAlignment="Center" />
                                     </StackPanel>
-                                    <TextBlock Text="{Binding Detail}" TextWrapping="Wrap" FontSize="11" Foreground="Gray" Margin="18,4,0,0" />
+                                    <TextBlock Text="{Binding Detail}" TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="18,4,0,0" />
                                     <ui:Button Content="Instalează" Tag="{Binding DownloadUrl}" Click="OnInstallDependencyClicked"
                                                Visibility="{Binding NeedsInstallVisibility}" Margin="18,6,0,0" HorizontalAlignment="Left" FontSize="11" Padding="8,2" />
                                 </StackPanel>

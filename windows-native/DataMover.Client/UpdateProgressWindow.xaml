@@ -3,7 +3,9 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Actualizare DataMover" Width="360" Height="120"
         WindowStartupLocation="CenterScreen" ResizeMode="NoResize"
-        WindowStyle="ToolWindow" Topmost="True">
+        WindowStyle="ToolWindow" Topmost="True"
+        Background="{DynamicResource WindowBackgroundBrush}"
+        Foreground="{DynamicResource TextPrimaryBrush}">
     <StackPanel Margin="20" VerticalAlignment="Center">
         <TextBlock x:Name="StatusLabel" Text="Se pregătește actualizarea…" FontSize="13" Margin="0,0,0,12" TextWrapping="Wrap" />
         <ProgressBar IsIndeterminate="True" Height="6" />
