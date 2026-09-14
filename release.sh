@@ -57,7 +57,13 @@ if git rev-parse "$TAG" >/dev/null 2>&1; then
     exit 1
 fi
 
-# ── Pas 1: bump in cele PATRU locuri sincrone ───────────────────────────
+# ── Pas 1: bump in cele CINCI locuri sincrone ──────────────────────────
+#
+# [2026-09-14] `installer.iss` din RADACINA a fost scos de aici: pipeline-ul
+# Windows Python a fost retras la v2.14.2, fisierul nu mai exista, iar `sed`
+# pe el oprea release-ul chiar la primul pas, cu "No such file or directory".
+# Un script de release care refera un fisier disparut nu se manifesta pana la
+# urmatorul release — adica exact atunci cand deranjeaza cel mai mult.
 # Aceleasi patru locuri gasite si sincronizate manual la 2.5.3 — vezi
 # CHANGELOG.md v2.5.2 (core/update_config.py ramasese blocat 5 zile la o
 # versiune veche, exact pentru ca update-ul asta se face de obicei manual
@@ -68,8 +74,6 @@ OLD_BUILD=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" mac-native/Info.
 NEW_BUILD=$((OLD_BUILD + 1))
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" mac-native/Info.plist
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $NEW_BUILD" mac-native/Info.plist
-
-sed -i '' -E "s/#define MyAppVersion \"[0-9]+\.[0-9]+\.[0-9]+\"/#define MyAppVersion \"$VERSION\"/" installer.iss
 
 # windows-native (client WPF nou) - propriul .csproj + installer.iss,
 # ACUM sincronizate cu release-ul principal (2026-08-28: primul release
@@ -99,12 +103,11 @@ sed -i '' -E "s/APP_VERSION = \"[0-9]+\.[0-9]+\.[0-9]+\"/APP_VERSION = \"$VERSIO
 # altfel oprim aici — un release cu un loc ramas in urma repeta exact
 # bug-ul din CHANGELOG v2.5.2 (self-update etern "disponibil").
 FOUND_PLIST=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" mac-native/Info.plist)
-FOUND_ISS=$(grep -oE 'MyAppVersion "[0-9.]+"' installer.iss | grep -oE '[0-9.]+')
 FOUND_JSON=$(python3 -c "import json;print(json.load(open('docs/update.json'))['version'])")
 FOUND_PY=$(grep -oE 'APP_VERSION = "[0-9.]+"' core/update_config.py | grep -oE '[0-9.]+')
 FOUND_WPF_CSPROJ=$(grep -oE '<Version>[0-9.]+</Version>' windows-native/DataMover.Client/DataMover.Client.csproj | grep -oE '[0-9.]+')
 FOUND_WPF_ISS=$(grep -oE 'MyAppVersion "[0-9.]+"' windows-native/installer.iss | grep -oE '[0-9.]+')
-for pair in "Info.plist:$FOUND_PLIST" "installer.iss:$FOUND_ISS" "update.json:$FOUND_JSON" "update_config.py:$FOUND_PY" "windows-native/DataMover.Client.csproj:$FOUND_WPF_CSPROJ" "windows-native/installer.iss:$FOUND_WPF_ISS"; do
+for pair in "Info.plist:$FOUND_PLIST" "update.json:$FOUND_JSON" "update_config.py:$FOUND_PY" "windows-native/DataMover.Client.csproj:$FOUND_WPF_CSPROJ" "windows-native/installer.iss:$FOUND_WPF_ISS"; do
     name="${pair%%:*}"; found="${pair##*:}"
     if [ "$found" != "$VERSION" ]; then
         echo "EROARE: $name a ramas la $found, nu $VERSION — bump esuat." >&2
@@ -145,7 +148,7 @@ echo "    OK — Gatekeeper confirma: semnat si notarizat."
 
 # ── Pas 4: commit versiune + push (main) ────────────────────────────────
 echo "==> [4/6] Commit + push bump de versiune…"
-git add mac-native/Info.plist installer.iss docs/update.json core/update_config.py \
+git add mac-native/Info.plist docs/update.json core/update_config.py \
     windows-native/DataMover.Client/DataMover.Client.csproj windows-native/installer.iss
 git commit -q -m "Versiune $VERSION
 
