@@ -1,7 +1,7 @@
 {
-  "version": "2.14.4",
-  "release_date": "2026-09-14",
-  "changes": "Listele si ferestrele folosesc acum tema aleasa in toata aplicatia: gata cu zonele albe si textul invizibil. Selectia unui rand se potriveste cu tema, iar Istoricul a fost refacut cu carduri lizibile.",
+  "version": "2.15.0",
+  "release_date": "2026-09-15",
+  "changes": "Panou animat de monitorizare în timpul transferului: inele pentru citire, scriere și progres, plus fișierul curent, datele copiate, timpul rămas și contorul de fișiere. Discurile detectate arată acum tipul conexiunii (USB, PCIe, NVMe).",
   "download_url": {
     "windows": "https://github.com/gordasgdc/datamover/releases/latest/download/DataMover-Windows.zip",
     "mac": "https://github.com/gordasgdc/datamover/releases/latest/download/DataMover-Mac.zip",
