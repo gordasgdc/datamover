@@ -548,9 +548,53 @@ final class OffloadRunner: ObservableObject {
     @Published var bufferAllocatedText = ""
     @Published var memoryUsedText = ""
 
+    // MARK: - Metrice pentru panoul de monitorizare (2026-09-15)
+    //
+    // DOAR oglinzi ale valorilor pe care motorul le calcula deja. Nicio
+    // bucla de I/O, niciun algoritm de copiere si niciun buffer nu se
+    // schimba — `advance()` primea deja `size`, iar `startTime`/`bytesDone`
+    // existau ca variabile private. Aici devin doar VIZIBILE pentru UI.
+
+    /// Octeti SCRISI in total (suma pe toate destinatiile) — motorul
+    /// contorizeaza per destinatie, la fel ca `totalUnits`.
+    @Published private(set) var bytesDone: Int64 = 0
+
+    /// Totalul de scris, tot pe toate destinatiile.
+    @Published private(set) var totalBytes: Int64 = 0
+
+    /// Cate destinatii primesc aceleasi fisiere. Face diferenta dintre
+    /// viteza de CITIRE si cea de SCRIERE: sursa se citeste o data, dar se
+    /// scrie de `destinationCount` ori (vezi FanOutCopier).
+    @Published private(set) var destinationCount = 1
+
+    @Published private(set) var elapsedSeconds: Double = 0
+
+    /// Calea relativa a fisierului aflat in lucru.
+    @Published private(set) var currentFile = ""
+
+    /// Viteza de SCRIERE, in octeti/s. Aceeasi valoare din care se compune
+    /// `speedText`, expusa numeric pentru inele.
+    var writeBytesPerSecond: Double {
+        elapsedSeconds > 0 ? Double(bytesDone) / elapsedSeconds : 0
+    }
+
+    /// Viteza de CITIRE: sursa se citeste o singura data, indiferent de cate
+    /// copii se scriu. NU o masuratoare separata — o impartire onesta a
+    /// aceleiasi contorizari, ca sa nu inventam un numar.
+    var readBytesPerSecond: Double {
+        destinationCount > 0 ? writeBytesPerSecond / Double(destinationCount) : 0
+    }
+
+    /// Secunde ramase, estimate din ritmul de pana acum. `nil` cat timp nu
+    /// exista destule date ca estimarea sa insemne ceva.
+    var etaSeconds: Double? {
+        guard bytesDone > 0, totalBytes > bytesDone, elapsedSeconds > 1 else { return nil }
+        let remaining = Double(totalBytes - bytesDone)
+        return remaining / writeBytesPerSecond
+    }
+
     private var cancelToken = CancelToken()
     private var startTime: Date?
-    private var bytesDone: Int64 = 0
 
     /// Numele folderului de destinatie pentru o pereche proiect/card - pur,
     /// fara efecte laterale, ca ContentView sa poata verifica dinainte
@@ -784,6 +828,10 @@ final class OffloadRunner: ObservableObject {
         bytesDone = 0
         filesDone = 0
         totalUnits = files.count * destinations.count
+        destinationCount = max(destinations.count, 1)
+        totalBytes = files.reduce(Int64(0)) { $0 + $1.size } * Int64(destinationCount)
+        elapsedSeconds = 0
+        currentFile = ""
         progressPercent = 0
         statusText = L.t("footer.copying")
         speedText = ""
@@ -861,7 +909,7 @@ final class OffloadRunner: ObservableObject {
                         switch ctx.classify(entry: entry, allowSkipExisting: resume) {
                         case .alreadyDone:
                             ctx.recordSkippedViaCheckpoint(entry: entry)
-                            Task { @MainActor [weak self] in self?.advance(size: entry.size) }
+                            Task { @MainActor [weak self] in self?.advance(size: entry.size, file: entry.relPath) }
                         case .existingSameSize:
                             toVerify.append(ctx)
                         case .needsCopy:
@@ -883,7 +931,7 @@ final class OffloadRunner: ObservableObject {
                             let dstHash = (try? hashOfFile(path: ctx.destPath(for: entry), model: verificationModel, cancel: token, chunkSize: chunkSize)) ?? ""
                             if let s = verifiedSourceHash, s == dstHash, !s.isEmpty || verificationModel == .sizeOnly {
                                 ctx.recordVerifiedExisting(entry: entry, srcHash: s, dstHash: dstHash)
-                                Task { @MainActor [weak self] in self?.advance(size: entry.size) }
+                                Task { @MainActor [weak self] in self?.advance(size: entry.size, file: entry.relPath) }
                             } else {
                                 // marimea coincidea dar continutul nu - recopiem normal
                                 toCopy.append(ctx)
@@ -912,14 +960,14 @@ final class OffloadRunner: ObservableObject {
                                 let outcome = result.destinations[destPath] ?? .failure(
                                     NSError(domain: "DataMover", code: 3, userInfo: [NSLocalizedDescriptionKey: "Fara rezultat de la motorul de copiere"]))
                                 ctx.recordCopyOutcome(entry: entry, sourceHash: result.sourceHash, outcome: outcome, isRetry: isRetry)
-                                Task { @MainActor [weak self] in self?.advance(size: entry.size) }
+                                Task { @MainActor [weak self] in self?.advance(size: entry.size, file: entry.relPath) }
                             }
                         } catch is OffloadCancelled {
                             cancelledFlag = true; return
                         } catch {
                             for ctx in toCopy {
                                 ctx.recordSourceReadFailure(entry: entry, error: error, isRetry: isRetry)
-                                Task { @MainActor [weak self] in self?.advance(size: entry.size) }
+                                Task { @MainActor [weak self] in self?.advance(size: entry.size, file: entry.relPath) }
                             }
                         }
                     }
@@ -975,13 +1023,15 @@ final class OffloadRunner: ObservableObject {
         }
     }
 
-    private func advance(size: Int64) {
+    private func advance(size: Int64, file: String = "") {
         filesDone += 1
         bytesDone += size
+        if !file.isEmpty { currentFile = file }
         progressPercent = totalUnits > 0 ? Int(Double(filesDone) * 100 / Double(totalUnits)) : 0
         statusText = "\(progressPercent)% (\(filesDone)/\(totalUnits) \(L.t("footer.filesWord")))"
         if let start = startTime {
             let elapsed = Date().timeIntervalSince(start)
+            elapsedSeconds = elapsed
             if elapsed > 0 {
                 speedText = formatBytes(Int64(Double(bytesDone) / elapsed)) + "/s"
             }

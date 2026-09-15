@@ -666,7 +666,26 @@ struct ContentView: View {
         [GridItem(.adaptive(minimum: diskIconSize, maximum: diskIconSize + 20), spacing: 14)]
     }
 
+    /// Coloana centrala: grila de discuri cat timp nu se copiaza, panoul de
+    /// monitorizare in timpul transferului.
+    ///
+    /// Comutarea e pe `runner.isRunning`, singura stare care spune asta —
+    /// nu pe un flag propriu, care s-ar putea desincroniza de motor.
     private var disksColumn: some View {
+        ZStack {
+            if runner.isRunning {
+                TransferGlassDashboard(runner: runner)
+                    .padding(18)
+                    .transition(.opacity.combined(with: .scale(scale: 0.97)))
+            } else {
+                diskGridColumn
+                    .transition(.opacity)
+            }
+        }
+        .animation(.easeInOut(duration: 0.35), value: runner.isRunning)
+    }
+
+    private var diskGridColumn: some View {
         VStack(spacing: 10) {
             HStack {
                 Text(L.t("disks.title"))
@@ -1413,6 +1432,11 @@ private struct DiskTileView: View {
     let volume: VolumeInfo
     var size: CGFloat = 150
 
+    /// Rezultatul sondarii, incarcat asincron. `nil` = inca nesondat sau
+    /// nedeterminabil; atunci nu se afiseaza nicio insigna, in loc de una
+    /// care spune "necunoscut".
+    @State private var probe: VolumeSpeedProbe?
+
     private var iconSize: CGFloat { size * 0.35 }
 
     var body: some View {
@@ -1435,10 +1459,30 @@ private struct DiskTileView: View {
             Text(formatBytes(volume.freeBytes))
                 .font(.system(size: 10))
                 .foregroundStyle(.secondary)
+
+            if let badge = probe?.badgeText {
+                Text(badge)
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color.primary.opacity(0.08), in: Capsule())
+            }
         }
         .padding(.vertical, 12)
         .frame(width: size, height: size + (size * 0.13))
         .background(Color(nsColor: .controlBackgroundColor))
         .clipShape(RoundedRectangle(cornerRadius: 10))
+        .task(id: volume.path) {
+            // Sincron din cache daca a mai fost sondat (montare repetata,
+            // redesenare), altfel in fundal — vezi VolumeSpeedProbeService.
+            // `??` nu accepta `await` in dreapta, deci cele doua cazuri se
+            // scriu explicit.
+            if let known = VolumeSpeedProbeService.cached(for: volume.path) {
+                probe = known
+            } else {
+                probe = await VolumeSpeedProbeService.probe(path: volume.path)
+            }
+        }
     }
 }
