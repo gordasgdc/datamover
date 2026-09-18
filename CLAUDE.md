@@ -1083,6 +1083,11 @@ spre un release fara pachet Mac (404). Se bump-eaza dupa ce Mac-ul e urcat.
 - Neverificat: nimic în plus față de SIP. Cu SIP activ (Regula 42) — calea nu folosește
   nimic dependent de SIP, dar n-a rulat pe un astfel de Mac.
 - Nepublicat: `update.json`/release rămân pentru scriptul de release.
+- **[COMPLETARE 2026-09-19] Publicat** cu `release.sh 2.15.1` (CI Windows verde,
+  pkg `Notarized Developer ID`, note de release rescrise pentru clienți).
+  Oglinda `gordas.dev/datamover/update.json` era rămasă la 2.14.2 — sincronizată
+  (clienții citesc însă `gordasgdc.github.io/datamover/update.json`).
+  `verify-update-flow.sh` → TOTUL OK.
 
 ### Completări specifice acestui repo, mutate din fosta Partea 1 (2026-09-18)
 
