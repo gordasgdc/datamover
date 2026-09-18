@@ -1060,6 +1060,30 @@ proiectului.
 `version` comun ambelor platforme, deci un bump acum ar fi trimis userii Mac
 spre un release fara pachet Mac (404). Se bump-eaza dupa ce Mac-ul e urcat.
 
+## Etapa 2026-09-19 — v2.15.1: AppMover cu App Translocation (Mac)
+
+- `AppMover.swift` portat din GDC Firewall (Regula 40): locația se judecă
+  după original (`SecTranslocateCreateOriginalPathForURL`), copia din
+  `/Applications` primește carantina FĂRĂ bitul 0x0080 (carantina rămâne),
+  o instalare deja izolată se repară pe loc (doar atributul + repornire) —
+  niciodată copiere peste sine sau copia instalată la Coș. `~/Applications`
+  rămâne acceptat (Regula 18). Față de referință: carantina se ia din
+  original; după copiere se verifică că bitul a dispărut (altfel eroare, nu
+  buclă); izolată fără bit = nu repornește (fără buclă).
+- `DiagnosticLog.swift` nou (Regula 39) → `~/Library/Logs/DataMover.log` +
+  unified log; `scripts/logs.sh`; dezinstalatorul șterge și logul.
+- Apelul AppMover mutat din `DataMoverMacApp.init` pe `NSApplication.didFinishLaunchingNotification`:
+  în `init` NSApp poate lipsi (vezi comentariul din `ThemeManager.applyNow`).
+- Textele alertelor trec prin `L.t("appMover.*")` (RO/EN/ES).
+- Versiune comună: Info.plist, `core/update_config.py`, `.csproj`, `installer.iss` la 2.15.1;
+  `docs/update.json` rămâne 2.15.0 până la `release.sh`. Windows fără schimbări de cod.
+- Test live 2026-09-19, macOS 26.6.2, Mac de dezvoltare (SIP dezactivat):
+  build notarizat + stapled, zip cu carantină `0083;…;Safari`, dezarhivat cu
+  Archive Utility, pornit din `~/Downloads`. Verificat: izolare detectată, apelul din `didFinishLaunching` funcționează, calea admin (copia root din .pkg înlocuită după parola introdusă de Cristi), carantină `0043`, original la Coș, repornit neizolat; reparare pe loc (`00c3` → `0043`, fără buclă).
+- Neverificat: nimic în plus față de SIP. Cu SIP activ (Regula 42) — calea nu folosește
+  nimic dependent de SIP, dar n-a rulat pe un astfel de Mac.
+- Nepublicat: `update.json`/release rămân pentru scriptul de release.
+
 ### Completări specifice acestui repo, mutate din fosta Partea 1 (2026-09-18)
 
 Păstrate verbatim. Regula generală la care se referă fiecare e în

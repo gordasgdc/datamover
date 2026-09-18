@@ -1,5 +1,30 @@
 # Changelog — DataMover
 
+## v2.15.1 (2026-09-19) — Mutare în Aplicații fiabilă (Mac)
+
+### Fixed
+- **Mutarea automată în folderul Aplicații** putea cere mutarea din nou la
+  fiecare pornire, iar la a doua confirmare ducea aplicația instalată la Coș.
+  Se întâmpla cu aplicația descărcată din browser și dezarhivată, pe care
+  macOS o rula dintr-o copie izolată. Acum copia din Aplicații pornește
+  normal, iar o instalare deja afectată se repară singură la prima pornire.
+- Dacă în Aplicații există deja o versiune instalată din pachetul `.pkg`,
+  mutarea cere parola de administrator în loc să eșueze.
+
+### Added
+- Jurnal de diagnostic local: `~/Library/Logs/DataMover.log` (șters și de
+  dezinstalator); `scripts/logs.sh` îl afișează împreună cu unified log-ul.
+
+Windows: fără schimbări de cod — versiunea e comună celor două platforme.
+
+## v2.15.0 (2026-09-15) — Panou de monitorizare a transferului
+
+### Added
+- Panou animat în timpul transferului: inele pentru citire, scriere și
+  progres, plus fișierul curent, datele copiate, timpul rămas și contorul
+  de fișiere.
+- Discurile detectate arată tipul conexiunii (USB, PCIe, NVMe).
+
 ## v2.14.4 (2026-09-14) — Liste si ferestre pe tema, in toata aplicatia
 
 ### Fixed

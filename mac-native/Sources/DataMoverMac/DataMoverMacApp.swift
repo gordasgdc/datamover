@@ -7,7 +7,12 @@ struct DataMoverMacApp: App {
     @Environment(\.openWindow) private var openWindow
 
     init() {
-        AppMover.promptIfNeeded()
+        // În `init` NSApp poate să nu existe încă, iar AppMover are nevoie de el
+        // (politica de activare, alerta, terminarea după mutare).
+        NotificationCenter.default.addObserver(forName: NSApplication.didFinishLaunchingNotification,
+                                               object: nil, queue: .main) { _ in
+            AppMover.promptIfNeeded()
+        }
         ThemeManager.shared.applyNow()
     }
 

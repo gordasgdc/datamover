@@ -34,6 +34,17 @@ enum L {
     fileprivate static let table: [String: [AppLanguage: String]] = [
         "prefs.language": [.ro: "Limba", .en: "Language", .es: "Idioma"],
 
+        // MARK: - Mutare în /Applications (AppMover, Regula 40)
+        "appMover.title": [.ro: "Mutare în Aplicații?", .en: "Move to Applications?", .es: "¿Mover a Aplicaciones?"],
+        "appMover.message": [.ro: "DataMover rulează în afara folderului Aplicații. Pentru stabilitate (actualizări automate, permisiuni corecte), se recomandă mutarea în /Applications.", .en: "DataMover is running outside the Applications folder. For stability (automatic updates, correct permissions), moving it to /Applications is recommended.", .es: "DataMover se está ejecutando fuera de la carpeta Aplicaciones. Para mayor estabilidad (actualizaciones automáticas, permisos correctos), se recomienda moverlo a /Applications."],
+        "appMover.move": [.ro: "Mută în Aplicații", .en: "Move to Applications", .es: "Mover a Aplicaciones"],
+        "appMover.notNow": [.ro: "Nu acum", .en: "Not now", .es: "Ahora no"],
+        "appMover.failedTitle": [.ro: "Mutare eșuată", .en: "Move failed", .es: "No se pudo mover"],
+        "appMover.failedMessage": [.ro: "Nu am putut muta aplicația automat (%@). Mut-o manual în /Applications din Finder.", .en: "The app could not be moved automatically (%@). Move it to /Applications manually in Finder.", .es: "No se pudo mover la aplicación automáticamente (%@). Muévela manualmente a /Applications desde el Finder."],
+        "appMover.versionMismatch": [.ro: "copia din /Applications are versiunea %@", .en: "the copy in /Applications has version %@", .es: "la copia en /Applications tiene la versión %@"],
+        "appMover.stillTranslocated": [.ro: "copia din /Applications a rămas marcată pentru izolare", .en: "the copy in /Applications is still marked for isolation", .es: "la copia en /Applications sigue marcada para aislamiento"],
+        "appMover.accessDenied": [.ro: "acces refuzat", .en: "access denied", .es: "acceso denegado"],
+
         // MARK: - Trial bar
         "trial.daysLeft": [.ro: "Proba gratuita — %d zile ramase", .en: "Free trial — %d days left", .es: "Prueba gratuita — %d días restantes"],
         "trial.activate": [.ro: "Activeaza licenta", .en: "Activate license", .es: "Activar licencia"],

@@ -92,6 +92,8 @@ remove_if_exists "$HOME/Library/Caches/$BUNDLE_ID.ShipIt"
 remove_if_exists "$HOME/Library/Preferences/$BUNDLE_ID.plist"
 remove_if_exists "$HOME/Library/Saved Application State/$BUNDLE_ID.savedState"
 remove_if_exists "$HOME/Library/Logs/DataMover"
+remove_if_exists "$HOME/Library/Logs/DataMover.log"
+remove_if_exists "$HOME/Library/Logs/DataMover.log.1"
 remove_if_exists "$HOME/Library/HTTPStorages/$BUNDLE_ID"
 remove_if_exists "$HOME/Library/WebKit/$BUNDLE_ID"
 
