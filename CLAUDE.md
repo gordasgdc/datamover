@@ -1129,3 +1129,5 @@ există — vezi retragerea de mai jos, secțiunea Partea 2). Secretele
 `README-windows.md` (reîncărcarea `.pfx`-ului comun GDC, dacă există deja
 din CGConvertor) înainte ca semnarea reală să înceapă să funcționeze; până
 atunci, CI-ul continuă nesemnat, fără nicio eroare.
+
+- **2026-09-20 — DMG notarizat (Regula 45).** `mac-native/build_installer.sh` produce acum `DataMover-<v>.dmg` (pkg + ghid), semnat Developer ID, notarizat, stapled, verificat cu spctl/stapler (2.15.1, local). Self-Updater-ul existent descarcă direct `.pkg` din update.json — neschimbat. Zip-ul + `.command` rămân generate doar pentru linkuri/clienți vechi; **nepublicat, pagina încă duce la zip**. TODO: publicare pe release + link site, înlocuire uninstaller `.command` (în aplicație), permisiuni din interfață (nerevizuite).

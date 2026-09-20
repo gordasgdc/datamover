@@ -99,5 +99,18 @@ w.write('$ZIP_STAGE/Ghid-de-Utilizare.pdf')
 rm -rf "$ZIP_STAGE"
 
 echo "==> Done: $FINAL_PKG"
+# Regula 45: descarcarea catre client = DMG notarizat (pkg + ghid), fara .command.
+# Zip-ul de mai sus ramane doar pentru clientii/linkurile vechi; Self-Updater-ul
+# descarca direct .pkg-ul (update.json), deci nu depinde de el.
+echo "==> Building DataMover-$VERSION.dmg (pkg + ghid)…"
+DMG_STAGE="$DIST_DIR/dmg_stage"; DMG="$DIST_DIR/DataMover-$VERSION.dmg"
+rm -rf "$DMG_STAGE" "$DMG"; mkdir -p "$DMG_STAGE"
+cp "$FINAL_PKG" "$DMG_STAGE/DataMover-$VERSION.pkg"
+cp "$ZIP_STAGE/Ghid-de-Utilizare.pdf" "$DMG_STAGE/" 2>/dev/null || cp "../docs/guides/DataMover_Ghid_RO.pdf" "$DMG_STAGE/Ghid-de-Utilizare.pdf" 2>/dev/null || true
+hdiutil create -volname "DataMover $VERSION" -srcfolder "$DMG_STAGE" -fs HFS+ -format UDZO -ov "$DMG" >/dev/null
+rm -rf "$DMG_STAGE"
+./codesigning/sign-and-notarize.sh dmg "$DMG"
+cp "$DMG" "$DIST_DIR/DataMover.dmg"
+
 echo "==> Also: $DIST_DIR/DataMover.pkg, $DIST_DIR/Dezinstalare_DataMover.command, $DIST_DIR/DataMover-Mac.zip"
 echo "    Upload DataMover-Mac.zip to the GitHub release (that's what the website links to)."

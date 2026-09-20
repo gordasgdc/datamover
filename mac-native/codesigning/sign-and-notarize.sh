@@ -133,6 +133,11 @@ case "$KIND" in
         sign_pkg "$TARGET"
         notarize "$TARGET"
         ;;
+    dmg)
+        echo "==> [codesigning] Semnez imaginea DMG…"
+        codesign --force --timestamp --sign "$APPLE_SIGN_IDENTITY_APP" "$TARGET"
+        notarize "$TARGET"
+        ;;
     *)
         echo "Prim argument necunoscut: '$KIND' (astept 'app' sau 'pkg')" >&2
         exit 1
