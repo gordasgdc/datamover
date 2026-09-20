@@ -92,6 +92,8 @@ d["changes"] = changes
 # Client WPF nou (2026-08-28) - acum publicat de release.sh ca artefact
 # real (DataMover-WPF-Windows.zip), vezi build-windows-wpf in release.yml.
 # Campul "windows" ramane pt. clientul Python vechi (coexista).
+d["download_url"]["mac"] = "https://github.com/gordasgdc/datamover/releases/latest/download/DataMover.pkg"
+d["download_url"]["mac_dmg"] = "https://github.com/gordasgdc/datamover/releases/latest/download/DataMover.dmg"
 d["download_url"]["windows_wpf"] = "https://github.com/gordasgdc/datamover/releases/latest/download/DataMover-WPF-Windows.zip"
 json.dump(d, open(p, "w"), indent=2, ensure_ascii=False)
 open(p, "a").write("\n")
@@ -198,8 +200,8 @@ echo "==> [6/6] Urc artefactele Mac semnate pe release-ul $TAG…"
 gh release upload "$TAG" \
     "mac-native/dist/DataMover-$VERSION.pkg" \
     "mac-native/dist/DataMover.pkg" \
-    "mac-native/dist/DataMover-Mac.zip" \
-    "mac-native/dist/Dezinstalare_DataMover.command" \
+    "mac-native/dist/DataMover-$VERSION.dmg" \
+    "mac-native/dist/DataMover.dmg" \
     --clobber
 
 echo ""
@@ -212,7 +214,7 @@ FAILED=0
 # lui. Nu mai e produs de nimeni, deci verificarea lui raporta 404 la FIECARE
 # release — un avertisment permanent si fals, exact genul care face ca
 # verificarea finala sa fie ignorata cand semnaleaza ceva adevarat.
-for f in DataMover-Mac.zip DataMover-WPF-Windows.zip; do
+for f in DataMover.dmg DataMover.pkg DataMover-WPF-Windows.zip; do
     CODE=$(curl -sIL -o /dev/null -w '%{http_code}' "https://github.com/gordasgdc/datamover/releases/latest/download/$f")
     RESOLVED_TAG=$(curl -sI "https://github.com/gordasgdc/datamover/releases/latest/download/$f" \
         | grep -i '^location:' | grep -oE "v[0-9]+\.[0-9]+\.[0-9]+" | head -1)
