@@ -1131,3 +1131,10 @@ din CGConvertor) înainte ca semnarea reală să înceapă să funcționeze; pâ
 atunci, CI-ul continuă nesemnat, fără nicio eroare.
 
 - **2026-09-20 — DMG notarizat (Regula 45).** `mac-native/build_installer.sh` produce acum `DataMover-<v>.dmg` (pkg + ghid), semnat Developer ID, notarizat, stapled, verificat cu spctl/stapler (2.15.1, local). Self-Updater-ul existent descarcă direct `.pkg` din update.json — neschimbat. Zip-ul + `.command` rămân generate doar pentru linkuri/clienți vechi; **nepublicat, pagina încă duce la zip**. TODO: publicare pe release + link site, înlocuire uninstaller `.command` (în aplicație), permisiuni din interfață (nerevizuite).
+
+### Handoff — fișierul de stare (Regula 50, `~/Developer/CLAUDE.md`)
+
+- Fișierul de stare al acestui proiect: `PROJECT_STATE.md` (rădăcina repo-ului). La orice sesiune nouă se citește
+  ÎNTÂI el, apoi doar fragmentele strict necesare; se actualizează la milestone-uri și obligatoriu la final.
+  Dacă lipsește, se creează la prima sesiune care atinge proiectul. Repo PUBLIC: fișierul e intern, listat în `.gitignore` (doar local, Regula 29).
+- Restructurarea/ștergerea lui și orice modificare a acestui `CLAUDE.md`: doar cu diff-ul arătat și acordul lui Cristi.
