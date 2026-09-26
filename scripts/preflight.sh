@@ -6,6 +6,8 @@
 #                                   localizare, design audit, build Windows + verificări C#
 #   scripts/preflight.sh --online   + linkurile publice (doar HEAD, read-only)
 #   scripts/preflight.sh --quick    fără release Mac și fără Windows
+#   scripts/preflight.sh --volumes  + teste pe volume temporare (disc plin, exFAT)
+#   scripts/preflight.sh --vm       + verificări Windows reale în VM Parallels (dacă rulează)
 #
 # Fiecare pas e judecat după EXIT CODE-UL comenzii originale (nu după grep).
 # Ieșirea completă a unui pas eșuat rămâne în $LOG_DIR și coada ei e afișată.
@@ -18,8 +20,8 @@ LOG_DIR=$(mktemp -d "${TMPDIR:-/tmp}/dm-preflight.XXXXXX")
 ok()   { echo "  ✓ $*"; }
 bad()  { echo "  ✗ $*"; FAIL=$((FAIL+1)); }
 warn() { echo "  ! $*"; }
-ONLINE=0; QUICK=0
-for a in "$@"; do case $a in --online) ONLINE=1;; --quick) QUICK=1;; esac; done
+ONLINE=0; QUICK=0; VOLUMES=0; VM=0
+for a in "$@"; do case $a in --online) ONLINE=1;; --quick) QUICK=1;; --volumes) VOLUMES=1;; --vm) VM=1;; esac; done
 
 # step <nume> <descriere> <comandă...> — rulează comanda, judecă exit code-ul.
 step() {
@@ -77,11 +79,32 @@ if [ $QUICK -eq 0 ]; then
         step dotnet-build "dotnet build DataMover.Client (cross, fără rulare XAML)" \
             dotnet build windows-native/DataMover.Client/DataMover.Client.csproj -c Release -o "$OUT"
         rm -rf "$OUT"
-        step dotnet-checks "verificări motor C# (FanOutCopier, checkpoint)" \
+        step dotnet-checks "verificări C# (motor, checkpoint, diagnostic, preflight, medii)" \
             dotnet run -c Release --project windows-native/DataMover.CoreChecks/DataMover.CoreChecks.csproj
         [ -f "$LOG_DIR/dotnet-checks.log" ] && tail -1 "$LOG_DIR/dotnet-checks.log" | sed 's/^/      /'
     else
         bad "dotnet lipsește — build Windows neverificat"
+    fi
+fi
+
+if [ "${VOLUMES:-0}" -eq 1 ]; then
+    echo "== Volume temporare (imagini de disc, șterse la final)"
+    step volumes "disc plin + spațiu insuficient + exFAT" scripts/volume-fault-tests.sh
+fi
+
+if [ "${VM:-0}" -eq 1 ]; then
+    echo "== Windows real (VM Parallels, fără interfață)"
+    VMNAME="${DM_VM_NAME:-Windows 11 (1)}"
+    if prlctl list 2>/dev/null | grep -q "running.*$VMNAME"; then
+        WC="$HOME/Documents/dm-winchecks-preflight"
+        rm -rf "$WC"
+        step winchecks-publish "publicare WinChecks (win-x64)" dotnet publish windows-native/DataMover.WinChecks -c Release -r win-x64 --self-contained true -p:EnableWindowsTargeting=true -o "$WC"
+        step winchecks "NTFS real: 2 copii, reluare, coliziuni, unitate lipsă, junction, Unicode, cale lungă, export" \
+            prlctl exec "$VMNAME" --current-user cmd /c "Z:\\Documents\\dm-winchecks-preflight\\DataMover.WinChecks.exe"
+        [ -f "$WC/winchecks-result.txt" ] && tail -1 "$WC/winchecks-result.txt" | sed 's/^/      /'
+        rm -rf "$WC"
+    else
+        warn "VM '$VMNAME' nu rulează — verificările Windows reale nu s-au făcut"
     fi
 fi
 

@@ -12,7 +12,9 @@ struct VolumeCapacity {
                                                          .volumeAvailableCapacityForImportantUsageKey,
                                                          .volumeAvailableCapacityKey]),
               let total = v.volumeTotalCapacity else { return nil }
-        let free = v.volumeAvailableCapacityForImportantUsage ?? Int64(v.volumeAvailableCapacity ?? 0)
+        // exFAT/FAT: „important usage” vine 0 (nu nil) — vezi OffloadRunner.freeBytes.
+        let important = v.volumeAvailableCapacityForImportantUsage ?? 0
+        let free = important > 0 ? important : Int64(v.volumeAvailableCapacity ?? 0)
         return VolumeCapacity(total: Int64(total), free: free)
     }
 }

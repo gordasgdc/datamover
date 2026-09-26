@@ -234,12 +234,16 @@ final class OffloadRunner: ObservableObject {
     /// APFS (tine cont de snapshot-uri purjabile), nu `systemFreeSize`,
     /// care raporteaza mai putin decat poate elibera efectiv sistemul;
     /// al doilea ramane doar ca rezerva pe volume non-APFS.
-    private func freeBytes(at path: String) -> Int64? {
+    ///
+    /// Pe exFAT/FAT (cardurile, multe SSD-uri externe) macOS întoarce 0 —
+    /// nu nil — pentru „important usage” (verificat pe un volum exFAT real,
+    /// 2026-09-26). 0 nu înseamnă „plin”, înseamnă „nu știu”: se folosește
+    /// atunci capacitatea disponibilă standard.
+    static func freeBytes(at path: String) -> Int64? {
         let url = URL(fileURLWithPath: path)
-        if let values = try? url.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]),
-           let capacity = values.volumeAvailableCapacityForImportantUsage {
-            return Int64(capacity)
-        }
+        let v = try? url.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey, .volumeAvailableCapacityKey])
+        if let important = v?.volumeAvailableCapacityForImportantUsage, important > 0 { return Int64(important) }
+        if let plain = v?.volumeAvailableCapacity, plain > 0 { return Int64(plain) }
         if let attrs = try? FileManager.default.attributesOfFileSystem(forPath: path),
            let free = attrs[.systemFreeSize] as? NSNumber {
             return free.int64Value
@@ -254,7 +258,7 @@ final class OffloadRunner: ObservableObject {
     func spaceShortfall(destinations: [String], files: [FileEntry], folderName: String) -> SpaceShortfall? {
         let fm = FileManager.default
         for dest in destinations {
-            guard let free = freeBytes(at: dest) else { continue }
+            guard let free = Self.freeBytes(at: dest) else { continue }
             let targetRoot = (dest as NSString).appendingPathComponent(folderName)
             let targetExists = fm.fileExists(atPath: targetRoot)
             var needed: Int64 = 0

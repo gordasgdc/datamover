@@ -69,12 +69,39 @@ try
         new List<string>(), false, new ProductionMeta(), folderNameOverride: "JOB");
     Check("coliziune de nume: blocat inainte de orice scriere", !r3.IsRunning && r3.LastCollisions.Count == 1 && !Directory.Exists(Path.Combine(cd, "JOB")));
 
-    // 4. Unitate inexistenta: transferul se termina (nu se blocheaza), cealalta copie e verificata.
+    // 4a. Unitate lipsa la pornire: refuzat de preflight, nimic scris.
     var missing = Enumerable.Range('F', 20).Select(c => $"{(char)c}:\\").First(d => !Directory.Exists(d));
     var ok4 = Dir("OK4");
-    var r4 = Run(new() { src }, new() { ok4, Path.Combine(missing, "DM-TEST") }, timeoutSec: 60);
-    Check($"destinatie pe unitate lipsa ({missing}): transfer terminat, o copie verificata, cealalta esuata",
-        !r4.IsRunning && r4.LastResults.Count == 2 && r4.LastResults.Count(x => x.FailCount == 0) == 1);
+    var r4 = new OffloadRunner();
+    r4.Start(new() { src }, new() { ok4, Path.Combine(missing, "DM-TEST") }, VerificationModel.XxHash64, new List<string>(), false,
+        new ProductionMeta(), folderNameOverride: "JOB");
+    Check($"destinatie pe unitate lipsa ({missing}) la pornire: blocat de preflight, nimic scris",
+        !r4.IsRunning && r4.LastPreflight.Any(i => i.Code == DataMover.Core.Domain.PreflightCode.DestinationMissing) && !Directory.Exists(Path.Combine(ok4, "JOB")));
+
+    // 4b. Deconectare in timpul transferului: unitate virtuala (subst) scoasa
+    // din mers. Transferul se termina, copia ramasa e verificata, cealalta nu.
+    var letter = Enumerable.Range('K', 14).Select(c => $"{(char)c}:").First(d => !Directory.Exists(d + "\\"));
+    var substTarget = Dir("SUBST");
+    void Subst(string args) { var p = Process.Start(new ProcessStartInfo("subst.exe", args) { CreateNoWindow = true, UseShellExecute = false })!; p.WaitForExit(); }
+    Subst($"{letter} \"{substTarget}\"");
+    try
+    {
+        for (int i = 0; i < 40; i++) Make($@"BIG\CLIP\B{i:D3}.mov", 4_000_000, (byte)i);
+        var ok4b = Dir("OK4B");
+        var r4b = new OffloadRunner();
+        r4b.Start(new() { Path.Combine(root, "BIG") }, new() { ok4b, letter + "\\" }, VerificationModel.XxHash64, new List<string>(), false,
+            new ProductionMeta(), folderNameOverride: "JOB");
+        var sw4 = Stopwatch.StartNew();
+        while (r4b.IsRunning && r4b.ProgressPercent < 10 && sw4.Elapsed.TotalSeconds < 60) Thread.Sleep(10);
+        var cutAt = r4b.ProgressPercent;
+        Subst($"{letter} /D");
+        while (r4b.IsRunning && sw4.Elapsed.TotalSeconds < 120) Thread.Sleep(20);
+        var okRes = r4b.LastResults.FirstOrDefault(x => x.DestRoot.StartsWith(ok4b, StringComparison.OrdinalIgnoreCase));
+        var cutRes = r4b.LastResults.FirstOrDefault(x => x.DestRoot.StartsWith(letter, StringComparison.OrdinalIgnoreCase));
+        Check($"deconectare la {cutAt}% ({letter} scoasa): transfer terminat, copia locala verificata (40/40), cea deconectata cu esecuri",
+            !r4b.IsRunning && cutAt < 100 && okRes is { FailCount: 0, OkCount: 40 } && cutRes is { FailCount: > 0 });
+    }
+    finally { Subst($"{letter} /D"); }
 
     // 5. Junction la destinatie care duce in afara tintei -> refuzat.
     Make(@"JCARD\CLIP\j.mov", 5000, 5);

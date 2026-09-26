@@ -266,7 +266,7 @@
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="*" />
                             </Grid.RowDefinitions>
-                            
+
                             <Border Background="{DynamicResource CardBackgroundBrush}" BorderBrush="{DynamicResource CardStrokeBrush}" BorderThickness="1"
                                     CornerRadius="6" Padding="10,8" Margin="0,8,0,0">
                                 <StackPanel>
