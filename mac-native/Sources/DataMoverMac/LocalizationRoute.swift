@@ -179,6 +179,20 @@ extension L {
         "queue.titleShort": [.ro: "Coadă", .en: "Queue", .es: "Cola"],
         "queue.titleCount": [.ro: "Coadă (%d)", .en: "Queue (%d)", .es: "Cola (%d)"],
 
+        // Diagnostic
+        "settingsTab.diagnostics": [.ro: "Diagnostic", .en: "Diagnostics", .es: "Diagnóstico"],
+        "diag.session": [.ro: "ID sesiune", .en: "Session ID", .es: "ID de sesión"],
+        "diag.location": [.ro: "Jurnalul local", .en: "Local log", .es: "Registro local"],
+        "diag.openFolder": [.ro: "Deschide folderul de jurnale", .en: "Open log folder", .es: "Abrir carpeta de registros"],
+        "diag.debug": [.ro: "Jurnal detaliat (până la repornire)", .en: "Detailed log (until relaunch)", .es: "Registro detallado (hasta reiniciar)"],
+        "diag.debugHelp": [.ro: "Înregistrează și fiecare fișier confirmat. Se oprește singur la următoarea pornire.", .en: "Also records every confirmed file. Turns itself off at the next launch.", .es: "También registra cada archivo confirmado. Se desactiva solo en el próximo inicio."],
+        "diag.includePaths": [.ro: "Include căile și numele fișierelor", .en: "Include file paths and names", .es: "Incluir rutas y nombres de archivo"],
+        "diag.includePathsHelp": [.ro: "Implicit, căile sunt înlocuite cu coduri anonime. Activează doar dacă suportul are nevoie de ele.", .en: "By default, paths are replaced with anonymous codes. Enable only if support needs them.", .es: "Por defecto, las rutas se sustituyen por códigos anónimos. Actívalo solo si soporte las necesita."],
+        "diag.export": [.ro: "Exportă diagnosticul", .en: "Export diagnostics", .es: "Exportar diagnóstico"],
+        "diag.exportHelp": [.ro: "Se creează local un ZIP cu jurnalele (fără parole, licențe sau materiale media). Nimic nu se trimite automat — tu decizi dacă îl trimiți.", .en: "A local ZIP is created with the logs (no passwords, licenses or media). Nothing is sent automatically — you decide whether to send it.", .es: "Se crea un ZIP local con los registros (sin contraseñas, licencias ni material). No se envía nada automáticamente — tú decides si enviarlo."],
+        "diag.exportFailed": [.ro: "Exportul a eșuat:", .en: "Export failed:", .es: "La exportación falló:"],
+        "diag.correlation": [.ro: "ID job %@ · sesiune %@ (pentru suport)", .en: "Job ID %@ · session %@ (for support)", .es: "ID de trabajo %@ · sesión %@ (para soporte)"],
+
         // Galerie (DEBUG)
         "gallery.devices": [.ro: "Dispozitive", .en: "Devices", .es: "Dispositivos"],
         "gallery.scale": [.ro: "Scalare", .en: "Scale", .es: "Escala"],

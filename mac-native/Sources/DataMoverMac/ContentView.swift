@@ -593,6 +593,7 @@ struct ContentView: View {
     }
 
     private func addSource(_ path: String) {
+        StructuredLog.shared.log(.info, "ui", "source.selected", "Sursă adăugată", fields: ["path": path])
         if !sourcePaths.contains(path) {
             sourcePaths.append(path)
         }
@@ -890,7 +891,9 @@ struct ContentView: View {
             let list = IncidentBuilder.result(runner.lastResults)
             let o = runner.lastOutcome ?? .failure
             IncidentPanel(headline: L.t(o.labelKey), headlineStatus: DMStatus(o), incidents: list,
-                          passed: resultFigures, footnote: L.t("outcomeHelp.\(o.rawValue)"))
+                          passed: resultFigures,
+                          footnote: L.t("outcomeHelp.\(o.rawValue)") + "\n" +
+                            String(format: L.t("diag.correlation"), runner.jobID, StructuredLog.shared.sessionID))
         }
     }
 
@@ -1031,6 +1034,8 @@ struct ContentView: View {
     }
 
     private func addDestination(_ path: String) {
+        StructuredLog.shared.log(.info, "ui", "destination.selected", "Destinație adăugată",
+                                 dest: destinationLogID(path), fields: ["path": path])
         if !destinationPaths.contains(path) {
             destinationPaths.append(path)
         }

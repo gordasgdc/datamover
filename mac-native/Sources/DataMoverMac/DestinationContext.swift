@@ -34,6 +34,9 @@ final class DestinationContext: @unchecked Sendable {
     let onPermissionError: (_ path: String) -> Void
 
     let targetRoot: String
+    /// Corelare în jurnalul structurat.
+    var jobID = ""
+    var destLogID: String { destinationLogID(destRoot) }
     private(set) var cancelled = false
     private(set) var okCount = 0, skipCount = 0, failCount = 0
     private(set) var recoveredCount = 0
@@ -133,6 +136,7 @@ final class DestinationContext: @unchecked Sendable {
             case .rejected(let reason):
                 checkpointRejection = reason
                 onActivity("Checkpoint ignorat (\(reason)) — fișierele existente se reverifică.")
+                StructuredLog.shared.log(.warning, "checkpoint", "checkpoint.rejected", reason, job: jobID, dest: destLogID)
             case .valid(let saved):
                 applyCheckpoint(saved)
             }
@@ -211,7 +215,9 @@ final class DestinationContext: @unchecked Sendable {
         case .success(let hash, let written):
             // `.success` vine DOAR după confirmare + redenumire la numele final
             // (vezi FanOutCopier.run) — nu se mai compară nimic aici.
-            if isRetry { failCount -= 1; recoveredCount += 1; failedRelPaths.remove(entry.relPath); onActivity("Recuperat la reîncercare: \(entry.relPath)") }
+            if isRetry { failCount -= 1; recoveredCount += 1; failedRelPaths.remove(entry.relPath); onActivity("Recuperat la reîncercare: \(entry.relPath)")
+                StructuredLog.shared.log(.info, "copy", "file.recoveredOnRetry", "Recuperat la reîncercare", job: jobID,
+                                         dest: destLogID, fields: ["path": destPath(for: entry)]) }
             okCount += 1
             bytesConfirmed += written
             filesStatus[entry.relPath] = "ok"
@@ -283,6 +289,8 @@ final class DestinationContext: @unchecked Sendable {
            !checkpointErrorLogged {
             checkpointErrorLogged = true
             onActivity("Checkpoint nesalvat (\(error.localizedDescription)) — nu afectează fișierele confirmate; o reluare le va reverifica.")
+            StructuredLog.shared.log(.warning, "checkpoint", "checkpoint.saveFailed", "Checkpoint nesalvat", job: jobID,
+                                     dest: destLogID, error: error)
         }
         filesSinceCheckpoint = 0
         lastCheckpointTime = now
@@ -299,6 +307,7 @@ final class DestinationContext: @unchecked Sendable {
         if d.readBackCacheBypass == false { notes.append("Volumul a refuzat F_NOCACHE — recitirea poate fi servită din memoria cache.") }
         for n in notes where !durabilityNotes.contains(n) {
             durabilityNotes.insert(n)
+            StructuredLog.shared.log(.warning, "durability", "durability.degraded", n, job: jobID, dest: destLogID)
             onActivity("⚠ \((destRoot as NSString).lastPathComponent): \(n)")
         }
     }
@@ -382,6 +391,7 @@ final class DestinationContext: @unchecked Sendable {
         if !pdfResult.ok {
             let reason = pdfResult.error ?? "motiv necunoscut"
             onActivity("Nu s-a putut genera raportul PDF: \(reason)")
+            StructuredLog.shared.log(.error, "reporting", "report.pdf.failed", reason, job: jobID, dest: destLogID)
             let errPath = (targetRoot as NSString).appendingPathComponent("offload_report_PDF_EROARE.txt")
             try? "Generarea raportului PDF a esuat la \(Date()).\n\nMotiv: \(reason)\n".write(toFile: errPath, atomically: true, encoding: .utf8)
         }

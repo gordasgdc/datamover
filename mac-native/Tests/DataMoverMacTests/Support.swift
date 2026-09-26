@@ -7,7 +7,15 @@ import XCTest
 final class Sandbox {
     let root: String
 
+    /// Jurnalul structurat al testelor: un folder temporar, instalat o dată.
+    static let testLogDirectory: URL = {
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("dm-tests-log-\(UUID().uuidString)")
+        StructuredLog.shared = StructuredLog(config: .init(directory: dir))
+        return dir
+    }()
+
     init() {
+        _ = Sandbox.testLogDirectory
         root = (NSTemporaryDirectory() as NSString)
             .appendingPathComponent("dm-tests-\(UUID().uuidString)")
         try! FileManager.default.createDirectory(atPath: root, withIntermediateDirectories: true)

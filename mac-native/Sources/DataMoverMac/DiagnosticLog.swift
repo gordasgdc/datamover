@@ -52,7 +52,10 @@ struct DiagnosticLog {
         case .error: logger.error("\(message, privacy: .public)")
         }
         guard level != .debug || Self.verbose else { return }
-        LogFile.shared.append(level: level, category: category, message: message)
+        LogFile.shared.append(level: level, category: category, message: Redactor.redactSecrets(message))
+        // [2026-09-26] Și în jurnalul structurat (o singură sursă pentru export).
+        let mapped: LogLevel = [.debug: .debug, .info: .info, .warning: .warning, .error: .error][level] ?? .info
+        StructuredLog.shared.log(mapped, category, "\(category).message", message)
     }
 }
 

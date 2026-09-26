@@ -21,6 +21,8 @@ struct SettingsView: View {
                 .tabItem { Label(L.t("settingsTab.cloud"), systemImage: "icloud") }
             AccountSettingsTab()
                 .tabItem { Label(L.t("settingsTab.account"), systemImage: "person.crop.circle") }
+            DiagnosticsSettingsTab()
+                .tabItem { Label(L.t("settingsTab.diagnostics"), systemImage: "stethoscope") }
         }
         .frame(width: DM.Layout.settingsWidth)
         .id(langStore.lang) // relayout la schimbarea limbii
@@ -213,6 +215,67 @@ private struct CloudSettingsTab: View {
                 return (ok, ok ? CloudSyncService.listRemotes() : [])
             }.value
             available = result.0; remotes = result.1; loaded = true
+        }
+    }
+}
+
+/// Suport: jurnalul local, ID-ul sesiunii, jurnal detaliat temporar și
+/// exportul pachetului de diagnostic (nimic nu se trimite automat).
+struct DiagnosticsSettingsTab: View {
+    @State private var includePaths = false
+    @State private var debugOn = StructuredLog.shared.minimumLevel <= .debug
+    @State private var lastExport: URL?
+    @State private var exportError: String?
+
+    var body: some View {
+        Form {
+            Section {
+                LabeledContent(L.t("diag.session")) {
+                    HStack {
+                        Text(StructuredLog.shared.sessionID).font(DM.Font.mono).textSelection(.enabled)
+                        Button(L.t("activation.copy")) {
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(StructuredLog.shared.sessionID, forType: .string)
+                        }
+                    }
+                }
+                LabeledContent(L.t("diag.location")) {
+                    Text(StructuredLog.shared.config.directory.path.replacingOccurrences(of: NSHomeDirectory(), with: "~"))
+                        .font(DM.Font.mono).textSelection(.enabled)
+                }
+                Button(L.t("diag.openFolder")) {
+                    try? FileManager.default.createDirectory(at: StructuredLog.shared.config.directory, withIntermediateDirectories: true)
+                    NSWorkspace.shared.open(StructuredLog.shared.config.directory)
+                }
+                Toggle(L.t("diag.debug"), isOn: $debugOn)
+                    .onChange(of: debugOn) { _, on in StructuredLog.shared.setDebugUntilRelaunch(on) }
+                SettingsHelp(key: "diag.debugHelp")
+            } header: { Text(L.t("settingsTab.diagnostics")) }
+            Section {
+                Toggle(L.t("diag.includePaths"), isOn: $includePaths)
+                SettingsHelp(key: "diag.includePathsHelp")
+                Button(L.t("diag.export")) { export() }
+                if let lastExport {
+                    Text(lastExport.path.replacingOccurrences(of: NSHomeDirectory(), with: "~"))
+                        .font(DM.Font.mono).textSelection(.enabled)
+                }
+                if let exportError { Text(exportError).foregroundStyle(DM.failure) }
+                SettingsHelp(key: "diag.exportHelp")
+            }
+        }
+        .formStyle(.grouped)
+    }
+
+    private func export() {
+        do {
+            let url = try DiagnosticExporter(log: StructuredLog.shared, lastJob: HistoryStore.shared.entries.last)
+                .export(to: DiagnosticExporter.defaultFolder, options: .init(includePaths: includePaths))
+            lastExport = url
+            exportError = nil
+            NSWorkspace.shared.activateFileViewerSelecting([url])
+        } catch {
+            exportError = L.t("diag.exportFailed") + " " + error.localizedDescription
+            StructuredLog.shared.log(.error, "diagnostics", "diagnostics.exportFailed", "Export eșuat", error: error)
         }
     }
 }

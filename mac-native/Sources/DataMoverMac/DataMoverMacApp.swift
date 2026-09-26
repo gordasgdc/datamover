@@ -14,6 +14,8 @@ struct DataMoverMacApp: App {
             // Aici NSApp există sigur; apelul din `init` de mai jos rula
             // înainte de el, deci tema salvată (Dark/Light) nu se aplica.
             ThemeManager.shared.applyNow()
+            StructuredLog.shared.log(.info, "app", "app.launched", "Aplicație pornită",
+                                     fields: ["bundle": Bundle.main.bundlePath.replacingOccurrences(of: NSHomeDirectory(), with: "~")])
             AppMover.promptIfNeeded()
         }
         ThemeManager.shared.applyNow()
@@ -39,6 +41,17 @@ struct DataMoverMacApp: App {
                 }
                 Button(L.t("menu.whatsapp")) {
                     NSWorkspace.shared.open(WhatsAppLink.url())
+                }
+                Divider()
+                Button(L.t("diag.export") + "…") {
+                    if let url = try? DiagnosticExporter(log: StructuredLog.shared, lastJob: HistoryStore.shared.entries.last)
+                        .export(to: DiagnosticExporter.defaultFolder) {
+                        NSWorkspace.shared.activateFileViewerSelecting([url])
+                    }
+                }
+                Button(L.t("diag.openFolder")) {
+                    try? FileManager.default.createDirectory(at: StructuredLog.shared.config.directory, withIntermediateDirectories: true)
+                    NSWorkspace.shared.open(StructuredLog.shared.config.directory)
                 }
             }
         }
