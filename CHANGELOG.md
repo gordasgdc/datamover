@@ -34,6 +34,25 @@
   sursei, iar o destinație eșuată nu mai poate bloca transferul (verificat
   cu teste). Interfața Windows nu are încă ecranele noi.
 
+### Fiabilitate și diagnostic
+- Jurnal tehnic local, rotativ, fără date personale; export de diagnostic
+  (ZIP local, căi anonimizate) din meniul Ajutor (Mac) sau butonul
+  Diagnostic (Windows). Nimic nu se trimite automat.
+- ID de sesiune și ID de transfer vizibile la rezultat, pentru suport.
+- Două surse care ar produce același fișier la destinație sunt oprite
+  înainte de copiere (una l-ar fi înlocuit pe cealaltă).
+- Un folder-legătură (symlink/junction) la destinație nu poate trimite
+  copia în afara folderului ales.
+- Mac: discurile exFAT apăreau fără spațiu liber — reparat.
+- Windows: un fișier deschis exclusiv de alt program nu mai blochează
+  copierea și nu mai lasă fișiere temporare; căile foarte lungi se copiază
+  corect; o unitate lipsă e semnalată înainte de pornire.
+
+### Interfață (Windows)
+- Ecran nou: sursele, verificarea și copiile pe un singur traseu, cu
+  incidente explicate (cauză și acțiune), dispozitive recunoscibile și cifre
+  măsurate, în etapele Pregătire, Transfer și Rezultat.
+
 ### Interfață (Mac) — direcția vizuală finală
 - Un singur traseu vizual, de la card la verificare și la fiecare copie, în pregătire, în timpul
   transferului și la rezultat; cifrele mari arată ce e de copiat, cât rămâne liber și progresul.

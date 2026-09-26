@@ -127,18 +127,46 @@ symlink. Rulează în interfață și din nou în `OffloadRunner.start`.
 scripts/preflight.sh            # versiuni, git, diff --check, build+teste Mac (debug+release),
                                 # localizare, design audit, build Windows + verificări C#
 scripts/preflight.sh --online   # plus linkurile publice (HEAD); 404 = eșec, nu avertisment
+scripts/preflight.sh --volumes  # imagini de disc temporare: disc plin, spațiu insuficient, exFAT
+scripts/preflight.sh --vm       # DataMover.WinChecks pe Windows real (NTFS), fără interfață
 scripts/design-audit.sh         # ratchet: literale vizuale ≤ baseline, 0 în fișiere noi
 ```
 
 Testele (`mac-native/Tests`, `windows-native/DataMover.CoreChecks`) rulează
 exclusiv în directoare temporare, cu date sintetice.
 
+## Observabilitate (ambele platforme)
+
+Un singur jurnal structurat, JSON pe linie (`datamover.jsonl`): ora UTC cu
+milisecunde, nivel, componentă, eveniment, versiune/build, sistem, ID sesiune
+și, per transfer, ID job și ID destinație (hash scurt al căii, nu calea).
+Rotire 5 × 5 MB, retenție 14 zile. Redactarea e implicită și se aplică
+înainte de scriere: email, `cheie=valoare` sensibile, token-uri lungi,
+directorul personal; câmpurile cu nume sensibil devin `<redacted>`. Exportul
+de diagnostic (ZIP local) anonimizează căile (`<cale#hash>.ext`) și include un
+`manifest.json` cu SHA-256 per fișier. Un jurnal care nu se poate scrie nu
+oprește niciodată un transfer.
+
+- macOS: `Infrastructure/Diagnostics/` (`StructuredLog`, `Redactor`,
+  `DiagnosticExporter`), `~/Library/Logs/DataMover/`.
+- Windows: `DataMover.Core/Diagnostics/` (aceleași reguli, doar BCL),
+  `%LOCALAPPDATA%\GDC\DataMover\Logs\`.
+- Pentru utilizatori: `support/JURNALE_SI_DIAGNOSTIC.md`.
+- Matricea completă PASS/FAIL/NEVERIFICAT: `RELIABILITY.md`.
+
+## Interfața Windows
+
+Compoziție proprie WPF, nu o copie a celei macOS: bară de comenzi sus
+(proiect/card → numele folderului, coadă, setări, pornire), traseul de la
+stânga la dreapta (surse → nod de verificare → copii), coloana de incidente
+(cauză + acțiune, ca pe Mac), raft de dispozitive, jurnal tehnic pliabil.
+Dispozitivele se desenează vectorial (`Controls/DeviceArtView`), niciodată ca
+foldere. `Domain/Preflight` și `Domain/MediaClassifier` urmează aceleași
+reguli ca pe Mac. Build DEBUG: `--uitest <folder>` rulează pe date sintetice,
+fără a salva tema, fără istoric, și randează capturi la DPI-ul cerut.
+
 ## Ce NU e acoperit încă
 
-- Disc plin real, sleep, scoaterea fizică a unui disc în timpul scrierii:
-  simulate doar prin erori injectate (writer care eșuează, flush care
-  eșuează), nu pe hardware.
-- Windows: logica de checkpoint e verificată la nivel de politică
-  (`CheckpointStore`, `RevalidationPolicy`), nu printr-un transfer complet
-  (`OffloadRunner` depinde de WPF/QuestPDF). Interfața Windows nu are
-  panourile noi și nu a fost verificată vizual.
+Lista completă, pe platforme: `RELIABILITY.md`. Pe scurt: oprire bruscă reală
+a procesului, hardware scos fizic, SMB, disc plin pe Windows, navigarea din
+tastatură și scalarea reală de sistem pe Windows.
