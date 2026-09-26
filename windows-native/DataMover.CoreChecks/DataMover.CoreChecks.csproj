@@ -14,6 +14,8 @@
     <Compile Include="../DataMover.Core/Services/XxHash64.cs" />
     <Compile Include="../DataMover.Core/Services/OffloadEngine.cs" />
     <Compile Include="../DataMover.Core/Services/CheckpointPolicy.cs" />
+    <Compile Include="../DataMover.Core/Services/PathSafety.cs" />
+    <Compile Include="../DataMover.Core/Diagnostics/*.cs" />
     <Compile Include="../DataMover.Core/Models/*.cs" />
   </ItemGroup>
 </Project>

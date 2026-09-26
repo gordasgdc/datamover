@@ -48,6 +48,13 @@ public sealed class OffloadRunner : INotifyPropertyChanged
     public string MemoryUsedText { get => _memoryUsedText; private set => Set(ref _memoryUsedText, value); }
 
     public List<DestinationResult> LastResults { get; private set; } = new();
+    /// ID-ul jobului curent/ultim — coreleaza jurnalul structurat.
+    public string JobId { get; private set; } = "";
+    /// Istoric persistent (si alte efecte in profilul utilizatorului). Verificarile
+    /// automate il opresc, ca sa nu scrie in istoricul real.
+    public static bool SideEffectsEnabled { get; set; } = true;
+    /// Coliziuni de nume intre surse gasite la ultima pornire (blocante).
+    public List<string> LastCollisions { get; private set; } = new();
 
     /// Plafon de proba depasit (2026-08-30) - vezi LicenseManager.
     /// TrialMaxTransferBytes. MainWindow verifica asta dupa Start() si
@@ -244,6 +251,7 @@ public sealed class OffloadRunner : INotifyPropertyChanged
 
     public void TogglePause()
     {
+        Diagnostics.StructuredLog.Shared.Log(Diagnostics.LogLevel.Info, "job", IsPaused ? "job.resumed" : "job.paused", IsPaused ? "Reluat" : "Pauza", job: JobId);
         if (!IsRunning) return;
         if (_pauseToken.IsPaused)
         {
@@ -261,6 +269,7 @@ public sealed class OffloadRunner : INotifyPropertyChanged
 
     public void Cancel()
     {
+        Diagnostics.StructuredLog.Shared.Log(Diagnostics.LogLevel.Info, "job", "job.cancel.requested", "Anulare ceruta", job: JobId);
         if (!IsRunning) return;
         _cancelToken.Cancel();
         StatusText = "Se anuleaza...";
@@ -303,6 +312,16 @@ public sealed class OffloadRunner : INotifyPropertyChanged
         if (files.Count == 0)
         {
             StatusText = "Nu am gasit niciun fisier de copiat.";
+            return;
+        }
+
+        // [2026-09-26] Coliziuni de nume intre surse: blocant (paritate Mac).
+        LastCollisions = sources.Count > 1 ? PathSafety.NameCollisions(files) : new List<string>();
+        if (LastCollisions.Count > 0)
+        {
+            StatusText = $"Pornire blocata: {LastCollisions.Count} fisier(e) cu acelasi nume in surse diferite (ex. {LastCollisions[0]}).";
+            Diagnostics.StructuredLog.Shared.Log(Diagnostics.LogLevel.Warning, "preflight", "preflight.nameCollision", "Coliziune de nume intre surse",
+                fields: new Dictionary<string, string> { ["count"] = LastCollisions.Count.ToString() });
             return;
         }
 
@@ -360,6 +379,14 @@ public sealed class OffloadRunner : INotifyPropertyChanged
         // detectorului de carduri apar INAINTE de start si tocmai ele
         // trebuie sa ramana vizibile in timpul transferului.
         LogActivity($"──────── Transfer nou: {folderName} ────────");
+        JobId = Diagnostics.StructuredLog.NewId();
+        Diagnostics.StructuredLog.Shared.Log(Diagnostics.LogLevel.Info, "job", "job.started", "Transfer pornit", job: JobId,
+            fields: new Dictionary<string, string>
+            {
+                ["sources"] = sources.Count.ToString(), ["destinations"] = destinations.Count.ToString(),
+                ["files"] = files.Count.ToString(), ["bytes"] = files.Sum(f => f.Size).ToString(), ["model"] = model.Key(),
+                ["resume"] = resume.ToString(), ["destIDs"] = string.Join(",", destinations.Select(Diagnostics.Redactor.DestinationId)),
+            });
         UpdateMemoryDisplay();
 
         int chunkBytes = ChunkSizeMB * 1024 * 1024;
@@ -466,14 +493,35 @@ public sealed class OffloadRunner : INotifyPropertyChanged
                     // Copiere REALA prin fan-out — o singura citire a sursei
                     // pentru TOATE destinatiile care au nevoie de copiere la
                     // acest fisier (vezi FanOutCopier.cs).
+                    // [2026-09-26] Garzi per destinatie, INAINTE de fan-out: disc
+                    // disparut, cale care iese din tinta (reparse point), folder
+                    // imposibil de creat. Inainte, CreateDirectory arunca in afara
+                    // try-ului -> Task.Run cadea, Finish nu mai rula, UI blocat.
+                    var ready = new List<DestinationContext>();
+                    foreach (var ctx in toCopy)
+                    {
+                        var destPath = ctx.DestPath(entry);
+                        string? problem = null;
+                        if (!Directory.Exists(ctx.DestRoot)) problem = "Destinatia nu mai e disponibila (disc deconectat?)";
+                        else if (!PathSafety.IsInsideTarget(destPath, ctx.TargetRoot)) problem = "Calea ar iesi din folderul destinatiei (link/junction)";
+                        else
+                        {
+                            try { Directory.CreateDirectory(Path.GetDirectoryName(destPath)!); }
+                            catch (Exception ex) { problem = "Folderul destinatiei nu poate fi creat: " + ex.Message; }
+                        }
+                        if (problem == null) { ready.Add(ctx); continue; }
+                        ctx.RecordCopyOutcome(entry, "", new FanOutDestResult { Success = false, Error = new IOException(problem) }, isRetry);
+                        Diagnostics.StructuredLog.Shared.Log(Diagnostics.LogLevel.Error, "copy", "destination.refused", problem, job: JobId,
+                            dest: Diagnostics.Redactor.DestinationId(ctx.DestRoot), fields: new Dictionary<string, string> { ["path"] = destPath });
+                        Advance(entry.Size);
+                    }
+                    toCopy = ready;
                     if (toCopy.Count > 0)
                     {
                         var destPaths = new List<string>();
                         foreach (var ctx in toCopy)
                         {
-                            var destPath = ctx.DestPath(entry);
-                            Directory.CreateDirectory(Path.GetDirectoryName(destPath)!);
-                            destPaths.Add(destPath);
+                            destPaths.Add(ctx.DestPath(entry));
                             ctx.OnActivity($"Copiere: {entry.RelPath} ({FormatBytesLocal(entry.Size)})");
                         }
                         try
@@ -487,6 +535,11 @@ public sealed class OffloadRunner : INotifyPropertyChanged
                                 var outcome = result.Destinations.TryGetValue(destPaths[i], out var o) ? o
                                     : new FanOutDestResult { Success = false, Error = new Exception("Fara rezultat de la motorul de copiere") };
                                 ctx.RecordCopyOutcome(entry, result.SourceHash, outcome, isRetry);
+                                if (!outcome.Verified)
+                                    Diagnostics.StructuredLog.Shared.Log(outcome.Success ? Diagnostics.LogLevel.Warning : Diagnostics.LogLevel.Error,
+                                        "copy", outcome.Success ? "file.mismatch" : "file.failed", outcome.MismatchReason ?? outcome.Error?.Message ?? "?",
+                                        job: JobId, dest: Diagnostics.Redactor.DestinationId(ctx.DestRoot),
+                                        fields: new Dictionary<string, string> { ["path"] = destPaths[i], ["retry"] = isRetry.ToString() }, error: outcome.Error);
                                 Advance(entry.Size);
                             }
                         }
@@ -576,8 +629,15 @@ public sealed class OffloadRunner : INotifyPropertyChanged
     private void Finish(List<DestinationResult> results, string folderName, List<string> sources,
         List<string> destinations, bool ejectSource = false)
     {
-        IsRunning = false;
         LastResults = results;
+        foreach (var r in results)
+            Diagnostics.StructuredLog.Shared.Log(r.FailCount > 0 || r.Cancelled ? Diagnostics.LogLevel.Warning : Diagnostics.LogLevel.Info,
+                "job", "destination.result", r.Cancelled ? "cancelled" : r.FailCount > 0 ? "failed" : r.RecoveredCount > 0 ? "verifiedWithWarnings" : "verified",
+                job: JobId, dest: Diagnostics.Redactor.DestinationId(r.DestRoot), fields: new Dictionary<string, string>
+                {
+                    ["ok"] = r.OkCount.ToString(), ["skipped"] = r.SkipCount.ToString(), ["failed"] = r.FailCount.ToString(),
+                    ["recovered"] = r.RecoveredCount.ToString(), ["mhl"] = r.MhlPath == null ? "no" : "yes",
+                });
         bool anyCancelled = results.Any(r => r.Cancelled);
         int totalOk = results.Sum(r => r.OkCount);
         int totalSkip = results.Sum(r => r.SkipCount);
@@ -598,6 +658,8 @@ public sealed class OffloadRunner : INotifyPropertyChanged
             : totalRecovered > 0 ? "Verificat, cu avertismente"
             : "Transfer verificat";
         LastVerdict = verdict;
+        Diagnostics.StructuredLog.Shared.Log(verdict == "Transfer verificat" || verdict.StartsWith("Verificat") ? Diagnostics.LogLevel.Info : Diagnostics.LogLevel.Warning,
+            "job", "job.finished", verdict, job: JobId);
         StatusText = anyCancelled ? "Anulat." : verdict + " — " + summary + ".";
 
         // [2026-09-03] Ejectare automata a cardului sursa, DOAR daca totul a
@@ -605,7 +667,10 @@ public sealed class OffloadRunner : INotifyPropertyChanged
         // putea sa mai fie nevoie de o reluare de pe el.
         if (ejectSource && !anyCancelled && totalFail == 0) EjectSourceVolumes(sources);
 
-        HistoryStore.Shared.Record(folderName, sources, destinations, totalOk, totalSkip, totalFail);
+        if (SideEffectsEnabled) HistoryStore.Shared.Record(folderName, sources, destinations, totalOk, totalSkip, totalFail);
+        // Ultimul pas: cine asteapta IsRunning == false gaseste deja rezultatele
+        // si jurnalul complete (ordine gasita la verificarea in VM).
+        IsRunning = false;
     }
 
     /// Scoate in siguranta volumele amovibile de pe care s-a citit.

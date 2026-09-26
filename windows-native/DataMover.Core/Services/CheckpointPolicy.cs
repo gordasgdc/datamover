@@ -231,11 +231,20 @@ public static class AtomicReplace
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern bool MoveFileEx(string existing, string target, uint flags);
 
+    /// P/Invoke nu primeste prefixarea automata pe care .NET o face pentru cai
+    /// lungi: fara `\\?\`, MoveFileEx esueaza peste MAX_PATH (Win32 3, gasit in VM).
+    public static string ExtendedPath(string path)
+    {
+        var full = Path.GetFullPath(path);
+        if (full.StartsWith(@"\\?\")) return full;
+        return full.StartsWith(@"\\") ? @"\\?\UNC\" + full.Substring(2) : @"\\?\" + full;
+    }
+
     public static void Move(string from, string to)
     {
         if (OperatingSystem.IsWindows())
         {
-            if (!MoveFileEx(from, to, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+            if (!MoveFileEx(ExtendedPath(from), ExtendedPath(to), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
                 throw new IOException($"Înlocuirea atomică a eșuat (Win32 {Marshal.GetLastWin32Error()})");
             return;
         }

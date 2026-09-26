@@ -148,6 +148,74 @@ try
         Check("ExpectedSourceHash null daca destinatia lipseste", CheckpointStore.ExpectedSourceHash("ok", e0.Stamp, proofC, e0, copy + ".nu") == null);
         Check("ExpectedSourceHash null daca stare fail", CheckpointStore.ExpectedSourceHash("fail", e0.Stamp, proofC, e0, copy) == null);
     }
+
+    // --- Observabilitate --------------------------------------------------------
+    {
+        var raw = "user dumitru@example.com license=GDC1-ABCD token: abc.def password \"hunter2\" key K3yZx9QvLm2Np7Rt5Wu8Yb4Cd6 C:\\Users\\johndoe\\Videos\\x.mov";
+        var red = DataMover.Core.Diagnostics.Redactor.RedactSecrets(raw);
+        Check("redactare: email, licenta, token, parola, cheie lunga, profil utilizator",
+            new[] { "dumitru@example.com", "GDC1-ABCD", "abc.def", "hunter2", "K3yZx9QvLm2Np7Rt5Wu8Yb4Cd6", "johndoe" }.All(x => !red.Contains(x)));
+        var an = DataMover.Core.Diagnostics.Redactor.AnonymizePaths(@"copiat D:\CLIENT\A001C001.mov si /Volumes/A001/CLIP/A001C001.mov");
+        Check("anonimizare cai (Windows + POSIX), extensie pastrata", !an.Contains("A001C001") && !an.Contains("CLIENT") && an.Contains(".mov"));
+        var fr = DataMover.Core.Diagnostics.Redactor.RedactFields(new Dictionary<string, string> { ["token"] = "tok", ["path"] = "x" });
+        Check("camp sensibil dupa cheie -> <redacted>", fr["token"] == "<redacted>" && fr["path"] == "x");
+
+        var logDir = Path.Combine(root, "log");
+        var log = new DataMover.Core.Diagnostics.StructuredLog(new(logDir, MaxBytes: 2000, MaxFiles: 3), "sess1234");
+        log.Log(DataMover.Core.Diagnostics.LogLevel.Info, "job", "job.started", "x", job: "job1", dest: "d-1");
+        log.Log(DataMover.Core.Diagnostics.LogLevel.Debug, "copy", "file.confirmed", "sub prag");
+        var first = File.ReadAllLines(log.FilePath);
+        Check("inregistrare JSON cu sesiune/job/destinatie, UTC, fara debug implicit",
+            first.Length == 1 && first[0].Contains("\"session\":\"sess1234\"") && first[0].Contains("\"job\":\"job1\"") && first[0].Contains("Z\""));
+        for (int i = 0; i < 200; i++) log.Log(DataMover.Core.Diagnostics.LogLevel.Info, "t", "t.e", new string('x', 50) + i);
+        var files = Directory.GetFiles(logDir);
+        Check("rotatie: cel mult 3 fisiere, fiecare <= 2000 octeti", files.Length <= 3 && files.All(f => new FileInfo(f).Length <= 2000));
+        var old = log.FilePath + ".2";
+        File.SetLastWriteTimeUtc(old, DateTime.UtcNow.AddDays(-30));
+        log.Log(DataMover.Core.Diagnostics.LogLevel.Info, "t", "t.e", "retentie");
+        Check("retentie: arhiva mai veche de 14 zile stearsa", !File.Exists(old));
+
+        var blocker = MakeFile(root, "blocker", 1);
+        var bad = new DataMover.Core.Diagnostics.StructuredLog(new(blocker));
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        for (int i = 0; i < 50; i++) bad.Log(DataMover.Core.Diagnostics.LogLevel.Error, "t", "t.e", "nu se poate scrie");
+        Check("jurnal nescriptibil: nu arunca, nu blocheaza, spune de ce", sw.ElapsedMilliseconds < 2000 && bad.LastWriteError != null);
+
+        var exLog = new DataMover.Core.Diagnostics.StructuredLog(new(Path.Combine(root, "exlog")), "exp12345");
+        var media = MakeFile(root, "SECRET_CLIENT_A001C001.mov", 4096);
+        exLog.Log(DataMover.Core.Diagnostics.LogLevel.Error, "copy", "file.failed", $"esec la {media} license=GDC1-XYZ9",
+            fields: new Dictionary<string, string> { ["path"] = media, ["token"] = "tok" });
+        var zip = new DataMover.Core.Diagnostics.DiagnosticExporter(exLog,
+            new Dictionary<string, string> { ["verification"] = "xxhash64", ["licenseCode"] = "GDC-SHOULD-NOT" }).Export(Path.Combine(root, "exports"));
+        using (var za = System.IO.Compression.ZipFile.OpenRead(zip))
+        {
+            var names = za.Entries.Where(e => e.Length > 0).Select(e => e.FullName).ToList();
+            var all = string.Join("\n", za.Entries.Where(e => e.Length > 0).Select(e => new StreamReader(e.Open()).ReadToEnd()));
+            Check("export: doar .jsonl/.json, fara media", names.All(n => n.EndsWith(".jsonl") || n.EndsWith(".json")) && !names.Any(n => n.EndsWith(".mov")));
+            Check("export: fara secrete si fara cai", new[] { "SECRET_CLIENT", "GDC1-XYZ9", "GDC-SHOULD-NOT", "\"tok\"", root }.All(x => !all.Contains(x)));
+            Check("export: manifest + sesiune", names.Any(n => n.EndsWith("manifest.json")) && all.Contains("exp12345"));
+        }
+
+        // --- Garzi de cale ---------------------------------------------------------
+        var fe = new List<DataMover.Core.Models.FileEntry> {
+            new("/s1/a.mov", "Clip/A.MOV", 1), new("/s2/a.mov", "clip/a.mov", 1),
+            new("/s3/x", "s\u0326.mov", 1), new("/s4/x", "\u0219.mov", 1) };
+        Check("coliziuni de nume (majuscule + NFC/NFD)", PathSafety.NameCollisions(fe).Count == 2);
+        var tgt = Directory.CreateDirectory(Path.Combine(root, "T", "JOB")).FullName;
+        var outside = Directory.CreateDirectory(Path.Combine(root, "OUTSIDE")).FullName;
+        try
+        {
+            Directory.CreateSymbolicLink(Path.Combine(tgt, "CLIP"), outside);
+            Check("cale prin symlink/reparse point -> refuzata", !PathSafety.IsInsideTarget(Path.Combine(tgt, "CLIP", "a.mov"), tgt));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Pe Windows, symlink-urile cer Developer Mode/admin; junction-ul e verificat in WinChecks.
+            Console.WriteLine("- NEVERIFICAT aici: symlink (privilegiu lipsa) — acoperit de junction in WinChecks");
+        }
+        Check("cale normala in tinta -> acceptata", PathSafety.IsInsideTarget(Path.Combine(tgt, "X", "a.mov"), tgt));
+        Check("traversare .. -> refuzata", !PathSafety.IsInsideTarget(Path.Combine(tgt, "..", "..", "a.mov"), tgt));
+    }
 }
 finally { Directory.Delete(root, true); }
 

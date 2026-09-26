@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Verificari cap-coada pe Windows real (NTFS): ruleaza OffloadRunner in
+       directoare temporare. Se construieste pe Mac (EnableWindowsTargeting),
+       se ruleaza in VM prin prlctl exec. Nu e livrat. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <PlatformTarget>x64</PlatformTarget>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../DataMover.Core/DataMover.Core.csproj" />
+  </ItemGroup>
+</Project>

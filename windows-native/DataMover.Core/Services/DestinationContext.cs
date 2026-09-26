@@ -77,7 +77,17 @@ public sealed class DestinationContext
 
     public void Prepare(bool resume)
     {
-        Directory.CreateDirectory(TargetRoot);
+        // [2026-09-26] Un disc disparut (litera de unitate lipsa) nu are voie
+        // sa arunce aici: fisierele esueaza apoi per destinatie, prin garda din
+        // OffloadRunner, iar transferul se termina normal.
+        try { Directory.CreateDirectory(TargetRoot); }
+        catch (Exception ex)
+        {
+            OnActivity($"Destinatia nu e disponibila: {DestRoot} ({ex.Message})");
+            Diagnostics.StructuredLog.Shared.Log(Diagnostics.LogLevel.Error, "destination", "destination.unavailable", "Destinatia nu e disponibila",
+                dest: Diagnostics.Redactor.DestinationId(DestRoot), error: ex);
+            return;
+        }
         OpenCsv();
         if (GenerateMhl)
         {
@@ -97,7 +107,11 @@ public sealed class DestinationContext
             // sursa (identitate), acelasi folder, acelasi model, stari cunoscute.
             var loaded = CheckpointStore.LoadValidated(TargetRoot, FolderName, Model.Key(), SourceIdentity);
             if (loaded.Kind == CheckpointLoadKind.Rejected)
+            {
                 OnActivity($"Checkpoint ignorat ({loaded.Reason}) — fișierele existente se reverifică.");
+                Diagnostics.StructuredLog.Shared.Log(Diagnostics.LogLevel.Warning, "checkpoint", "checkpoint.rejected", loaded.Reason ?? "?",
+                    dest: Diagnostics.Redactor.DestinationId(DestRoot));
+            }
             else if (loaded.Kind == CheckpointLoadKind.Valid)
             {
                 foreach (var kv in loaded.Files) _filesStatus[kv.Key] = kv.Value;
@@ -149,6 +163,8 @@ public sealed class DestinationContext
         _filesStatus[entry.RelPath] = "sarit";
         _fileStamps[entry.RelPath] = entry.Stamp;
         _fileProofs[entry.RelPath] = new FileProof(srcHash, dstHash, "checksum");
+        // Un partial ramas dintr-o oprire brusca, langa un fisier acum confirmat.
+        try { var part = PartialFile.PathFor(DestPath(entry)); if (File.Exists(part)) File.Delete(part); } catch { }
         LogRow(new ReportRow { File = entry.RelPath, SizeBytes = entry.Size, SrcHash = srcHash, DstHash = dstHash, Status = "SARIT", DestPath = DestPath(entry) });
         RecordInMhl(entry, srcHash);
         CloudUploadQueue?.Enqueue(entry.RelPath);
@@ -236,6 +252,8 @@ public sealed class DestinationContext
         {
             _checkpointErrorLogged = true;
             OnActivity($"Checkpoint nesalvat ({error.Message}) — nu afectează fișierele confirmate; o reluare le va reverifica.");
+            Diagnostics.StructuredLog.Shared.Log(Diagnostics.LogLevel.Warning, "checkpoint", "checkpoint.saveFailed", "Checkpoint nesalvat",
+                dest: Diagnostics.Redactor.DestinationId(DestRoot), error: error);
         }
         _filesSinceCheckpoint = 0;
         _lastCheckpointTime = now;
