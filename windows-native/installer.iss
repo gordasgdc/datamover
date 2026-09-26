@@ -71,3 +71,8 @@ Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#MyAppName}}
 [UninstallDelete]
 Type: filesandordirs; Name: "{localappdata}\DataMover"
 Type: filesandordirs; Name: "{userappdata}\DataMover"
+; Jurnalele si exporturile de diagnostic (StructuredLog/DiagnosticExporter).
+; Doar subfolderul DataMover; "GDC" se sterge numai daca a ramas gol, ca sa
+; nu atinga datele altor produse GDC.
+Type: filesandordirs; Name: "{localappdata}\GDC\DataMover"
+Type: dirifempty; Name: "{localappdata}\GDC"

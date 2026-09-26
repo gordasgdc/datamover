@@ -274,6 +274,21 @@ finally { Directory.Delete(root, true); }
     Check("media: numele 'RAID' = doar indiciu", Cls(f => f.VolumeName = "Backup RAID").Confidence == DataMover.Core.Domain.Confidence.Hint);
 }
 
+// Afisare marimi: zecimal, ca pe macOS (aceeasi sursa = aceeasi cifra).
+{
+    var inv = System.Globalization.CultureInfo.InvariantCulture;
+    Check("marime: 23248896 B = 23.2 MB (zecimal, ca Mac)", ByteSize.Format(23_248_896, culture: inv) == "23.2 MB");
+    Check("marime: 999 B / 1000 B / 1,5 GB", ByteSize.Format(999, culture: inv) == "999 B" && ByteSize.Format(1000, culture: inv) == "1 KB"
+        && ByteSize.Format(1_500_000_000, culture: inv) == "1.5 GB");
+    Check("marime: separator zecimal ro-RO", ByteSize.Format(23_248_896, culture: new System.Globalization.CultureInfo("ro-RO")) == "23,2 MB");
+}
+// Identitatea buildului in jurnal: commitul real, nu "dev".
+{
+    Check("build: commit din InformationalVersion", DataMover.Core.Diagnostics.BuildIdentity.FromInformationalVersion("2.16.1+E33723095B3B3ECC") == "e337230");
+    Check("build: fara commit -> dev", DataMover.Core.Diagnostics.BuildIdentity.FromInformationalVersion("2.16.1") == "dev"
+        && DataMover.Core.Diagnostics.BuildIdentity.FromInformationalVersion(null) == "dev");
+    Check("build: SDK pune commitul in assembly (build din git)", DataMover.Core.Diagnostics.BuildIdentity.Of(typeof(ByteSize).Assembly) != "dev");
+}
 Console.WriteLine(failures == 0 ? "TOATE VERIFICARILE AU TRECUT" : $"{failures} ESECURI");
 return failures == 0 ? 0 : 1;
 

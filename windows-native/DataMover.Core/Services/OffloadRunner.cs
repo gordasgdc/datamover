@@ -604,11 +604,7 @@ public sealed class OffloadRunner : INotifyPropertyChanged
 
     private static string FormatBytesLocal(long bytes)
     {
-        double b = bytes;
-        string[] units = { "B", "KB", "MB", "GB", "TB" };
-        int i = 0;
-        while (b >= 1024 && i < units.Length - 1) { b /= 1024; i++; }
-        return $"{b:0.0} {units[i]}";
+        return ByteSize.Format(bytes, "0.0");
     }
 
     /// MainWindow apeleaza asta dupa ce a aratat dialogul de spatiu, ca

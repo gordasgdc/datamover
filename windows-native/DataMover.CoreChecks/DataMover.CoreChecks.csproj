@@ -15,6 +15,7 @@
     <Compile Include="../DataMover.Core/Services/OffloadEngine.cs" />
     <Compile Include="../DataMover.Core/Services/CheckpointPolicy.cs" />
     <Compile Include="../DataMover.Core/Services/PathSafety.cs" />
+    <Compile Include="../DataMover.Core/Services/ByteSize.cs" />
     <Compile Include="../DataMover.Core/Diagnostics/*.cs" />
     <Compile Include="../DataMover.Core/Domain/*.cs" />
     <Compile Include="../DataMover.Core/Models/*.cs" />

@@ -148,6 +148,7 @@ public partial class MainWindow : FluentWindow
         RunUiTest();
 #endif
         DataMover.Core.Diagnostics.StructuredLog.Shared.AppVersion = UpdateChecker.CurrentVersion;
+        DataMover.Core.Diagnostics.StructuredLog.Shared.Build = DataMover.Core.Diagnostics.BuildIdentity.Of(typeof(MainWindow).Assembly);
         DataMover.Core.Diagnostics.StructuredLog.Shared.Log(DataMover.Core.Diagnostics.LogLevel.Info, "app", "app.launched", "Aplicatie pornita");
         ActivityList.ItemsSource = _activity;
         DrivesList.ItemsSource = _drives;
@@ -393,11 +394,7 @@ public partial class MainWindow : FluentWindow
 
     private static string FormatBytes(long bytes)
     {
-        double b = bytes;
-        string[] units = { "B", "KB", "MB", "GB", "TB" };
-        int i = 0;
-        while (b >= 1024 && i < units.Length - 1) { b /= 1024; i++; }
-        return $"{b:0.#} {units[i]}";
+        return DataMover.Core.Services.ByteSize.Format(bytes);
     }
 
     private void OnAddDriveAsSourceClicked(object sender, RoutedEventArgs e)

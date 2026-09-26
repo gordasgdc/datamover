@@ -1,6 +1,17 @@
 # Changelog — DataMover
 
-## v2.16.0 (nepublicat) — Integritate verificabilă și interfață reorganizată
+## v2.16.1 (2026-09-26) — Corecții Windows
+
+- Dezinstalarea șterge acum și jurnalele și exporturile de diagnostic
+  (`%LOCALAPPDATA%\GDC\DataMover`). Folderul comun `GDC` se șterge doar
+  dacă a rămas gol, deci datele altor aplicații GDC rămân neatinse.
+- Jurnalul de diagnostic Windows conține commitul real al versiunii
+  instalate, nu mai scrie „dev”.
+- Mărimile sunt afișate în unități zecimale, ca pe macOS: aceeași sursă
+  arată aceeași valoare pe ambele platforme (ex. 23,2 MB).
+- macOS: fără schimbări funcționale.
+
+## v2.16.0 (2026-09-26) — Integritate verificabilă și interfață reorganizată
 
 ### Siguranța datelor
 - Fiecare fișier se scrie întâi sub un nume temporar și primește numele

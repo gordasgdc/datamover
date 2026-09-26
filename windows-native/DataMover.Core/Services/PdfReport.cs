@@ -154,10 +154,6 @@ public static class PdfReport
 
     private static string FormatBytes(long bytes)
     {
-        double b = bytes;
-        string[] units = { "B", "KB", "MB", "GB", "TB" };
-        int i = 0;
-        while (b >= 1024 && i < units.Length - 1) { b /= 1024; i++; }
-        return $"{b:0.0} {units[i]}";
+        return ByteSize.Format(bytes, "0.0");
     }
 }
