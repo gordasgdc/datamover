@@ -1,5 +1,42 @@
 # Changelog — DataMover
 
+## v2.16.0 (nepublicat) — Integritate verificabilă și interfață reorganizată
+
+### Siguranța datelor
+- Fiecare fișier se scrie întâi sub un nume temporar și primește numele
+  final doar după flush fizic și confirmarea checksum-ului. Un fișier
+  întrerupt nu mai poate fi confundat cu unul verificat, iar un fișier
+  existent la destinație rămâne neatins dacă noua copie nu se confirmă.
+- Un fișier care se modifică pe card în timpul copierii e marcat neconfirmat.
+- Verificarea „doar mărime” compară efectiv octeții (înainte trecea orice).
+- Verificare opțională prin recitire completă de pe disc, ocolind cache-ul.
+- Verificare înainte de pornire: blochează destinația în interiorul sursei
+  (sau invers), aceeași destinație de două ori, destinații imbricate, căi
+  lipsă sau fără drept de scriere; avertizează la destinație pe același disc
+  cu sursa.
+- Reluarea ignoră un checkpoint corupt sau făcut cu alt algoritm și
+  recopiază fișierele lipsă, chiar dacă checkpoint-ul le marca „ok”.
+- Un disc deconectat în timpul transferului e raportat ca atare, doar la
+  destinația lui; celelalte continuă.
+- Rezultat neambiguu: verificat / verificat cu avertismente / eșec parțial /
+  eșec / anulat. Cardul se ejectează automat doar când fiecare destinație
+  are o copie confirmată.
+- Windows: aceleași garanții în motorul de copiere; o destinație eșuată nu
+  mai poate bloca transferul.
+
+### Interfață (Mac)
+- Panou „Ce va porni”: sursa și structura cardului, destinațiile cu spațiu
+  liber, folderul rezultat, metoda de verificare, avertismentele.
+- În timpul transferului: faza reală, progres total și per destinație,
+  viteze, timp rămas, fișierul curent.
+- La final: rezultatul fiecărei destinații, cu acces direct la folder,
+  PDF, HTML, CSV și MHL.
+- Jurnalul tehnic e ascuns implicit, filtrabil și copiabil.
+- Setările s-au mutat într-o fereastră Settings nativă (⌘,), pe categorii;
+  codul de licență e mascat implicit.
+- Tema aleasă (Luminos/Întunecat) se aplică de la pornire.
+- Istoricul păstrează verdictul, metoda de verificare și rapoartele.
+
 ## v2.15.1 (2026-09-19) — Mutare în Aplicații fiabilă (Mac)
 
 ### Fixed
