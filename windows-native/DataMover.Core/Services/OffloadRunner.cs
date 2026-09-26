@@ -55,6 +55,7 @@ public sealed class OffloadRunner : INotifyPropertyChanged
     public static bool SideEffectsEnabled { get; set; } = true;
     /// Coliziuni de nume intre surse gasite la ultima pornire (blocante).
     public List<string> LastCollisions { get; private set; } = new();
+    public List<Domain.PreflightIssue> LastPreflight { get; private set; } = new();
 
     /// Plafon de proba depasit (2026-08-30) - vezi LicenseManager.
     /// TrialMaxTransferBytes. MainWindow verifica asta dupa Start() si
@@ -292,6 +293,18 @@ public sealed class OffloadRunner : INotifyPropertyChanged
         string appVersion = "?")
     {
         if (IsRunning) return;
+
+        // [2026-09-26] Preflight (paritate Mac): suprapuneri sursa/destinatie,
+        // destinatii duble/imbricate, cai lipsa — blocant inainte de orice scriere.
+        LastPreflight = Domain.Preflight.Check(sources, destinations);
+        if (Domain.Preflight.HasBlocking(LastPreflight))
+        {
+            var first = LastPreflight.First(i => i.Blocking);
+            StatusText = "Pornire blocată: " + Domain.Preflight.Describe(first.Code).Title + (first.Path.Length > 0 ? $" ({first.Path})" : "");
+            Diagnostics.StructuredLog.Shared.Log(Diagnostics.LogLevel.Warning, "preflight", "preflight.blocked", StatusText,
+                fields: new Dictionary<string, string> { ["codes"] = string.Join(",", LastPreflight.Select(i => i.Code)) });
+            return;
+        }
 
         var files = new List<FileEntry>();
         foreach (var src in sources)

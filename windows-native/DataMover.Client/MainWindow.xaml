@@ -2,323 +2,401 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
-        Title="DataMover" Height="720" Width="1180" MinWidth="900" MinHeight="560"
+        xmlns:c="clr-namespace:DataMover.Client.Controls"
+        Title="DataMover" Height="780" Width="1240" MinWidth="960" MinHeight="620"
         WindowStartupLocation="CenterScreen">
     <!--
-      Rescriere WPF/Fluent (2026-08-28), la cererea explicita a lui Cristi
-      dupa ce a vazut design-ul mult mai modern al variantei Mac (SwiftUI) -
-      inlocuieste treptat ui/windows/app.py (Python/Tkinter, design
-      "primitiv"). Structura oglindeste ContentView.swift (Mac): coloana
-      Surse | zona centrala (proiect/card/optiuni/activitate) | coloana
-      Destinatii, cu un footer de progres/actiuni comun. Vezi CLAUDE.md
-      pentru roadmap-ul complet (ce mai lipseste fata de Mac).
-
-      IMPORTANT: FluentWindow inlocuieste chrome-ul nativ Windows - un
-      <ui:TitleBar> explicit e OBLIGATORIU, altfel fereastra ramane fixa,
-      fara zona de drag/minimize/maximize/close (bug real, gasit deja pe
-      GDCVaultWin - vezi Regula in CLAUDE.md-ul acelui repo).
+      [2026-09-26] Compozitie Windows proprie (nu copia layout-ului macOS):
+      banda SURSA -> nodul de VERIFICARE -> grila de COPII, coloana de INCIDENTE
+      in dreapta, raftul de DISPOZITIVE jos, jurnalul tehnic pliat. Acelasi scop,
+      aceleasi contracte si verdicte ca pe Mac; dispozitivele sunt vectori
+      proprii (Controls/DeviceArtView), starea e afisata separat, ca text + simbol.
+      FluentWindow cere un ui:TitleBar explicit (altfel fereastra nu se poate muta).
     -->
-    <Grid>
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis" />
+        <Style x:Key="SectionLabel" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+            <Setter Property="Margin" Value="0,0,0,6" />
+        </Style>
+        <Style x:Key="Figure" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="24" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Typography.NumeralAlignment" Value="Tabular" />
+        </Style>
+        <!-- Un capat al traseului: obiect + insigne text + cifra mare + bara + detalii. -->
+        <DataTemplate x:Key="EndpointTemplate">
+            <Border Background="{DynamicResource CardBackgroundBrush}" BorderBrush="{DynamicResource CardStrokeBrush}"
+                    BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,0,0,10">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="84" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <c:DeviceArtView Kind="{Binding Kind}" Dimmed="{Binding Offline}" Width="84" Height="66" VerticalAlignment="Top" />
+                    <StackPanel Grid.Column="1" Margin="8,0,0,0">
+                        <DockPanel>
+                            <Button DockPanel.Dock="Right" Content="✕" Tag="{Binding Path}" Click="OnRemoveEndpointClicked"
+                                    Visibility="{Binding CanRemove, Converter={StaticResource BoolToVis}}"
+                                    ToolTip="Scoate de pe traseu" AutomationProperties.Name="Scoate de pe traseu" Padding="6,1" />
+                            <TextBlock Text="{Binding RoleText}" FontSize="10" FontWeight="Bold" VerticalAlignment="Center" />
+                        </DockPanel>
+                        <TextBlock Text="{Binding Name}" FontSize="15" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" ToolTip="{Binding Path}" Margin="0,2,0,0" />
+                        <TextBlock Text="{Binding KindLine}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
+                        <TextBlock Text="{Binding StateLine}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,2,0,0" />
+                        <WrapPanel Margin="0,4,0,0">
+                            <TextBlock Text="{Binding Figure}" Style="{StaticResource Figure}" Margin="0,0,6,0" />
+                            <TextBlock Text="{Binding Caption}" FontSize="11" VerticalAlignment="Bottom" Margin="0,0,0,4" Foreground="{DynamicResource TextSecondaryBrush}" />
+                        </WrapPanel>
+                        <ProgressBar Value="{Binding BarValue, Mode=OneWay}" Maximum="100" Height="5" Margin="0,2,0,4"
+                                     Visibility="{Binding HasBar, Converter={StaticResource BoolToVis}}" />
+                        <TextBlock Text="{Binding Secondary}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </DataTemplate>
+    </Window.Resources>
+
+    <Grid x:Name="RootGrid">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
         <ui:TitleBar x:Name="MainTitleBar" Grid.Row="0" Title="DataMover" />
 
-        <!-- ===================== DISCURI DETECTATE ===================== -->
-        <!-- Raportat de Cristi (2026-08-28, test real pe Windows/Parallels):
-             "nu detecteaza sursele, nu se vad hard discurile, cardurile
-             video" - lipsea complet, spre deosebire de Mac (grid de discuri
-             in ContentView.swift). Lista se reimprospateaza periodic (vezi
-             RefreshDrives), clic pe "+ Sursa"/"+ Destinatie" adauga direct
-             litera de disc in lista corespunzatoare. -->
-        <ui:CardExpander Grid.Row="1" Header="DISCURI DETECTATE" IsExpanded="True" Margin="16,8,16,0">
-            <ItemsControl x:Name="DrivesList" Margin="0,8,0,0">
-                <ItemsControl.ItemsPanel>
-                    <ItemsPanelTemplate>
-                        <WrapPanel Orientation="Horizontal" />
-                    </ItemsPanelTemplate>
-                </ItemsControl.ItemsPanel>
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate>
-                        <Border Background="{DynamicResource ControlFillColorDefaultBrush}" CornerRadius="6" Padding="10" Margin="0,0,8,8" Width="180">
-                            <StackPanel>
-                                <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                                    <Image Source="{Binding IconSource}" Width="24" Height="24" Margin="0,0,6,0" />
-                                    <TextBlock Text="{Binding Label}" FontWeight="Bold" FontSize="12" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
-                                </StackPanel>
-                                <TextBlock Text="{Binding FreeSpaceText}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" Margin="0,0,0,6" />
-                                <StackPanel Orientation="Horizontal">
-                                    <Button Content="+ Sursa" Tag="{Binding Path}" Click="OnAddDriveAsSourceClicked" Margin="0,0,6,0" Padding="6,2" FontSize="11" />
-                                    <Button Content="+ Destinatie" Tag="{Binding Path}" Click="OnAddDriveAsDestinationClicked" Padding="6,2" FontSize="11" />
-                                </StackPanel>
-                            </StackPanel>
-                        </Border>
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
-        </ui:CardExpander>
-
-        <Grid Grid.Row="2" Margin="16,8,16,8">
+        <!-- ===================== BARA DE COMANDA ===================== -->
+        <Grid Grid.Row="1" Margin="16,4,16,8">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="260" MinWidth="200" MaxWidth="380" />
-                <ColumnDefinition Width="8" />
+                <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="8" />
-                <ColumnDefinition Width="260" MinWidth="200" MaxWidth="380" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel Orientation="Horizontal">
+                <ui:TextBox x:Name="ProjectBox" PlaceholderText="Proiect" Width="190" Margin="0,0,6,0"
+                            AutomationProperties.Name="Proiect" TextChanged="OnProjectOrCardChanged" />
+                <TextBlock Text="›" VerticalAlignment="Center" Margin="0,0,6,0" Foreground="{DynamicResource TextSecondaryBrush}" />
+                <ui:TextBox x:Name="CardBox" PlaceholderText="Card" Width="120" AutomationProperties.Name="Card" TextChanged="OnProjectOrCardChanged" />
+            </StackPanel>
+            <TextBlock x:Name="FolderPathText" Grid.Column="1" Margin="14,0" VerticalAlignment="Center" FontFamily="Consolas" FontSize="12"
+                       Foreground="{DynamicResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" ToolTip="Folderul care se va crea la fiecare destinație" />
+            <StackPanel Grid.Column="2" Orientation="Horizontal">
+                <ui:Button x:Name="QueueButton" Content="Coadă" Icon="{ui:SymbolIcon Stack24}" Click="OnToggleQueuePopup" Margin="0,0,6,0" />
+                <Popup x:Name="QueuePopup" PlacementTarget="{Binding ElementName=QueueButton}" Placement="Bottom" StaysOpen="False" AllowsTransparency="True">
+                    <Border Background="{DynamicResource ApplicationBackgroundBrush}" BorderBrush="{DynamicResource CardStrokeBrush}" BorderThickness="1" CornerRadius="6" Padding="12" Width="320">
+                        <StackPanel>
+                            <TextBlock Text="COADĂ DE CARDURI" Style="{StaticResource SectionLabel}" />
+                            <ItemsControl x:Name="CardQueueList" MaxHeight="200">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid Margin="0,1">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="{Binding Card}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                            <ui:Button Grid.Column="1" Content="✕" Appearance="Secondary" Padding="6,2" Tag="{Binding}" Click="OnRemoveFromQueueClicked" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <ui:Button Content="+ Adaugă sursa curentă în coadă" Appearance="Secondary" Click="OnAddToQueueClicked" HorizontalAlignment="Stretch" Margin="0,8,0,4" />
+                            <ui:Button Content="Pornește coada" Click="OnStartQueueClicked" HorizontalAlignment="Stretch" />
+                        </StackPanel>
+                    </Border>
+                </Popup>
+                <ui:Button x:Name="SettingsGearButton" Content="Setări" Icon="{ui:SymbolIcon Settings24}" Click="OnToggleSettingsPopup" Margin="0,0,6,0" />
+            <Popup x:Name="SettingsPopup" PlacementTarget="{Binding ElementName=SettingsGearButton}"
+                   Placement="Bottom" StaysOpen="False" AllowsTransparency="True" PopupAnimation="Fade">
+                <Border Background="{DynamicResource ApplicationBackgroundBrush}"
+                        BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}" BorderThickness="1"
+                        CornerRadius="6" Padding="12" Width="360" MaxHeight="480">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <StackPanel>
+                            <TextBlock Text="Optiuni de copiere" FontWeight="Bold" Margin="0,0,0,6" />
+                            <WrapPanel Margin="0,0,0,8">
+                                <TextBlock Text="Model verificare:" VerticalAlignment="Center" Margin="0,0,8,4" />
+                                <ComboBox x:Name="VerificationCombo" Width="160" Margin="0,0,0,4" />
+                            </WrapPanel>
+                            <WrapPanel Margin="0,0,0,8">
+                                <TextBlock Text="Excluderi:" VerticalAlignment="Center" Margin="0,0,8,4" />
+                                <ui:TextBox x:Name="ExclusionsBox" Width="260" Text=".DS_Store, .tmp, Thumbs.db" Margin="0,0,0,4" />
+                            </WrapPanel>
+                            <CheckBox x:Name="SkipExistingCheck" Content="Sari peste fisiere identice deja existente" Margin="0,0,0,4" />
+
+                            <!-- [2026-09-03] MHL + reincercare + ejectare + pornire
+                                 automata. Explicatia de sub fiecare bifa nu e decor:
+                                 un DIT stie ce e un MHL, dar un videograf care descarca
+                                 singur cardul nu, iar bifa fara context ar fi lasata pe
+                                 implicit fara sa inteleaga ce livreaza mai departe. -->
+                            <CheckBox x:Name="GenerateMhlCheck" Content="Genereaza fisier MHL (Media Hash List)" Checked="OnToggleSettingChanged" Unchecked="OnToggleSettingChanged" />
+                            <TextBlock Text="Certificat de integritate citit de Silverstack, YoYotta, ShotPut Pro si casele de post — se scrie langa datele copiate. Necesita xxHash64, MD5 sau SHA-1."
+                                       Foreground="{DynamicResource TextSecondaryBrush}" FontSize="10" TextWrapping="Wrap" Margin="24,0,0,6" />
+                            <CheckBox x:Name="RetryFailedCheck" Content="Reincearca automat fisierele esuate" Checked="OnToggleSettingChanged" Unchecked="OnToggleSettingChanged" />
+                            <TextBlock Text="La finalul transferului, fisierele cu eroare sau nepotrivire se copiaza inca o data — majoritatea esecurilor de pe platou sunt tranzitorii (card miscat, cablu, disc adormit)."
+                                       Foreground="{DynamicResource TextSecondaryBrush}" FontSize="10" TextWrapping="Wrap" Margin="24,0,0,6" />
+                            <CheckBox x:Name="EjectWhenDoneCheck" Content="Ejecteaza cardul automat la final" Checked="OnToggleSettingChanged" Unchecked="OnToggleSettingChanged" />
+                            <TextBlock Text="Doar daca transferul s-a terminat fara nicio eroare. Ejectarea cere drepturi de Administrator."
+                                       Foreground="{DynamicResource TextSecondaryBrush}" FontSize="10" TextWrapping="Wrap" Margin="24,0,0,6" />
+                            <CheckBox x:Name="AutoStartOnCardCheck" Content="Porneste automat la introducerea unui card" Checked="OnToggleSettingChanged" Unchecked="OnToggleSettingChanged" />
+                            <TextBlock Text="Cardul intra direct in coada si descarcarea incepe singura. Necesita cel putin o destinatie aleasa."
+                                       Foreground="{DynamicResource TextSecondaryBrush}" FontSize="10" TextWrapping="Wrap" Margin="24,0,0,12" />
+
+                            <!-- [2026-09-03] Metadate de productie + sablon de denumire.
+                                 Toate campurile sunt OPTIONALE — un transfer fara ele
+                                 functioneaza exact ca inainte. Completate, apar in
+                                 antetul rapoartelor PDF/HTML si (unde userul le pune in
+                                 sablon) in numele folderelor. -->
+                            <TextBlock Text="Productie &amp; rapoarte" FontWeight="Bold" Margin="0,0,0,6" />
+                            <WrapPanel Margin="0,0,0,6">
+                                <TextBlock Text="Client:" VerticalAlignment="Center" Margin="0,0,8,4" />
+                                <ui:TextBox x:Name="ClientBox" Width="120" Margin="0,0,12,4" TextChanged="OnProductionMetaChanged" />
+                                <TextBlock Text="Operator / DIT:" VerticalAlignment="Center" Margin="0,0,8,4" />
+                                <ui:TextBox x:Name="OperatorBox" Width="120" Margin="0,0,0,4" TextChanged="OnProductionMetaChanged" />
+                            </WrapPanel>
+                            <WrapPanel Margin="0,0,0,6">
+                                <TextBlock Text="Camera:" VerticalAlignment="Center" Margin="0,0,8,4" />
+                                <ui:TextBox x:Name="CameraBox" Width="120" Margin="0,0,0,4" TextChanged="OnProductionMetaChanged" />
+                            </WrapPanel>
+                            <ui:TextBox x:Name="NotesBox" PlaceholderText="Note de filmare (apar in raport)" AcceptsReturn="True" Height="46" Margin="0,0,0,6" TextChanged="OnProductionMetaChanged" />
+                            <WrapPanel Margin="0,0,0,8">
+                                <ui:Button Content="Alege logo..." Click="OnChooseLogoClicked" Margin="0,0,6,0" />
+                                <ui:Button Content="Sterge" Appearance="Secondary" Click="OnClearLogoClicked" Margin="0,0,8,0" />
+                                <TextBlock x:Name="LogoPathText" Text="(niciun logo)" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" VerticalAlignment="Center" />
+                            </WrapPanel>
+                            <TextBlock Text="Sablon nume folder:" Margin="0,0,0,2" />
+                            <ui:TextBox x:Name="FolderTemplateBox" FontFamily="Consolas" Margin="0,0,0,2" TextChanged="OnProductionMetaChanged" />
+                            <TextBlock x:Name="FolderPreviewText" Foreground="{DynamicResource TextSecondaryBrush}" FontFamily="Consolas" FontSize="10" TextWrapping="Wrap" Margin="0,0,0,2" />
+                            <TextBlock Text="{}{data}  {ora}  {proiect}  {card}  {camera}  {operator}"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" FontFamily="Consolas" FontSize="10" Margin="0,0,0,12" />
+
+                            <TextBlock Text="I/O &amp; Memorie" FontWeight="Bold" Margin="0,0,0,6" />
+                            <WrapPanel Margin="0,0,0,8">
+                                <ui:Button x:Name="PresetEcoBtn" Content="Eco / Sistem Slab" Margin="0,0,4,4" Click="OnPresetClicked" />
+                                <ui:Button x:Name="PresetStandardBtn" Content="Standard" Margin="0,0,4,4" Click="OnPresetClicked" />
+                                <ui:Button x:Name="PresetHighBtn" Content="Performanta Inalta" Margin="0,0,4,4" Click="OnPresetClicked" />
+                                <ui:Button x:Name="PresetExtremeBtn" Content="Extrem / Productie RAW" Margin="0,0,0,4" Click="OnPresetClicked" />
+                            </WrapPanel>
+                            <WrapPanel Margin="0,0,0,8">
+                                <TextBlock Text="Buffer copiere:" VerticalAlignment="Center" Margin="0,0,8,4" />
+                                <ComboBox x:Name="ChunkSizeCombo" Width="100" Margin="0,0,20,4" />
+                                <TextBlock Text="Limita RAM:" VerticalAlignment="Center" Margin="0,0,8,4" />
+                                <ComboBox x:Name="RamLimitCombo" Width="120" Margin="0,0,0,4" />
+                            </WrapPanel>
+                            <TextBlock x:Name="IoUsageText" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,12" />
+
+                            <!-- Destinatie secundara Cloud, powered by Rclone (2026-08-30) -
+                                 vezi CloudSyncService.cs. Foloseste ACELEASI conturi configurate
+                                 in Cloud Manager-ul din Master Control Studio Pro (rclone.conf
+                                 e global, nu izolat per aplicatie). -->
+                            <TextBlock Text="Destinație secundară Cloud (Rclone)" FontWeight="Bold" Margin="0,0,0,6" />
+                            <TextBlock x:Name="CloudUnavailableText" Foreground="{DynamicResource StatusWarningBrush}" FontSize="11" TextWrapping="Wrap"
+                                       Text="Rclone nu e instalat — instalează-l din Master Control Studio Pro (Dependențe) ca să activezi urcarea automată."
+                                       Visibility="Collapsed" Margin="0,0,0,8" />
+                            <WrapPanel x:Name="CloudRemotePanel" Margin="0,0,0,4">
+                                <TextBlock Text="Cont:" VerticalAlignment="Center" Margin="0,0,8,4" />
+                                <ComboBox x:Name="CloudRemoteCombo" Width="150" Margin="0,0,20,4" SelectionChanged="OnCloudRemoteChanged" />
+                            </WrapPanel>
+                            <WrapPanel x:Name="CloudFolderPanel" Margin="0,0,0,4" Visibility="Collapsed">
+                                <TextBlock Text="Subfolder:" VerticalAlignment="Center" Margin="0,0,8,4" />
+                                <ui:TextBox x:Name="CloudFolderBox" Width="220"
+                                            PlaceholderText="implicit: numele folderului de transfer" Margin="0,0,0,4" />
+                            </WrapPanel>
+                            <TextBlock x:Name="CloudHintText" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="10" TextWrapping="Wrap"
+                                       Text="Fiecare fișier copiat local se urcă automat, în fundal, imediat după verificare."
+                                       Visibility="Collapsed" Margin="0,0,0,12" />
+
+                            <TextBlock Text="Profile de transfer" FontWeight="Bold" Margin="0,0,0,6" />
+                            <WrapPanel Margin="0,0,0,8">
+                                <ComboBox x:Name="ProfilesCombo" Width="200" Margin="0,0,8,4" />
+                                <ui:Button Content="Incarca" Click="OnLoadProfileClicked" Margin="0,0,4,4" />
+                                <ui:Button Content="Sterge" Click="OnDeleteProfileClicked" Appearance="Secondary" Margin="0,0,0,4" />
+                            </WrapPanel>
+                            <ui:Button Content="Salveaza configuratia curenta ca profil..." Click="OnSaveProfileClicked" HorizontalAlignment="Left" />
+                        </StackPanel>
+                    </ScrollViewer>
+                </Border>
+            </Popup>
+                <ui:Button x:Name="PauseButton" Content="Pauză" Click="OnPauseClicked" Visibility="Collapsed" Margin="0,0,6,0" />
+                <ui:Button x:Name="CancelButton" Content="Anulează" Click="OnCancelClicked" Visibility="Collapsed" Appearance="Secondary" Margin="0,0,6,0" />
+                <ui:Button x:Name="StartButton" Content="Pornește transferul" Icon="{ui:SymbolIcon Play24}" Click="OnStartClicked" Appearance="Primary"
+                           ToolTip="Doar incidentele critice blochează pornirea" />
+            </StackPanel>
+        </Grid>
+
+        <!-- ===================== TRASEU + INCIDENTE ===================== -->
+        <Grid Grid.Row="2" Margin="16,0,16,8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="16" />
+                <ColumnDefinition x:Name="IncidentColumn" Width="300" />
             </Grid.ColumnDefinitions>
 
-            <!-- ===================== SURSE ===================== -->
-            <!-- AllowDrop pe intreg panoul (nu doar pe ListView) - trage un
-                 folder din Explorer oriunde in caseta Surse. Raportat lipsa
-                 la testul real pe Windows (2026-08-28). -->
-            <ui:CardExpander Grid.Column="0" Header="SURSE" IsExpanded="True"
-                             AllowDrop="True" DragOver="OnSourcesDragOver" Drop="OnSourcesDrop">
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
                 <StackPanel>
-                    <ui:ListView x:Name="SourcesList" Height="140" Margin="0,0,0,8"
-                                 AllowDrop="True" DragOver="OnSourcesDragOver" Drop="OnSourcesDrop" />
-                    <ui:Button Content="Adauga sursa..." Icon="{ui:SymbolIcon FolderAdd24}" Click="OnAddSourceClicked" HorizontalAlignment="Stretch" Margin="0,0,0,4" />
-                    <ui:Button Content="Elimina selectia" Click="OnRemoveSourceClicked" HorizontalAlignment="Stretch" Appearance="Secondary" />
+                    <TextBlock x:Name="StageTitle" Text="Pregătire offload" FontSize="26" FontWeight="SemiBold" />
+                    <TextBlock x:Name="StageSubtitle" Text="Sursa se citește o singură dată și se verifică pentru fiecare copie."
+                               Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,2,0,14" TextWrapping="Wrap" />
 
-                    <!-- [2026-09-03] COADA DE CARDURI — descarcarea mai multor
-                         carduri, unul dupa altul, nesupravegheat. Pe un platou cu
-                         3 camere se aduna 6-8 carduri la finalul zilei; pana acum
-                         operatorul trebuia sa porneasca manual fiecare card dupa
-                         ce se termina cel dinainte. Fiecare card din coada isi
-                         pastreaza numele propriu, deci ajunge in propriul folder
-                         la destinatie. -->
-                    <Separator Margin="0,10,0,6" />
-                    <TextBlock Text="COADA CARDURI" FontWeight="Bold" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,4" />
-                    <ItemsControl x:Name="CardQueueList" MaxHeight="110">
+                    <!-- Traseul, de la stanga la dreapta: surse -> verificare -> copii. -->
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" MinWidth="250" MaxWidth="380" />
+                            <ColumnDefinition Width="170" />
+                            <ColumnDefinition Width="*" MinWidth="250" MaxWidth="380" />
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel AllowDrop="True" DragOver="OnSourcesDragOver" Drop="OnSourcesDrop" Background="Transparent">
+                            <TextBlock Text="SURSĂ" Style="{StaticResource SectionLabel}" />
+                            <ItemsControl x:Name="SourceTiles" ItemTemplate="{StaticResource EndpointTemplate}" />
+                            <Button x:Name="AddSourceSlot" Click="OnAddSourceClicked" HorizontalAlignment="Stretch" Height="64" Margin="0,0,0,12"
+                                    AutomationProperties.Name="Adaugă sursă">
+                                <TextBlock Text="+ Adaugă un card sau un folder&#x0a;(sau trage-l aici)" TextAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}" />
+                            </Button>
+                        </StackPanel>
+
+                        <!-- Nodul de verificare: legatura dintre sursa si copii. -->
+                        <Grid Grid.Column="1" Margin="12,22,12,12">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+                            
+                            <Border Background="{DynamicResource CardBackgroundBrush}" BorderBrush="{DynamicResource CardStrokeBrush}" BorderThickness="1"
+                                    CornerRadius="6" Padding="10,8" Margin="0,8,0,0">
+                                <StackPanel>
+                                    <Rectangle x:Name="RouteSpine" Height="3" Margin="0,0,0,6" Fill="{DynamicResource StatusWarningBrush}" RadiusX="1.5" RadiusY="1.5" />
+                                    <TextBlock x:Name="NodeTitle" Text="Verificare în flux" FontSize="13" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                    <TextBlock x:Name="NodeMethod" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,2,0,0" />
+                                    <ProgressBar x:Name="ProgressBar" Minimum="0" Maximum="100" Height="6" Margin="0,6,0,2" />
+                                    <TextBlock x:Name="NodeRates" FontFamily="Consolas" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
+                                </StackPanel>
+                            </Border>
+                        </Grid>
+
+                        <StackPanel Grid.Column="2" AllowDrop="True" DragOver="OnDestinationsDragOver" Drop="OnDestinationsDrop" Background="Transparent">
+                            <TextBlock Text="COPII" Style="{StaticResource SectionLabel}" />
+                            <ItemsControl x:Name="DestinationTiles" ItemTemplate="{StaticResource EndpointTemplate}" />
+                            <Button x:Name="AddDestinationSlot" Click="OnAddDestinationClicked" HorizontalAlignment="Stretch" Height="64" Margin="0,0,0,12"
+                                    AutomationProperties.Name="Adaugă copie">
+                                <TextBlock Text="+ Adaugă o copie (disc sau folder)&#x0a;(sau trage-l aici)" TextAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}" />
+                            </Button>
+                        </StackPanel>
+                    </Grid>
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- ===================== INCIDENTE ===================== -->
+            <Border Grid.Column="2" Background="{DynamicResource CardBackgroundBrush}" BorderBrush="{DynamicResource CardStrokeBrush}"
+                    BorderThickness="1" CornerRadius="6" Padding="14">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel>
+                        <TextBlock x:Name="VerdictText" Text="Adaugă o sursă și cel puțin o copie" FontSize="16" FontWeight="SemiBold" TextWrapping="Wrap" />
+                        <TextBlock Text="INCIDENTE" Style="{StaticResource SectionLabel}" Margin="0,12,0,6" />
+                        <ItemsControl x:Name="IncidentList">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid Margin="0,0,0,12">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="3" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <Rectangle Fill="{Binding Brush}" />
+                                        <StackPanel Grid.Column="1" Margin="10,0,0,0">
+                                            <TextBlock Text="{Binding SeverityLabel}" FontSize="10" FontWeight="Bold" Foreground="{Binding Brush}" />
+                                            <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                            <TextBlock Text="{Binding Cause}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
+                                            <TextBlock Text="{Binding ActionLine}" FontSize="12" TextWrapping="Wrap" />
+                                            <TextBlock Text="{Binding Subject}" FontSize="11" FontFamily="Consolas" Foreground="{DynamicResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" />
+                                        </StackPanel>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <TextBlock x:Name="PassedChecksText" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
+                        <TextBlock x:Name="CorrelationText" FontSize="11" FontFamily="Consolas" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,10,0,0" TextWrapping="Wrap" />
+                        <ui:Button x:Name="OpenDestinationButton" Content="Deschide destinațiile" Icon="{ui:SymbolIcon FolderOpen24}"
+                                   Click="OnOpenLastDestinationClicked" Visibility="Collapsed" Margin="0,10,0,0" />
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+        </Grid>
+
+        <!-- ===================== DISPOZITIVE ===================== -->
+        <Border Grid.Row="3" Background="{DynamicResource SunkenBackgroundBrush}" Padding="16,10">
+            <DockPanel>
+                <TextBlock DockPanel.Dock="Top" Text="DISPOZITIVE  ·  tipul vine din ce raportează Windows; „dispozitiv extern” când nu se poate ști" Style="{StaticResource SectionLabel}" />
+                <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                    <ItemsControl x:Name="DrivesList">
+                        <ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
-                                <Grid Margin="0,1">
+                                <Grid Width="236" Margin="0,0,14,0">
                                     <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="78" />
                                         <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" Text="{Binding Card}" FontSize="11" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-                                    <ui:Button Grid.Column="1" Content="✕" Appearance="Secondary" FontSize="10" Padding="6,2"
-                                               Tag="{Binding}" Click="OnRemoveFromQueueClicked" />
+                                    <c:DeviceArtView Kind="{Binding Kind}" Width="76" Height="60" />
+                                    <StackPanel Grid.Column="1" Margin="6,0,0,0">
+                                        <TextBlock Text="{Binding Label}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" ToolTip="{Binding Path}" />
+                                        <TextBlock Text="{Binding KindLabel}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Text="{Binding FreeSpaceText}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                        <StackPanel Orientation="Horizontal" Margin="0,3,0,0">
+                                            <Button Content="Sursă" Tag="{Binding Path}" Click="OnAddDriveAsSourceClicked" Padding="6,1" Margin="0,0,4,0" AutomationProperties.Name="Folosește ca sursă" />
+                                            <Button Content="Copie" Tag="{Binding Path}" Click="OnAddDriveAsDestinationClicked" Padding="6,1" AutomationProperties.Name="Adaugă ca copie" />
+                                        </StackPanel>
+                                    </StackPanel>
                                 </Grid>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
-                    <ui:Button Content="+ Adauga in coada" Appearance="Secondary" FontSize="11"
-                               Click="OnAddToQueueClicked" HorizontalAlignment="Stretch" Margin="0,4,0,2" />
-                    <ui:Button Content="Porneste coada" FontSize="11"
-                               Click="OnStartQueueClicked" HorizontalAlignment="Stretch" />
-                </StackPanel>
-            </ui:CardExpander>
+                </ScrollViewer>
+            </DockPanel>
+        </Border>
 
-            <!-- ===================== CENTRU ===================== -->
-            <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto">
-                <StackPanel>
-                    <ui:CardControl Icon="{ui:SymbolIcon DocumentFolder24}" Margin="0,0,0,8">
-                        <ui:CardControl.Header>
-                            <!-- WrapPanel (2026-08-28, responsivitate) - la o fereastra ingusta,
-                                 campurile trec pe randul urmator in loc sa se taie/suprapuna
-                                 peste marginea cardului (raportat de Cristi). -->
-                            <WrapPanel>
-                                <TextBlock Text="Proiect:" VerticalAlignment="Center" Margin="0,0,6,0" />
-                                <ui:TextBox x:Name="ProjectBox" Width="130" Margin="0,0,16,4" />
-                                <TextBlock Text="Card:" VerticalAlignment="Center" Margin="0,0,6,0" />
-                                <ui:TextBox x:Name="CardBox" Width="130" Margin="0,0,0,4" />
-                            </WrapPanel>
-                        </ui:CardControl.Header>
-                    </ui:CardControl>
-
-                    <!-- Panou unificat "Setari copiere" (2026-08-29, parity cu popover-ul
-                         Mac v2.7.1: un singur gear-icon in loc de 3 carduri mereu
-                         desfasurate care ocupau tot centrul ferestrei - raportat de
-                         Cristi ca aglomerare vizuala/"prea mult loc"). Controalele
-                         raman EXACT aceleasi (x:Name identice), doar re-parentate
-                         intr-un Popup - codebehind-ul (MainWindow.xaml.cs) nu s-a
-                         schimbat. -->
-                    <ui:Button x:Name="SettingsGearButton" Content="Setari copiere" Icon="{ui:SymbolIcon Settings24}"
-                               Click="OnToggleSettingsPopup" HorizontalAlignment="Left" Margin="0,0,0,8" />
-                    <Popup x:Name="SettingsPopup" PlacementTarget="{Binding ElementName=SettingsGearButton}"
-                           Placement="Bottom" StaysOpen="False" AllowsTransparency="True" PopupAnimation="Fade">
-                        <Border Background="{DynamicResource ApplicationBackgroundBrush}"
-                                BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}" BorderThickness="1"
-                                CornerRadius="6" Padding="12" Width="360" MaxHeight="480">
-                            <ScrollViewer VerticalScrollBarVisibility="Auto">
-                                <StackPanel>
-                                    <TextBlock Text="Optiuni de copiere" FontWeight="Bold" Margin="0,0,0,6" />
-                                    <WrapPanel Margin="0,0,0,8">
-                                        <TextBlock Text="Model verificare:" VerticalAlignment="Center" Margin="0,0,8,4" />
-                                        <ComboBox x:Name="VerificationCombo" Width="160" Margin="0,0,0,4" />
-                                    </WrapPanel>
-                                    <WrapPanel Margin="0,0,0,8">
-                                        <TextBlock Text="Excluderi:" VerticalAlignment="Center" Margin="0,0,8,4" />
-                                        <ui:TextBox x:Name="ExclusionsBox" Width="260" Text=".DS_Store, .tmp, Thumbs.db" Margin="0,0,0,4" />
-                                    </WrapPanel>
-                                    <CheckBox x:Name="SkipExistingCheck" Content="Sari peste fisiere identice deja existente" Margin="0,0,0,4" />
-
-                                    <!-- [2026-09-03] MHL + reincercare + ejectare + pornire
-                                         automata. Explicatia de sub fiecare bifa nu e decor:
-                                         un DIT stie ce e un MHL, dar un videograf care descarca
-                                         singur cardul nu, iar bifa fara context ar fi lasata pe
-                                         implicit fara sa inteleaga ce livreaza mai departe. -->
-                                    <CheckBox x:Name="GenerateMhlCheck" Content="Genereaza fisier MHL (Media Hash List)" Checked="OnToggleSettingChanged" Unchecked="OnToggleSettingChanged" />
-                                    <TextBlock Text="Certificat de integritate citit de Silverstack, YoYotta, ShotPut Pro si casele de post — se scrie langa datele copiate. Necesita xxHash64, MD5 sau SHA-1."
-                                               Foreground="{DynamicResource TextSecondaryBrush}" FontSize="10" TextWrapping="Wrap" Margin="24,0,0,6" />
-                                    <CheckBox x:Name="RetryFailedCheck" Content="Reincearca automat fisierele esuate" Checked="OnToggleSettingChanged" Unchecked="OnToggleSettingChanged" />
-                                    <TextBlock Text="La finalul transferului, fisierele cu eroare sau nepotrivire se copiaza inca o data — majoritatea esecurilor de pe platou sunt tranzitorii (card miscat, cablu, disc adormit)."
-                                               Foreground="{DynamicResource TextSecondaryBrush}" FontSize="10" TextWrapping="Wrap" Margin="24,0,0,6" />
-                                    <CheckBox x:Name="EjectWhenDoneCheck" Content="Ejecteaza cardul automat la final" Checked="OnToggleSettingChanged" Unchecked="OnToggleSettingChanged" />
-                                    <TextBlock Text="Doar daca transferul s-a terminat fara nicio eroare. Ejectarea cere drepturi de Administrator."
-                                               Foreground="{DynamicResource TextSecondaryBrush}" FontSize="10" TextWrapping="Wrap" Margin="24,0,0,6" />
-                                    <CheckBox x:Name="AutoStartOnCardCheck" Content="Porneste automat la introducerea unui card" Checked="OnToggleSettingChanged" Unchecked="OnToggleSettingChanged" />
-                                    <TextBlock Text="Cardul intra direct in coada si descarcarea incepe singura. Necesita cel putin o destinatie aleasa."
-                                               Foreground="{DynamicResource TextSecondaryBrush}" FontSize="10" TextWrapping="Wrap" Margin="24,0,0,12" />
-
-                                    <!-- [2026-09-03] Metadate de productie + sablon de denumire.
-                                         Toate campurile sunt OPTIONALE — un transfer fara ele
-                                         functioneaza exact ca inainte. Completate, apar in
-                                         antetul rapoartelor PDF/HTML si (unde userul le pune in
-                                         sablon) in numele folderelor. -->
-                                    <TextBlock Text="Productie &amp; rapoarte" FontWeight="Bold" Margin="0,0,0,6" />
-                                    <WrapPanel Margin="0,0,0,6">
-                                        <TextBlock Text="Client:" VerticalAlignment="Center" Margin="0,0,8,4" />
-                                        <ui:TextBox x:Name="ClientBox" Width="120" Margin="0,0,12,4" TextChanged="OnProductionMetaChanged" />
-                                        <TextBlock Text="Operator / DIT:" VerticalAlignment="Center" Margin="0,0,8,4" />
-                                        <ui:TextBox x:Name="OperatorBox" Width="120" Margin="0,0,0,4" TextChanged="OnProductionMetaChanged" />
-                                    </WrapPanel>
-                                    <WrapPanel Margin="0,0,0,6">
-                                        <TextBlock Text="Camera:" VerticalAlignment="Center" Margin="0,0,8,4" />
-                                        <ui:TextBox x:Name="CameraBox" Width="120" Margin="0,0,0,4" TextChanged="OnProductionMetaChanged" />
-                                    </WrapPanel>
-                                    <ui:TextBox x:Name="NotesBox" PlaceholderText="Note de filmare (apar in raport)" AcceptsReturn="True" Height="46" Margin="0,0,0,6" TextChanged="OnProductionMetaChanged" />
-                                    <WrapPanel Margin="0,0,0,8">
-                                        <ui:Button Content="Alege logo..." Click="OnChooseLogoClicked" Margin="0,0,6,0" />
-                                        <ui:Button Content="Sterge" Appearance="Secondary" Click="OnClearLogoClicked" Margin="0,0,8,0" />
-                                        <TextBlock x:Name="LogoPathText" Text="(niciun logo)" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" VerticalAlignment="Center" />
-                                    </WrapPanel>
-                                    <TextBlock Text="Sablon nume folder:" Margin="0,0,0,2" />
-                                    <ui:TextBox x:Name="FolderTemplateBox" FontFamily="Consolas" Margin="0,0,0,2" TextChanged="OnProductionMetaChanged" />
-                                    <TextBlock x:Name="FolderPreviewText" Foreground="{DynamicResource TextSecondaryBrush}" FontFamily="Consolas" FontSize="10" TextWrapping="Wrap" Margin="0,0,0,2" />
-                                    <TextBlock Text="{}{data}  {ora}  {proiect}  {card}  {camera}  {operator}"
-                                               Foreground="{DynamicResource TextSecondaryBrush}" FontFamily="Consolas" FontSize="10" Margin="0,0,0,12" />
-
-                                    <TextBlock Text="I/O &amp; Memorie" FontWeight="Bold" Margin="0,0,0,6" />
-                                    <WrapPanel Margin="0,0,0,8">
-                                        <ui:Button x:Name="PresetEcoBtn" Content="Eco / Sistem Slab" Margin="0,0,4,4" Click="OnPresetClicked" />
-                                        <ui:Button x:Name="PresetStandardBtn" Content="Standard" Margin="0,0,4,4" Click="OnPresetClicked" />
-                                        <ui:Button x:Name="PresetHighBtn" Content="Performanta Inalta" Margin="0,0,4,4" Click="OnPresetClicked" />
-                                        <ui:Button x:Name="PresetExtremeBtn" Content="Extrem / Productie RAW" Margin="0,0,0,4" Click="OnPresetClicked" />
-                                    </WrapPanel>
-                                    <WrapPanel Margin="0,0,0,8">
-                                        <TextBlock Text="Buffer copiere:" VerticalAlignment="Center" Margin="0,0,8,4" />
-                                        <ComboBox x:Name="ChunkSizeCombo" Width="100" Margin="0,0,20,4" />
-                                        <TextBlock Text="Limita RAM:" VerticalAlignment="Center" Margin="0,0,8,4" />
-                                        <ComboBox x:Name="RamLimitCombo" Width="120" Margin="0,0,0,4" />
-                                    </WrapPanel>
-                                    <TextBlock x:Name="IoUsageText" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,12" />
-
-                                    <!-- Destinatie secundara Cloud, powered by Rclone (2026-08-30) -
-                                         vezi CloudSyncService.cs. Foloseste ACELEASI conturi configurate
-                                         in Cloud Manager-ul din Master Control Studio Pro (rclone.conf
-                                         e global, nu izolat per aplicatie). -->
-                                    <TextBlock Text="Destinație secundară Cloud (Rclone)" FontWeight="Bold" Margin="0,0,0,6" />
-                                    <TextBlock x:Name="CloudUnavailableText" Foreground="{DynamicResource StatusWarningBrush}" FontSize="11" TextWrapping="Wrap"
-                                               Text="Rclone nu e instalat — instalează-l din Master Control Studio Pro (Dependențe) ca să activezi urcarea automată."
-                                               Visibility="Collapsed" Margin="0,0,0,8" />
-                                    <WrapPanel x:Name="CloudRemotePanel" Margin="0,0,0,4">
-                                        <TextBlock Text="Cont:" VerticalAlignment="Center" Margin="0,0,8,4" />
-                                        <ComboBox x:Name="CloudRemoteCombo" Width="150" Margin="0,0,20,4" SelectionChanged="OnCloudRemoteChanged" />
-                                    </WrapPanel>
-                                    <WrapPanel x:Name="CloudFolderPanel" Margin="0,0,0,4" Visibility="Collapsed">
-                                        <TextBlock Text="Subfolder:" VerticalAlignment="Center" Margin="0,0,8,4" />
-                                        <ui:TextBox x:Name="CloudFolderBox" Width="220"
-                                                    PlaceholderText="implicit: numele folderului de transfer" Margin="0,0,0,4" />
-                                    </WrapPanel>
-                                    <TextBlock x:Name="CloudHintText" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="10" TextWrapping="Wrap"
-                                               Text="Fiecare fișier copiat local se urcă automat, în fundal, imediat după verificare."
-                                               Visibility="Collapsed" Margin="0,0,0,12" />
-
-                                    <TextBlock Text="Profile de transfer" FontWeight="Bold" Margin="0,0,0,6" />
-                                    <WrapPanel Margin="0,0,0,8">
-                                        <ComboBox x:Name="ProfilesCombo" Width="200" Margin="0,0,8,4" />
-                                        <ui:Button Content="Incarca" Click="OnLoadProfileClicked" Margin="0,0,4,4" />
-                                        <ui:Button Content="Sterge" Click="OnDeleteProfileClicked" Appearance="Secondary" Margin="0,0,0,4" />
-                                    </WrapPanel>
-                                    <ui:Button Content="Salveaza configuratia curenta ca profil..." Click="OnSaveProfileClicked" HorizontalAlignment="Left" />
-                                </StackPanel>
-                            </ScrollViewer>
-                        </Border>
-                    </Popup>
-
-                    <!-- Feed de activitate stil terminal - vezi terminalActivityFeed (Mac). -->
-                    <Border Background="{DynamicResource SunkenBackgroundBrush}" CornerRadius="6" Padding="8" Height="140">
-                        <ScrollViewer x:Name="ActivityScroll" VerticalScrollBarVisibility="Auto">
-                            <ItemsControl x:Name="ActivityList">
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
-                                        <TextBlock Text="{Binding}" Foreground="{DynamicResource StatusSuccessBrush}" FontFamily="Consolas" FontSize="11" TextWrapping="NoWrap" />
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                        </ScrollViewer>
-                    </Border>
-                </StackPanel>
-            </ScrollViewer>
-
-            <!-- ===================== DESTINATII ===================== -->
-            <ui:CardExpander Grid.Column="4" Header="DESTINATII" IsExpanded="True"
-                             AllowDrop="True" DragOver="OnDestinationsDragOver" Drop="OnDestinationsDrop">
-                <StackPanel>
-                    <ui:ListView x:Name="DestinationsList" Height="140" Margin="0,0,0,8"
-                                 AllowDrop="True" DragOver="OnDestinationsDragOver" Drop="OnDestinationsDrop" />
-                    <ui:Button Content="Adauga destinatie..." Icon="{ui:SymbolIcon FolderAdd24}" Click="OnAddDestinationClicked" HorizontalAlignment="Stretch" Margin="0,0,0,4" />
-                    <ui:Button Content="Elimina selectia" Click="OnRemoveDestinationClicked" HorizontalAlignment="Stretch" Appearance="Secondary" />
-                </StackPanel>
-            </ui:CardExpander>
-        </Grid>
-
-        <!-- ===================== FOOTER ===================== -->
-        <!-- Footer refacut responsiv (2026-08-28, raportat de Cristi:
-             "sa nu se urce una peste alta") - status/butoane pe randuri
-             SEPARATE (nu doua coloane Grid, care se taiau/iesau din
-             fereastra la latimi mici), butoanele intr-un WrapPanel aliniat
-             dreapta care trece pe randul urmator daca nu mai incape. -->
-        <Grid Grid.Row="3" Margin="16,0,16,12">
+        <!-- ===================== SUBSOL ===================== -->
+        <Grid Grid.Row="4" Margin="16,6,16,10">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
-
-            <ProgressBar x:Name="ProgressBar" Grid.Row="0" Height="6" Margin="0,0,0,6" Minimum="0" Maximum="100" />
-
-            <StackPanel Grid.Row="1" Margin="0,0,0,6">
-                <TextBlock x:Name="StatusText" Text="Gata de pornire" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
-                <TextBlock x:Name="SpeedAndUsageText" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
-                <TextBlock x:Name="VersionText" FontSize="10" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,2,0,0" />
-                <CheckBox x:Name="AutoOpenDestCheck" Content="Deschide automat destinatia la final" FontSize="11" Margin="0,4,0,0" />
-            </StackPanel>
-
-            <WrapPanel Grid.Row="2" HorizontalAlignment="Right">
-                <!-- Raportat lipsa la testul real (2026-08-28): "la sfarsit
-                     nu-mi da optiunea sa deschid folderul destinatie" -
-                     buton vizibil doar dupa un transfer finalizat. -->
-                <ui:Button x:Name="OpenDestinationButton" Content="Deschide destinatia" Icon="{ui:SymbolIcon FolderOpen24}"
-                           Click="OnOpenLastDestinationClicked" Visibility="Collapsed" Margin="0,0,6,4" />
-                <ui:Button Content="Ghid" Icon="{ui:SymbolIcon QuestionCircle24}" Click="OnShowGuideClicked" Margin="0,0,6,4" />
-                <ui:Button Content="Actualizari" Icon="{ui:SymbolIcon ArrowSync24}" Click="OnCheckUpdatesClicked" Margin="0,0,6,4" />
-                <!-- Indicator global de dependinte (Regula 4, CLAUDE.md) - rosu doar daca
-                     lipseste o dependinta OBLIGATORIE (vezi SystemDependencyChecker.cs);
-                     detaliile + butonul de instalare sunt in fereastra Profil. -->
-                <Ellipse x:Name="DependencyDot" Width="8" Height="8" Fill="MediumSeaGreen" Margin="0,0,4,4" VerticalAlignment="Center" />
-                <ui:Button Content="Profil" Icon="{ui:SymbolIcon Person24}" Click="OnShowProfileClicked" Margin="0,0,6,4" />
-                <ui:Button Content="Istoric" Icon="{ui:SymbolIcon History24}" Click="OnShowHistoryClicked" Margin="0,0,6,4" />
-                <ui:Button x:Name="PauseButton" Content="Pauza" Click="OnPauseClicked" IsEnabled="False" Margin="0,0,6,4" />
-                <ui:Button x:Name="CancelButton" Content="Anuleaza" Click="OnCancelClicked" IsEnabled="False" Appearance="Secondary" Margin="0,0,6,4" />
-                <ui:Button x:Name="StartButton" Content="Start" Click="OnStartClicked" Appearance="Primary" Margin="0,0,0,4" />
-            </WrapPanel>
+            <Expander x:Name="LogExpander" Header="Jurnal tehnic" IsExpanded="False" Margin="0,0,0,6">
+                <Border Background="{DynamicResource SunkenBackgroundBrush}" CornerRadius="6" Padding="8" Height="130">
+                    <ScrollViewer x:Name="ActivityScroll" VerticalScrollBarVisibility="Auto">
+                        <ItemsControl x:Name="ActivityList">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding}" FontFamily="Consolas" FontSize="11" TextWrapping="NoWrap" />
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </Border>
+            </Expander>
+            <DockPanel Grid.Row="1">
+                <WrapPanel DockPanel.Dock="Right" HorizontalAlignment="Right">
+                    <ui:Button x:Name="DiagnosticsButton" Content="Diagnostic" Icon="{ui:SymbolIcon Stethoscope24}" Click="OnDiagnosticsClicked" Margin="0,0,6,0" />
+                    <ui:Button Content="Ghid" Icon="{ui:SymbolIcon QuestionCircle24}" Click="OnShowGuideClicked" Margin="0,0,6,0" />
+                    <ui:Button Content="Actualizări" Icon="{ui:SymbolIcon ArrowSync24}" Click="OnCheckUpdatesClicked" Margin="0,0,6,0" />
+                    <Ellipse x:Name="DependencyDot" Width="8" Height="8" Fill="{DynamicResource StatusSuccessBrush}" Margin="0,0,4,0" VerticalAlignment="Center"
+                             ToolTip="Dependențe de sistem" />
+                    <ui:Button Content="Profil" Icon="{ui:SymbolIcon Person24}" Click="OnShowProfileClicked" Margin="0,0,6,0" />
+                    <ui:Button Content="Istoric" Icon="{ui:SymbolIcon History24}" Click="OnShowHistoryClicked" />
+                </WrapPanel>
+                <StackPanel>
+                    <TextBlock x:Name="StatusText" Text="Gata de pornire" FontSize="12" TextWrapping="Wrap" />
+                    <TextBlock x:Name="SpeedAndUsageText" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock x:Name="VersionText" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,2,12,0" />
+                        <CheckBox x:Name="AutoOpenDestCheck" Content="Deschide automat destinațiile la final" FontSize="11" />
+                    </StackPanel>
+                </StackPanel>
+            </DockPanel>
         </Grid>
     </Grid>
 </ui:FluentWindow>

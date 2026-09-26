@@ -34,7 +34,7 @@ public static class ThemeSettings
         Apply(Current);
     }
 
-    public static void Apply(AppTheme theme)
+    public static void Apply(AppTheme theme, bool persist = true)
     {
         Current = theme;
         ApplicationThemeManager.Apply(theme switch
@@ -46,6 +46,7 @@ public static class ThemeSettings
                 : ApplicationTheme.Dark,
         });
 
+        if (!persist) return;
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(FilePath)!);

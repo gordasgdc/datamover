@@ -219,6 +219,45 @@ try
 }
 finally { Directory.Delete(root, true); }
 
+// --- Preflight (aceleasi reguli ca pe Mac) ---
+{
+    var pr = Path.Combine(Path.GetTempPath(), "dm-pf-" + Guid.NewGuid().ToString("N")[..6]);
+    var card = Directory.CreateDirectory(Path.Combine(pr, "CARD")).FullName;
+    var a = Directory.CreateDirectory(Path.Combine(pr, "A")).FullName;
+    var inner = Directory.CreateDirectory(Path.Combine(pr, "CARD", "X")).FullName;
+    var sub = Directory.CreateDirectory(Path.Combine(pr, "A", "sub")).FullName;
+    bool Has(List<DataMover.Core.Domain.PreflightIssue> l, DataMover.Core.Domain.PreflightCode c, bool blocking) => l.Any(i => i.Code == c && i.Blocking == blocking);
+    var P = DataMover.Core.Domain.PreflightCode.SameAsSource;
+    Check("preflight: fara surse/copii = blocat", DataMover.Core.Domain.Preflight.HasBlocking(DataMover.Core.Domain.Preflight.Check(new List<string>(), new List<string>())));
+    Check("preflight: copia = sursa (cu slash final) = blocat", Has(DataMover.Core.Domain.Preflight.Check(new[] { card }, new[] { card + Path.DirectorySeparatorChar }), P, true));
+    Check("preflight: copie in interiorul sursei = blocat", Has(DataMover.Core.Domain.Preflight.Check(new[] { card }, new[] { inner }), DataMover.Core.Domain.PreflightCode.DestinationInsideSource, true));
+    Check("preflight: sursa in interiorul copiei = blocat", Has(DataMover.Core.Domain.Preflight.Check(new[] { inner }, new[] { card }), DataMover.Core.Domain.PreflightCode.SourceInsideDestination, true));
+    Check("preflight: copii imbricate = blocat", Has(DataMover.Core.Domain.Preflight.Check(new[] { card }, new[] { a, sub }), DataMover.Core.Domain.PreflightCode.NestedDestinations, true));
+    Check("preflight: copie duplicata = blocat", Has(DataMover.Core.Domain.Preflight.Check(new[] { card }, new[] { a, a }), DataMover.Core.Domain.PreflightCode.DuplicateDestination, true));
+    Check("preflight: acelasi disc = doar avertisment", Has(DataMover.Core.Domain.Preflight.Check(new[] { card }, new[] { a }), DataMover.Core.Domain.PreflightCode.SameVolumeAsSource, false)
+        && !DataMover.Core.Domain.Preflight.HasBlocking(DataMover.Core.Domain.Preflight.Check(new[] { card }, new[] { a })));
+    Check("preflight: prefix de text nu e interior (A vs AB)", !DataMover.Core.Domain.Preflight.IsSameOrInside(Path.Combine(pr, "AB"), a));
+    Check("preflight: sursa lipsa = blocat", Has(DataMover.Core.Domain.Preflight.Check(new[] { Path.Combine(pr, "nu") }, new[] { a }), DataMover.Core.Domain.PreflightCode.SourceMissing, true));
+    Check("preflight: fiecare cod are text RO (titlu, cauza, actiune)", Enum.GetValues<DataMover.Core.Domain.PreflightCode>()
+        .All(c => DataMover.Core.Domain.Preflight.Describe(c) is var d && d.Title.Length > 0 && d.Cause.Length > 0 && d.Action.Length > 0));
+    Directory.Delete(pr, true);
+}
+
+// --- Clasificarea mediilor: niciodata mai precis decat raporteaza sistemul ---
+{
+    DataMover.Core.Domain.MediaClass Cls(Action<DataMover.Core.Domain.MediaFacts> set) { var f = new DataMover.Core.Domain.MediaFacts(); set(f); return DataMover.Core.Domain.MediaClassifier.Classify(f); }
+    const long G = 1_000_000_000;
+    Check("media: folder ales = Folder", Cls(f => f.IsVolumeRoot = false).Kind == DataMover.Core.Domain.DeviceKind.Folder);
+    Check("media: fara date = dispozitiv extern (fallback)", Cls(_ => { }) is { Kind: DataMover.Core.Domain.DeviceKind.ExternalDevice, Confidence: DataMover.Core.Domain.Confidence.Fallback });
+    Check("media: intern = volum intern", Cls(f => f.IsInternal = true).Kind == DataMover.Core.Domain.DeviceKind.InternalVolume);
+    Check("media: retea = extern cert, nu SSD", Cls(f => { f.IsNetwork = true; f.Medium = DataMover.Core.Domain.MediumType.SolidState; }).Kind == DataMover.Core.Domain.DeviceKind.ExternalDevice);
+    Check("media: structura camera + CFexpress + amovibil = CFexpress", Cls(f => { f.CameraCardStructure = true; f.IsRemovableMedia = true; f.TotalBytes = 512 * G; f.Model = "CFexpress Reader"; }).Kind == DataMover.Core.Domain.DeviceKind.CFexpress);
+    Check("media: structura camera pe 8 TB = NU card", Cls(f => { f.CameraCardStructure = true; f.IsRemovableMedia = true; f.TotalBytes = 8000 * G; f.Medium = DataMover.Core.Domain.MediumType.Rotational; }).Kind == DataMover.Core.Domain.DeviceKind.Hdd);
+    Check("media: USB amovibil mic = stick", Cls(f => { f.Bus = "USB"; f.IsRemovableMedia = true; f.TotalBytes = 64 * G; }).Kind == DataMover.Core.Domain.DeviceKind.UsbStick);
+    Check("media: SSD raportat = SSD (probabil)", Cls(f => f.Medium = DataMover.Core.Domain.MediumType.SolidState) is { Kind: DataMover.Core.Domain.DeviceKind.Ssd, Confidence: DataMover.Core.Domain.Confidence.Likely });
+    Check("media: numele 'RAID' = doar indiciu", Cls(f => f.VolumeName = "Backup RAID").Confidence == DataMover.Core.Domain.Confidence.Hint);
+}
+
 Console.WriteLine(failures == 0 ? "TOATE VERIFICARILE AU TRECUT" : $"{failures} ESECURI");
 return failures == 0 ? 0 : 1;
 

@@ -20,6 +20,8 @@ public sealed class DriveTile
     public string Label { get; init; } = "";
     public string FreeSpaceText { get; init; } = "";
     public System.Windows.Media.ImageSource? IconSource { get; init; }
+    public DataMover.Core.Domain.DeviceKind Kind { get; init; } = DataMover.Core.Domain.DeviceKind.ExternalDevice;
+    public string KindLabel => RouteText.KindLabel(Kind);
 }
 
 /// [2026-09-03] Un card in coada de descarcare. Fiecare are propriul nume
@@ -38,6 +40,12 @@ public partial class MainWindow : FluentWindow
     private readonly ObservableCollection<string> _destinations = new();
     private readonly ObservableCollection<string> _activity = new();
     private readonly ObservableCollection<DriveTile> _drives = new();
+    private readonly ObservableCollection<EndpointTile> _sourceTiles = new();
+    private readonly ObservableCollection<EndpointTile> _destinationTiles = new();
+    private readonly ObservableCollection<IncidentItem> _incidents = new();
+    private readonly Dictionary<string, CameraCardInfo?> _cardInfo = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, long> _bytesBySource = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, DataMover.Core.Domain.MediaClass> _media = new(StringComparer.OrdinalIgnoreCase);
     private readonly DispatcherTimer _uiTimer;
     private readonly DispatcherTimer _drivesTimer;
     private bool _wasRunning;
@@ -131,8 +139,16 @@ public partial class MainWindow : FluentWindow
             ? System.Windows.Media.Brushes.MediumSeaGreen
             : System.Windows.Media.Brushes.OrangeRed;
 
-        SourcesList.ItemsSource = _sources;
-        DestinationsList.ItemsSource = _destinations;
+        SourceTiles.ItemsSource = _sourceTiles;
+        DestinationTiles.ItemsSource = _destinationTiles;
+        IncidentList.ItemsSource = _incidents;
+        _sources.CollectionChanged += (_, _) => { _showingResult = false; ScanSourcesInBackground(); RefreshRoute(); };
+        _destinations.CollectionChanged += (_, _) => { _showingResult = false; ClassifyInBackground(_destinations); RefreshRoute(); };
+#if DEBUG
+        RunUiTest();
+#endif
+        DataMover.Core.Diagnostics.StructuredLog.Shared.AppVersion = UpdateChecker.CurrentVersion;
+        DataMover.Core.Diagnostics.StructuredLog.Shared.Log(DataMover.Core.Diagnostics.LogLevel.Info, "app", "app.launched", "Aplicatie pornita");
         ActivityList.ItemsSource = _activity;
         DrivesList.ItemsSource = _drives;
 
@@ -334,12 +350,18 @@ public partial class MainWindow : FluentWindow
             try { freeText = $"{FormatBytes(drive.AvailableFreeSpace)} liber din {FormatBytes(drive.TotalSize)}"; }
             catch { freeText = ""; }
             var icon = ShellIcon.GetDriveIcon(drive.RootDirectory.FullName);
-            tiles.Add(new DriveTile { Path = drive.RootDirectory.FullName, Label = label, FreeSpaceText = freeText, IconSource = icon });
+            var root = drive.RootDirectory.FullName;
+            var kind = _media.TryGetValue(root, out var mc) ? mc.Kind : DataMover.Core.Domain.DeviceKind.ExternalDevice;
+            tiles.Add(new DriveTile { Path = root, Label = label, FreeSpaceText = freeText, IconSource = icon, Kind = kind });
         }
 
-        // pastram selectia curenta din UI intacta - inlocuim doar continutul
-        _drives.Clear();
-        foreach (var t in tiles) _drives.Add(t);
+        // Inlocuim doar daca s-a schimbat ceva (lista se reimprospateaza la 4 s).
+        if (!_drives.Select(d => (d.Path, d.Label, d.FreeSpaceText, d.Kind)).SequenceEqual(tiles.Select(d => (d.Path, d.Label, d.FreeSpaceText, d.Kind))))
+        {
+            _drives.Clear();
+            foreach (var t in tiles) _drives.Add(t);
+        }
+        ClassifyInBackground(tiles.Select(t => t.Path));
 
         // [2026-09-03] Mod nesupravegheat: un card nou introdus intra direct
         // in coada si porneste singur. Prima trecere stabileste doar
@@ -501,14 +523,16 @@ public partial class MainWindow : FluentWindow
     private void RefreshUiFromRunner()
     {
         ProgressBar.Value = _runner.ProgressPercent;
-        StatusText.Text = _runner.StatusText;
+        StatusText.Text = !_runner.IsRunning && _blockingNow && !_showingResult
+            ? "Pornire blocată — rezolvă incidentele critice din dreapta." : _runner.StatusText;
         SpeedAndUsageText.Text = _runner.IsRunning
             ? $"{_runner.SpeedText}   Buffer Alocat: {_runner.BufferAllocatedText} | Utilizat: {_runner.MemoryUsedText}"
             : "";
-        StartButton.IsEnabled = !_runner.IsRunning && _sources.Count > 0 && _destinations.Count > 0;
-        CancelButton.IsEnabled = _runner.IsRunning;
-        PauseButton.IsEnabled = _runner.IsRunning;
-        PauseButton.Content = _runner.IsPaused ? "Continua" : "Pauza";
+        StartButton.IsEnabled = !_runner.IsRunning && _sources.Count > 0 && _destinations.Count > 0 && !_blockingNow;
+        CancelButton.Visibility = _runner.IsRunning ? Visibility.Visible : Visibility.Collapsed;
+        PauseButton.Visibility = _runner.IsRunning ? Visibility.Visible : Visibility.Collapsed;
+        PauseButton.Content = _runner.IsPaused ? "Continuă" : "Pauză";
+        if (_runner.IsRunning || _wasRunning) RefreshRoute();
 
         // Tranzitie running -> oprit: transferul tocmai s-a terminat.
         // Raportat lipsa la testul real: "la sfarsit nu-mi da optiunea sa
@@ -544,11 +568,14 @@ public partial class MainWindow : FluentWindow
 
             if (anyResult != null)
             {
+                _showingResult = true;
                 OpenDestinationButton.Visibility = Visibility.Visible;
                 if (AutoOpenDestCheck.IsChecked == true && !wasCancelled) OpenLastDestinations();
             }
         }
+        var transition = _wasRunning && !_runner.IsRunning;
         _wasRunning = _runner.IsRunning;
+        if (transition) RefreshRoute();
 
         // Acces refuzat de Windows (2026-09-03) - vezi OffloadEngine.
         // IsPermissionError / OffloadRunner.PermissionErrorPath. Arata o
@@ -612,20 +639,16 @@ public partial class MainWindow : FluentWindow
         if (path != null && !_sources.Contains(path)) _sources.Add(path);
     }
 
-    private void OnRemoveSourceClicked(object sender, RoutedEventArgs e)
+    private void OnRemoveEndpointClicked(object sender, RoutedEventArgs e)
     {
-        if (SourcesList.SelectedItem is string s) _sources.Remove(s);
+        if ((sender as FrameworkElement)?.Tag is not string p) return;
+        if (!_sources.Remove(p)) _destinations.Remove(p);
     }
 
     private void OnAddDestinationClicked(object sender, RoutedEventArgs e)
     {
         var path = PickFolder();
         if (path != null && !_destinations.Contains(path)) _destinations.Add(path);
-    }
-
-    private void OnRemoveDestinationClicked(object sender, RoutedEventArgs e)
-    {
-        if (DestinationsList.SelectedItem is string s) _destinations.Remove(s);
     }
 
     private static string? PickFolder()
