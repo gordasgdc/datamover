@@ -42,7 +42,7 @@ Descarga la última versión desde [Releases](https://github.com/gordasgdc/datam
 | Plataforma | Archivo | Descripción |
 |------------|---------|-------------|
 | Mac | `DataMover-<versión>.dmg` (y `DataMover.dmg`, nombre estable) | Imagen de disco firmada con Developer ID y notarizada por Apple: contiene el instalador `DataMover-<versión>.pkg` y la guía PDF |
-| Windows | `DataMover-WPF-Windows.zip` | App de Windows (WPF) + guías PDF |
+| Windows | `DataMover-WPF-Windows.zip` | Instalador `DataMoverSetup.exe` de la app de Windows (WPF) |
 
 ## Instalación rápida
 
@@ -52,7 +52,7 @@ Descarga la última versión desde [Releases](https://github.com/gordasgdc/datam
 
 ### Windows
 1. Descarga `DataMover-WPF-Windows.zip` y extrae el contenido
-2. Ejecuta `DataMover.exe`
+2. Ejecuta `DataMoverSetup.exe` (instala la app en Program Files, con accesos directos)
 3. Si SmartScreen avisa, pulsa "More info" → "Run anyway" (la versión de Windows aún no tiene una firma comercial)
 
 ## Documentación completa

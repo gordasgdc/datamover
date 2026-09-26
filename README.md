@@ -43,7 +43,7 @@ Descarcă ultima versiune de la [Releases](https://github.com/gordasgdc/datamove
 | Platformă | Fișier | Descriere |
 |-----------|--------|-----------|
 | Mac | `DataMover-<versiune>.dmg` (și `DataMover.dmg`, nume stabil) | Imagine disc semnată Developer ID și notarizată Apple: conține instalatorul `DataMover-<versiune>.pkg` și ghidul PDF |
-| Windows | `DataMover-WPF-Windows.zip` | Aplicația Windows (WPF) + ghidurile PDF |
+| Windows | `DataMover-WPF-Windows.zip` | Programul de instalare `DataMoverSetup.exe` al aplicației Windows (WPF) |
 
 ## Instalare rapidă
 
@@ -53,7 +53,7 @@ Descarcă ultima versiune de la [Releases](https://github.com/gordasgdc/datamove
 
 ### Windows
 1. Descarcă `DataMover-WPF-Windows.zip` și extrage conținutul
-2. Rulează `DataMover.exe`
+2. Rulează `DataMoverSetup.exe` (instalează aplicația în Program Files, cu scurtături)
 3. Dacă SmartScreen avertizează, apasă „More info” → „Run anyway” (build-ul Windows nu are încă o semnătură comercială)
 
 ## Documentație completă

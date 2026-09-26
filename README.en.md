@@ -42,7 +42,7 @@ Download the latest version from [Releases](https://github.com/gordasgdc/datamov
 | Platform | File | Description |
 |----------|------|-------------|
 | Mac | `DataMover-<version>.dmg` (and `DataMover.dmg`, stable name) | Developer ID signed, Apple-notarized disk image: contains the `DataMover-<version>.pkg` installer and the PDF guide |
-| Windows | `DataMover-WPF-Windows.zip` | Windows app (WPF) + PDF guides |
+| Windows | `DataMover-WPF-Windows.zip` | `DataMoverSetup.exe` installer for the Windows app (WPF) |
 
 ## Quick install
 
@@ -52,7 +52,7 @@ Download the latest version from [Releases](https://github.com/gordasgdc/datamov
 
 ### Windows
 1. Download `DataMover-WPF-Windows.zip` and extract the contents
-2. Run `DataMover.exe`
+2. Run `DataMoverSetup.exe` (installs the app into Program Files, with shortcuts)
 3. If SmartScreen warns, click "More info" → "Run anyway" (the Windows build does not have a commercial signature yet)
 
 ## Full documentation

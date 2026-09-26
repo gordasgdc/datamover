@@ -57,7 +57,8 @@ if git log --all --format=%B | grep -qi "Co-Authored-By: Claude"; then bad "atri
 if git ls-files | grep -Eq '\.(p12|p8|pem|key|mobileprovision|pfx)$'; then bad "chei/certificate urmărite de git"; else ok "nicio cheie în git"; fi
 if git ls-files --error-unmatch PROJECT_STATE.md >/dev/null 2>&1; then bad "PROJECT_STATE.md e comis (repo public)"; else ok "PROJECT_STATE.md doar local"; fi
 if git ls-files | grep -Eq '(^|/)(design-review|\.build|obj)/|/bin/(Release|Debug|uitest)/'; then bad "builduri/capturi urmărite de git"; else ok "fără builduri/capturi în git"; fi
-step diff-check "git diff --check (spații, markere de conflict)" git diff --check HEAD
+step diff-check "git diff --check (lucru curent + commiturile ramurii față de main)" \
+    bash -c 'git diff --check HEAD && { ! git rev-parse -q --verify main >/dev/null || git diff --check "$(git merge-base main HEAD)" HEAD; }'
 
 echo "== macOS"
 step swift-build "swift build (debug)" bash -c "cd mac-native && swift build"
