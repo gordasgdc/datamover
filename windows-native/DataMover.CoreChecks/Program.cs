@@ -219,6 +219,22 @@ try
 }
 finally { Directory.Delete(root, true); }
 
+// --- Sursa care nu se poate deschide: fara blocaj, fara .dmpart (regresie Windows 2026-09-26) ---
+{
+    var lr = Path.Combine(Path.GetTempPath(), "dm-lock-" + Guid.NewGuid().ToString("N")[..6]);
+    Directory.CreateDirectory(lr);
+    var missingSrc = Path.Combine(lr, "nu-exista.mov");
+    var d1 = Path.Combine(lr, "a.mov"); var d2 = Path.Combine(lr, "b.mov");
+    var copier = new FanOutCopier(missingSrc, new List<string> { d1, d2 }, 4096, VerificationModel.XxHash64,
+        new CancelToken(), new PauseToken(), ringDepth: 2, expectedSize: 1000);
+    var t = Task.Run(() => { try { copier.Run(_ => { }); return false; } catch { return true; } });
+    var finished = t.Wait(TimeSpan.FromSeconds(10));
+    Check("sursa imposibil de deschis: eroare, fara blocaj (10 s)", finished && t.Result);
+    Thread.Sleep(200);
+    Check("sursa imposibil de deschis: niciun .dmpart ramas", !Directory.EnumerateFiles(lr, "*" + PartialFile.Suffix).Any() && !File.Exists(d1));
+    try { Directory.Delete(lr, true); } catch { }
+}
+
 // --- Preflight (aceleasi reguli ca pe Mac) ---
 {
     var pr = Path.Combine(Path.GetTempPath(), "dm-pf-" + Guid.NewGuid().ToString("N")[..6]);

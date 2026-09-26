@@ -131,6 +131,18 @@ try
     var ok7 = r7.LastResults[0].OkCount == 1 && File.Exists(destLong);
     Check($"cale lunga ({destLong.Length} caractere, peste MAX_PATH 260): confirmata" + (ok7 ? "" : " — " + Csv(r7)), ok7);
 
+    // 6b. Fisier blocat exclusiv de alt proces (FileShare.None): doar el e
+    // neconfirmat, restul se copiaza; verdictul nu poate fi „succes”.
+    Make(@"LOCK\ok.mov", 50_000, 1); var lockedPath = Make(@"LOCK\locked.mov", 50_000, 2);
+    var lkd = Dir("LK");
+    OffloadRunner r8;
+    using (new FileStream(lockedPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+        r8 = Run(new() { Path.Combine(root, "LOCK") }, new() { lkd });
+    var d8 = r8.LastResults.Count == 1 ? $" [ok={r8.LastResults[0].OkCount} fail={r8.LastResults[0].FailCount} final={File.Exists(Path.Combine(lkd, "JOB", "locked.mov"))} part={Directory.EnumerateFiles(lkd, "*.dmpart", SearchOption.AllDirectories).Count()} csv={Csv(r8)}]" : $" [rezultate={r8.LastResults.Count}]";
+    Check("fisier blocat de alt proces: neconfirmat, celalalt confirmat, nicio copie partiala" + d8,
+        r8.LastResults.Count == 1 && r8.LastResults[0].OkCount == 1 && r8.LastResults[0].FailCount == 1
+        && !File.Exists(Path.Combine(lkd, "JOB", "locked.mov")) && !Directory.EnumerateFiles(lkd, "*.dmpart", SearchOption.AllDirectories).Any());
+
     // 7. Export de diagnostic pe Windows: fara cai si fara secrete.
     StructuredLog.Shared.Log(LogLevel.Error, "t", "t.secret", $"licenta license=GDC1-SECRET1 la {src}");
     var zip = new DiagnosticExporter(StructuredLog.Shared, new Dictionary<string, string> { ["verification"] = "xxhash64" })

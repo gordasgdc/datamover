@@ -186,15 +186,21 @@ public sealed class FanOutCopier
 
         // Thread-ul de CITIRE — singurul care atinge sursa. Ruleaza sincron
         // pe thread-ul apelant (deja de fundal in OffloadRunner).
-        var infoBefore = new FileInfo(_sourcePath);
-        var stampBefore = (infoBefore.Length, infoBefore.LastWriteTimeUtc);
-        using var input = new FileStream(_sourcePath, FileMode.Open, FileAccess.Read, FileShare.Read,
-            _chunkSize, FileOptions.SequentialScan);
+        // Deschiderea sursei sta IN try: daca esueaza (fisier blocat de alt
+        // proces, acces refuzat), cozile trebuie totusi inchise — altfel
+        // scriitorii raman blocati pentru totdeauna, cu .dmpart deschis
+        // (gasit in Windows 11, 2026-09-26).
         using var sourceHasher = new IncrementalHasher(_model);
         long bytesRead = 0;
         Exception? readError = null;
+        FileStream? input = null;
+        (long Length, DateTime LastWriteTimeUtc) stampBefore = default;
         try
         {
+            var infoBefore = new FileInfo(_sourcePath);
+            stampBefore = (infoBefore.Length, infoBefore.LastWriteTimeUtc);
+            input = new FileStream(_sourcePath, FileMode.Open, FileAccess.Read, FileShare.Read,
+                _chunkSize, FileOptions.SequentialScan);
             while (true)
             {
                 if (_cancel.IsCancelled) throw new OffloadCancelledException();
@@ -222,6 +228,7 @@ public sealed class FanOutCopier
         }
         finally
         {
+            input?.Dispose();
             foreach (var q in queues.Values)
             {
                 q.CompleteAdding();
