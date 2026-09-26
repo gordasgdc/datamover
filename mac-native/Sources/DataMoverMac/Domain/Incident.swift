@@ -123,15 +123,20 @@ enum IncidentBuilder {
 // MARK: - Layout adaptiv al traseului (pur)
 
 enum RouteLayout {
-    enum Mode: Equatable { case horizontal, stacked }
+    enum Mode: Equatable { case horizontal, compactHorizontal, stacked }
     enum Density: Equatable { case large, compact }
 
     /// Lățimea minimă pentru traseul complet pe orizontală: coloana surselor,
     /// nodul de verificare, coloana destinațiilor și spațiile dintre ele.
-    static let horizontalMinWidth: CGFloat = 820
+    /// Trebuie să cuprindă coloanele din `DM.Layout` (verificat de test).
+    static let horizontalMinWidth: CGFloat = 950
+
+    /// Traseu orizontal cu coloane și nod înguste (ferestre ~1024 pt).
+    static let compactMinWidth: CGFloat = 740
 
     static func mode(width: CGFloat) -> Mode {
-        width >= horizontalMinWidth ? .horizontal : .stacked
+        if width >= horizontalMinWidth { return .horizontal }
+        return width >= compactMinWidth ? .compactHorizontal : .stacked
     }
 
     /// Obiecte mari doar dacă încap toate pe înălțime; altfel compacte (dar
@@ -140,6 +145,7 @@ enum RouteLayout {
         let rows = max(sources, destinations)
         switch mode {
         case .horizontal: return rows <= 2 && height >= 420 ? .large : .compact
+        case .compactHorizontal: return .compact
         case .stacked: return rows <= 1 && height >= 560 ? .large : .compact
         }
     }

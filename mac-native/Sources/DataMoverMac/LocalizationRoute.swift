@@ -71,6 +71,10 @@ extension L {
         "node.rates": [.ro: "citire %@/s · scriere %@/s", .en: "read %@/s · write %@/s", .es: "lectura %@/s · escritura %@/s"],
         "node.eta": [.ro: "estimare: %@ rămase", .en: "estimate: %@ left", .es: "estimación: quedan %@"],
 
+        "depth.short.sizeOnly": [.ro: "doar octeți", .en: "byte count only", .es: "solo bytes"],
+        "depth.short.streamChecksum": [.ro: "checksum per copie", .en: "checksum per copy", .es: "checksum por copia"],
+        "depth.short.readBack": [.ro: "checksum + recitire", .en: "checksum + re-read", .es: "checksum + relectura"],
+
         // Cifre
         "fig.toCopy": [.ro: "de copiat", .en: "to copy", .es: "por copiar"],
         "fig.measuring": [.ro: "se măsoară…", .en: "measuring…", .es: "midiendo…"],
@@ -155,6 +159,17 @@ extension L {
         "incident.action.sameVolumeAsSource": [.ro: "Pentru siguranță, folosește un disc separat.", .en: "For safety, use a separate drive.", .es: "Por seguridad, usa un disco separado."],
         "incident.cause.symlinkSource": [.ro: "Sursa e un link; se copiază conținutul țintei lui.", .en: "The source is a link; its target's content is copied.", .es: "El origen es un enlace; se copia el contenido de su destino."],
         "incident.action.symlinkSource": [.ro: "Verifică dacă ținta e cea dorită.", .en: "Check that the target is the intended one.", .es: "Comprueba que el destino del enlace es el correcto."],
+
+        "result.fig.files": [.ro: "%d fișiere confirmate în %d copii", .en: "%d files confirmed across %d copies", .es: "%d archivos confirmados en %d copias"],
+        "result.fig.read": [.ro: "%@ citiți o singură dată din sursă", .en: "%@ read once from the source", .es: "%@ leídos una sola vez del origen"],
+        "result.fig.mhl": [.ro: "MHL scris la fiecare copie", .en: "MHL written at every copy", .es: "MHL escrito en cada copia"],
+
+        // Detectorul de card
+        "card.clips": [.ro: "%d clip(uri)", .en: "%d clip(s)", .es: "%d clip(s)"],
+        "card.warn.empty": [.ro: "Cardul pare gol — nu s-a găsit niciun fișier media.", .en: "The card looks empty — no media files were found.", .es: "La tarjeta parece vacía — no se encontró ningún archivo multimedia."],
+        "card.warn.zeroBytes": [.ro: "Fișiere de 0 octeți (posibil clipuri incomplete): %@", .en: "0-byte files (possibly incomplete clips): %@", .es: "Archivos de 0 bytes (posibles clips incompletos): %@"],
+        "card.warn.large": [.ro: "Card foarte mare — numărătoarea de clipuri e orientativă.", .en: "Very large card — the clip count is approximate.", .es: "Tarjeta muy grande — el recuento de clips es aproximado."],
+        "card.warn.subfolder": [.ro: "%@ pare a fi un SUBFOLDER al cardului %@ — copiat singur, pierzi metadatele cardului.", .en: "%@ looks like a SUBFOLDER of card %@ — copied alone, the card's metadata is lost.", .es: "%@ parece una SUBCARPETA de la tarjeta %@ — copiada sola, se pierden los metadatos de la tarjeta."],
 
         // Raft și coadă
         "shelf.title": [.ro: "Dispozitive", .en: "Devices", .es: "Dispositivos"],

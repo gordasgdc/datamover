@@ -179,11 +179,13 @@ final class RunnerIntegrationTests: XCTestCase {
         let sb = Sandbox()
         let src = makeCard(sb)
         let d1 = sb.dir("A")
+        let victim = src + "/CLIP/A002.mov"
+        // Secunde întregi: un Date (Double) nu poate reface exact nanosecundele APFS.
+        let mtime = Date(timeIntervalSince1970: 1_790_000_000)
+        try FileManager.default.setAttributes([.modificationDate: mtime], ofItemAtPath: victim)
         let runner = OffloadRunner()
         try await runTransfer(runner, sources: [src], destinations: [d1])
         XCTAssertEqual(runner.lastOutcome, .success)
-        let victim = src + "/CLIP/A002.mov"
-        let mtime = try FileManager.default.attributesOfItem(atPath: victim)[.modificationDate] as! Date
         let size = try FileManager.default.attributesOfItem(atPath: victim)[.size] as! Int
         try Data((0..<size).map { UInt8(truncatingIfNeeded: $0 &* 13 &+ 5) }).write(to: URL(fileURLWithPath: victim))
         try FileManager.default.setAttributes([.modificationDate: mtime], ofItemAtPath: victim)

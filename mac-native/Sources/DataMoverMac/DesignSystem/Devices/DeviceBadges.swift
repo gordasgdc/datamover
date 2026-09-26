@@ -19,6 +19,47 @@ struct DeviceBadges: View {
     var sourceCount = 1
 
     var body: some View {
+        // Pe lățimi mici, starea rămâne ca simbol (forme diferite, nu doar
+        // culori) cu eticheta în tooltip și VoiceOver — nu se rupe textul.
+        ViewThatFits(in: .horizontal) {
+            full
+            compact
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityText)
+    }
+
+    private var compact: some View {
+        HStack(spacing: DM.Space.xs) {
+            roleChip
+            Image(systemName: online ? "circle.fill" : "circle.dashed").imageScale(.small)
+                .foregroundStyle(online ? DM.verified : DM.textTertiary).help(L.t(online ? "badge.online" : "badge.offline"))
+            if activity == .reading || activity == .writing {
+                Image(systemName: activity == .reading ? "arrow.down.doc" : "arrow.triangle.2.circlepath")
+                    .foregroundStyle(DM.accent).help(L.t(activity == .reading ? "badge.reading" : "badge.writing"))
+            }
+            if warning {
+                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(DM.warning).help(L.t("badge.warning"))
+            }
+        }
+        .font(DM.Font.detail)
+    }
+
+    private var accessibilityText: String {
+        var parts: [String] = []
+        switch role {
+        case .source(let n): parts.append(sourceCount > 1 ? String(format: L.t("role.sourceN"), n) : L.t("role.source"))
+        case .destination(let n): parts.append(String(format: L.t("role.copyN"), n))
+        case .none: break
+        }
+        parts.append(L.t(online ? "badge.online" : "badge.offline"))
+        if activity == .reading { parts.append(L.t("badge.reading")) }
+        if activity == .writing { parts.append(L.t("badge.writing")) }
+        if warning { parts.append(L.t("badge.warning")) }
+        return parts.joined(separator: ", ")
+    }
+
+    private var full: some View {
         HStack(spacing: DM.Space.s) {
             roleChip
             Label(L.t(online ? "badge.online" : "badge.offline"), systemImage: online ? "circle.fill" : "circle.dashed")
@@ -36,7 +77,7 @@ struct DeviceBadges: View {
                     .font(DM.Font.detail).foregroundStyle(DM.warning)
             }
         }
-        .accessibilityElement(children: .combine)
+        .fixedSize()
     }
 
     @ViewBuilder private var roleChip: some View {
@@ -47,12 +88,14 @@ struct DeviceBadges: View {
                 .padding(.horizontal, DM.Space.xs + 2).padding(.vertical, DM.Space.xxs)
                 .foregroundStyle(DM.background)
                 .background(DM.textPrimary, in: RoundedRectangle(cornerRadius: DM.Radius.s))
+                .fixedSize()
         case .destination(let n):
             Text(String(format: L.t("role.copyN"), n))
                 .font(DM.Font.roleChip).tracking(DM.Font.sectionTracking)
                 .padding(.horizontal, DM.Space.xs + 2).padding(.vertical, DM.Space.xxs)
                 .foregroundStyle(DM.textPrimary)
                 .overlay(RoundedRectangle(cornerRadius: DM.Radius.s).strokeBorder(DM.textPrimary, lineWidth: DM.Layout.hairline))
+                .fixedSize()
         case .none:
             EmptyView()
         }

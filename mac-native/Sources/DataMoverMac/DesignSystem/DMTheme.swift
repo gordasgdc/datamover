@@ -80,17 +80,22 @@ enum DM {
         /// Linie de 1 pt (separatoare, stepper).
         static let hairline: CGFloat = 1
         // Traseu
-        static let routeSourceColumn: CGFloat = 270
-        static let routeDestinationColumn: CGFloat = 360
-        static let routeNodeWidth: CGFloat = 190
+        static let routeSourceColumn: CGFloat = 240
+        static let routeDestinationColumn: CGFloat = 380
+        static let routeNodeWidth: CGFloat = 170
         static let routeNodeBlock: CGFloat = 104
+        static let routeSourceColumnCompact: CGFloat = 196
+        static let routeDestinationColumnCompact: CGFloat = 300
+        static let routeNodeWidthCompact: CGFloat = 116
+        static let routeNodeBlockCompact: CGFloat = 72
+        static let routeMinGapCompact: CGFloat = 20
         static let routeConnector: CGFloat = 2.5
         static let routeMinGap: CGFloat = 36
         static let incidentsWidth: CGFloat = 300
         static let incidentsWidthCompact: CGFloat = 264
         static let incidentsCompactBelow: CGFloat = 1180
         static let shelfDeviceWidth: CGFloat = 84
-        static let shelfItemWidth: CGFloat = 176
+        static let shelfItemWidth: CGFloat = 204
         static let endpointBarWidth: CGFloat = 220
         static let slotHeight: CGFloat = 96
     }

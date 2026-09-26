@@ -62,6 +62,15 @@ struct RouteZoneKey: PreferenceKey {
     }
 }
 
+private struct RouteCompactKey: EnvironmentKey { static let defaultValue = false }
+extension EnvironmentValues {
+    /// Traseul e în modul orizontal compact (coloane înguste).
+    var routeCompact: Bool {
+        get { self[RouteCompactKey.self] }
+        set { self[RouteCompactKey.self] = newValue }
+    }
+}
+
 struct RouteView: View {
     let stage: RouteStage
     let sources: [RouteEndpoint]
@@ -82,7 +91,11 @@ struct RouteView: View {
                                               sources: max(sources.count, 1), destinations: max(destinations.count, 1))
             ScrollView(.vertical) {
                 Group {
-                    if mode == .horizontal { horizontal(density) } else { stacked(density) }
+                    switch mode {
+                    case .horizontal: horizontal(density, compact: false)
+                    case .compactHorizontal: horizontal(density, compact: true)
+                    case .stacked: stacked(density)
+                    }
                 }
                 .frame(minHeight: geo.size.height, alignment: .center)
                 .padding(.horizontal, DM.Space.xl)
@@ -97,20 +110,23 @@ struct RouteView: View {
 
     // MARK: Compoziții
 
-    private func horizontal(_ d: RouteLayout.Density) -> some View {
+    private func horizontal(_ d: RouteLayout.Density, compact: Bool) -> some View {
         HStack(alignment: .center, spacing: 0) {
-            sourceZone(d, axis: .vertical).frame(width: DM.Layout.routeSourceColumn)
-            Spacer(minLength: DM.Layout.routeMinGap)
-            nodeView.frame(width: DM.Layout.routeNodeWidth)
-            Spacer(minLength: DM.Layout.routeMinGap)
-            destinationZone(d, grid: false).frame(width: DM.Layout.routeDestinationColumn)
+            sourceZone(d, axis: .vertical)
+                .frame(width: compact ? DM.Layout.routeSourceColumnCompact : DM.Layout.routeSourceColumn)
+            Spacer(minLength: compact ? DM.Layout.routeMinGapCompact : DM.Layout.routeMinGap)
+            nodeView(compact: compact).frame(width: compact ? DM.Layout.routeNodeWidthCompact : DM.Layout.routeNodeWidth)
+            Spacer(minLength: compact ? DM.Layout.routeMinGapCompact : DM.Layout.routeMinGap)
+            destinationZone(d, grid: false)
+                .frame(width: compact ? DM.Layout.routeDestinationColumnCompact : DM.Layout.routeDestinationColumn)
         }
+        .environment(\.routeCompact, compact)
     }
 
     private func stacked(_ d: RouteLayout.Density) -> some View {
         VStack(spacing: DM.Space.xl) {
             sourceZone(d, axis: .horizontal)
-            nodeView
+            nodeView(compact: false)
             destinationZone(d, grid: true)
         }
     }
@@ -165,7 +181,8 @@ struct RouteView: View {
     private func slot(textKey: String) -> some View {
         RoundedRectangle(cornerRadius: DM.Radius.l)
             .strokeBorder(DM.textTertiary, style: StrokeStyle(lineWidth: DM.Layout.hairline, dash: [5, 4]))
-            .frame(maxWidth: DM.Layout.routeSourceColumn, minHeight: DM.Layout.slotHeight)
+            .frame(maxWidth: DM.Layout.routeSourceColumn)
+            .frame(height: DM.Layout.slotHeight)
             .overlay(Text(L.t(textKey)).font(DM.Font.label).foregroundStyle(DM.textSecondary)
                 .multilineTextAlignment(.center).padding(DM.Space.m))
             .accessibilityElement(children: .combine)
@@ -173,8 +190,9 @@ struct RouteView: View {
 
     // MARK: Nodul de verificare
 
-    private var nodeView: some View {
-        VStack(spacing: DM.Space.s) {
+    private func nodeView(compact: Bool) -> some View {
+        let block = compact ? DM.Layout.routeNodeBlockCompact : DM.Layout.routeNodeBlock
+        return VStack(spacing: DM.Space.s) {
             ZStack {
                 RoundedRectangle(cornerRadius: DM.Radius.l + 6)
                     .fill(LinearGradient(colors: [DM.surface, DM.surfaceSunken], startPoint: .top, endPoint: .bottom))
@@ -189,7 +207,7 @@ struct RouteView: View {
                     }
                 }
             }
-            .frame(width: DM.Layout.routeNodeBlock, height: DM.Layout.routeNodeBlock)
+            .frame(width: block, height: block)
             .anchorPreference(key: EndpointAnchorKey.self, value: .bounds) { ["node": $0] }
 
             Text(node.phaseText).font(DM.Font.label.weight(.semibold)).multilineTextAlignment(.center)
@@ -233,7 +251,7 @@ struct RouteView: View {
     private func draw(_ ctx: inout GraphicsContext, from a: CGRect, to b: CGRect, mode: RouteLayout.Mode,
                       color: Color, phase: CGFloat, dashed: Bool) {
         var p = Path()
-        if mode == .horizontal {
+        if mode != .stacked {
             let s = CGPoint(x: a.maxX + 6, y: a.midY), e = CGPoint(x: b.minX - 6, y: b.midY)
             let dx = (e.x - s.x) * 0.5
             p.move(to: s); p.addCurve(to: e, control1: CGPoint(x: s.x + dx, y: s.y), control2: CGPoint(x: e.x - dx, y: e.y))
@@ -258,18 +276,24 @@ struct EndpointView: View {
     var sourceCount = 1
     var onRemove: ((String) -> Void)? = nil
 
+    @Environment(\.routeCompact) private var routeCompact
     private var e: RouteEndpoint { endpoint }
+    private var sourceWidth: CGFloat { routeCompact ? DM.Layout.routeSourceColumnCompact : DM.Layout.routeSourceColumn }
+    private var destinationWidth: CGFloat { routeCompact ? DM.Layout.routeDestinationColumnCompact : DM.Layout.routeDestinationColumn }
     private var isSource: Bool { if case .source = e.role { return true } else { return false } }
 
     var body: some View {
-        let layout = density == .large && isSource
+        // Sursele: obiectul deasupra textului (coloana e îngustă); destinațiile:
+        // obiectul în stânga. Conectorul se ancorează pe tot capătul, deci
+        // nu trece niciodată prin text.
+        let layout = isSource
             ? AnyLayout(VStackLayout(alignment: .leading, spacing: DM.Space.s))
             : AnyLayout(HStackLayout(alignment: .center, spacing: DM.Space.m))
         layout {
             DeviceArt(kind: e.kind, size: RouteLayout.deviceWidth(density), dimmed: !e.online)
-                .anchorPreference(key: EndpointAnchorKey.self, value: .bounds) { [e.id: $0] }
             info
         }
+        .anchorPreference(key: EndpointAnchorKey.self, value: .bounds) { [e.id: $0] }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilitySummary)
     }
@@ -288,9 +312,10 @@ struct EndpointView: View {
             }
             Text(e.name).font(DM.Font.deviceName).lineLimit(2).truncationMode(.middle).help(e.path)
             Text(kindLine).font(DM.Font.detail).foregroundStyle(DM.textSecondary).lineLimit(2)
-            HStack(alignment: .firstTextBaseline, spacing: DM.Space.xs) {
-                Text(e.figure).font(density == .large ? DM.Font.figure : DM.Font.figureCompact)
-                Text(e.figureCaption).font(DM.Font.detail).foregroundStyle(DM.textSecondary).lineLimit(1)
+            // Cifra mare nu se rupe niciodată; eticheta trece dedesubt dacă nu încape.
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .firstTextBaseline, spacing: DM.Space.xs) { figureText; captionText }
+                VStack(alignment: .leading, spacing: 0) { figureText; captionText }
             }
             if let p = e.progress {
                 ProgressView(value: p).tint(e.outcome.map { DMStatus($0).color } ?? DM.accent)
@@ -305,16 +330,33 @@ struct EndpointView: View {
             if let outcome = e.outcome {
                 DMStatusBadge(status: DMStatus(outcome), text: L.t("destOutcome.\(outcome.rawValue)"))
             }
-            if !e.reports.isEmpty {
-                HStack(spacing: DM.Space.xs) {
-                    ForEach(e.reports, id: \.path) { r in
-                        Button(r.label) { NSWorkspace.shared.open(URL(fileURLWithPath: r.path)) }
+            if let first = e.reports.first {
+                // Folderul pe un rând, rapoartele pe al doilea; butoanele nu se
+                // comprimă niciodată (textul lor rămâne întreg).
+                VStack(alignment: .leading, spacing: DM.Space.xs) {
+                    Button { NSWorkspace.shared.open(URL(fileURLWithPath: first.path)) } label: {
+                        Label(first.label, systemImage: "folder")
+                    }
+                    .fixedSize()
+                    HStack(spacing: DM.Space.xs) {
+                        ForEach(e.reports.dropFirst(), id: \.path) { r in
+                            Button(r.label) { NSWorkspace.shared.open(URL(fileURLWithPath: r.path)) }.fixedSize()
+                        }
                     }
                 }
                 .controlSize(.small)
             }
         }
-        .frame(maxWidth: DM.Layout.routeDestinationColumn - RouteLayout.deviceWidth(density), alignment: .leading)
+        .frame(maxWidth: isSource ? sourceWidth : destinationWidth - RouteLayout.deviceWidth(density) - DM.Space.m,
+               alignment: .leading)
+    }
+
+    private var figureText: some View {
+        Text(e.figure).font(density == .large ? DM.Font.figure : DM.Font.figureCompact)
+            .lineLimit(1).fixedSize(horizontal: true, vertical: false)
+    }
+    private var captionText: some View {
+        Text(e.figureCaption).font(DM.Font.detail).foregroundStyle(DM.textSecondary).lineLimit(1)
     }
 
     private var kindLine: String {

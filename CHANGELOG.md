@@ -34,7 +34,17 @@
   sursei, iar o destinație eșuată nu mai poate bloca transferul (verificat
   cu teste). Interfața Windows nu are încă ecranele noi.
 
-### Interfață (Mac)
+### Interfață (Mac) — direcția vizuală finală
+- Un singur traseu vizual, de la card la verificare și la fiecare copie, în pregătire, în timpul
+  transferului și la rezultat; cifrele mari arată ce e de copiat, cât rămâne liber și progresul.
+- Cardurile, SSD-urile, discurile RAID, stick-urile USB, volumul intern și folderele alese manual
+  au fiecare aspectul lor; tipul vine din ce raportează sistemul, iar când nu se poate ști, apare
+  „dispozitiv extern”.
+- Coloana de incidente spune ce s-a întâmplat, de ce și ce e de făcut; doar problemele critice
+  blochează pornirea.
+- Funcționează de la fereastra de 1024 × 700 la ecrane mari, cu 1–2 surse și până la 4 copii.
+
+### Interfață (Mac) — prima trecere
 - Panou „Ce va porni”: sursa și structura cardului, destinațiile cu spațiu
   liber, folderul rezultat, metoda de verificare, avertismentele.
 - În timpul transferului: faza reală, progres total și per destinație,

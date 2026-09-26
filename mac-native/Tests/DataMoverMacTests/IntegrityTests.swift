@@ -252,7 +252,9 @@ final class ProofSchemaTests: XCTestCase {
         let sb = Sandbox()
         let f = sb.file("CARD/x.mov", bytes: 4096, seed: 1)
         let root = (sb.root as NSString).appendingPathComponent("CARD")
-        let mtime = try FileManager.default.attributesOfItem(atPath: f)[.modificationDate] as! Date
+        // Secunde întregi: un Date (Double) nu poate reface exact nanosecundele APFS.
+        let mtime = Date(timeIntervalSince1970: 1_790_000_000)
+        try FileManager.default.setAttributes([.modificationDate: mtime], ofItemAtPath: f)
         let a = SourceIdentity.compute(sources: [root], files: listAllFiles(root: root), volumeOf: { _ in "VOL-1" })
         let other = Data((0..<4096).map { UInt8(truncatingIfNeeded: $0 * 7 + 3) })
         try other.write(to: URL(fileURLWithPath: f))

@@ -131,12 +131,25 @@ final class IncidentTests: XCTestCase {
 
 final class RouteLayoutTests: XCTestCase {
     func testModeSwitchesAtMinimumWidth() {
-        // Fereastra minimă (1024) minus coloana de incidente compactă → sub prag.
-        XCTAssertEqual(RouteLayout.mode(width: 1024 - DM.Layout.incidentsWidthCompact), .stacked)
+        // Fereastra minimă (1024) minus coloana de incidente compactă → traseu orizontal compact.
+        XCTAssertEqual(RouteLayout.mode(width: 1024 - DM.Layout.incidentsWidthCompact - 1), .compactHorizontal)
+        XCTAssertEqual(RouteLayout.mode(width: RouteLayout.compactMinWidth - 1), .stacked)
         // 1280 × 800 implicit → traseu complet.
-        XCTAssertEqual(RouteLayout.mode(width: 1280 - DM.Layout.incidentsWidth), .horizontal)
+        XCTAssertEqual(RouteLayout.mode(width: 1280 - DM.Layout.incidentsWidth - 1), .horizontal)
         XCTAssertEqual(RouteLayout.mode(width: RouteLayout.horizontalMinWidth), .horizontal)
-        XCTAssertEqual(RouteLayout.mode(width: RouteLayout.horizontalMinWidth - 1), .stacked)
+        XCTAssertEqual(RouteLayout.mode(width: RouteLayout.horizontalMinWidth - 1), .compactHorizontal)
+    }
+
+    /// Pragul orizontal cuprinde efectiv coloanele traseului: altfel, între
+    /// suma lor și prag, traseul s-ar tăia.
+    func testHorizontalThresholdFitsRouteColumns() {
+        let needed = DM.Layout.routeSourceColumn + DM.Layout.routeNodeWidth + DM.Layout.routeDestinationColumn
+            + 2 * DM.Layout.routeMinGap + 2 * DM.Space.xl + 4 * DM.Space.s
+        XCTAssertLessThanOrEqual(needed, RouteLayout.horizontalMinWidth)
+        let compact = DM.Layout.routeSourceColumnCompact + DM.Layout.routeNodeWidthCompact + DM.Layout.routeDestinationColumnCompact
+            + 2 * DM.Layout.routeMinGapCompact + 2 * DM.Space.xl + 4 * DM.Space.s
+        XCTAssertLessThanOrEqual(compact, RouteLayout.compactMinWidth)
+        XCTAssertEqual(RouteLayout.density(mode: .compactHorizontal, height: 900, sources: 1, destinations: 1), .compact)
     }
 
     func testDensityForOneToFourDestinations() {

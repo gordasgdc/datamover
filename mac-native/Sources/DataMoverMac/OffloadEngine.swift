@@ -88,6 +88,18 @@ enum VerificationModel: String, CaseIterable, Identifiable, Codable {
 
     var id: String { rawValue }
 
+    /// Numele scurt al algoritmului (pentru nodul de verificare, jurnal).
+    var shortLabel: String {
+        switch self {
+        case .xxhash64: return "xxHash64"
+        case .md5: return "MD5"
+        case .sha1: return "SHA-1"
+        case .sha256: return "SHA-256"
+        case .sha512: return "SHA-512"
+        case .sizeOnly: return L.t("depth.short.sizeOnly")
+        }
+    }
+
     var label: String {
         switch self {
         case .xxhash64: return L.t("verif.xxhash64")

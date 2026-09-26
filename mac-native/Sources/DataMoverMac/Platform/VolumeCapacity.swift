@@ -16,4 +16,3 @@ struct VolumeCapacity {
         return VolumeCapacity(total: Int64(total), free: free)
     }
 }
-

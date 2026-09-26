@@ -24,10 +24,11 @@ struct VolumeInfo: Identifiable, Hashable {
         #if DEBUG
         // Mod demo (capturi): doar folderele sintetice, niciun volum real.
         if let root = ProcessInfo.processInfo.environment["DATAMOVER_UI_DEMO"] {
-            return ["CARD", "BACKUP_A", "BACKUP_B"].map { name in
+            let names = ((try? fm.contentsOfDirectory(atPath: root)) ?? []).filter { !$0.hasPrefix(".") }.sorted()
+            return names.map { name in
                 let path = (root as NSString).appendingPathComponent(name)
                 let free = try? fm.attributesOfFileSystem(forPath: path)[.systemFreeSize] as? Int64
-                return VolumeInfo(id: path, name: name, path: path, freeBytes: free ?? nil)
+                return VolumeInfo(id: path, name: demoDisplayName(path) ?? name, path: path, freeBytes: free ?? nil)
             }
         }
         #endif
@@ -41,6 +42,18 @@ struct VolumeInfo: Identifiable, Hashable {
         }
     }
 }
+
+#if DEBUG
+extension VolumeInfo {
+    /// Mod demo: „SSD_SHUTTLE-01” → „SHUTTLE-01” (prefixul e doar tipul sintetic).
+    static func demoDisplayName(_ path: String) -> String? {
+        guard let root = ProcessInfo.processInfo.environment["DATAMOVER_UI_DEMO"], path.hasPrefix(root) else { return nil }
+        let name = (path as NSString).lastPathComponent
+        guard let i = name.firstIndex(of: "_") else { return name }
+        return String(name[name.index(after: i)...])
+    }
+}
+#endif
 
 func formatBytes(_ bytes: Int64?) -> String {
     guard let bytes else { return "—" }

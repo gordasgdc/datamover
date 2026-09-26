@@ -24,7 +24,7 @@ struct CameraCardInfo {
 
     var summary: String {
         var text = cardType
-        if let clipCount { text += " — \(clipCount) clip(uri)" }
+        if let clipCount { text += " — " + String(format: L.t("card.clips"), clipCount) }
         return text
     }
 }
@@ -101,13 +101,13 @@ enum CameraCardDetector {
 
         var warnings: [String] = []
         if clipCount == 0 {
-            warnings.append("Cardul pare gol — nu s-a găsit niciun fișier media.")
+            warnings.append(L.t("card.warn.empty"))
         }
         if !zeroByteFiles.isEmpty {
-            warnings.append("Fișiere de 0 octeți (posibil clipuri incomplete): \(zeroByteFiles.joined(separator: ", "))")
+            warnings.append(String(format: L.t("card.warn.zeroBytes"), zeroByteFiles.joined(separator: ", ")))
         }
         if scanned > scanLimit {
-            warnings.append("Card foarte mare — numărătoarea de clipuri e orientativă.")
+            warnings.append(L.t("card.warn.large"))
         }
         return CameraCardInfo(cardType: cardType, clipCount: clipCount, warnings: warnings)
     }

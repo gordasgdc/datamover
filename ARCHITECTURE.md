@@ -21,6 +21,30 @@ principală și nu definește comportamentul.
 `OffloadEngine.swift` și `ContentView.swift` rămân mari; extragerea continuă
 progresiv, numai cu teste care acoperă partea mutată.
 
+## Interfața macOS (direcția aprobată)
+
+- **Un singur traseu** sursă → verificare → copii (`Features/Route/RouteView.swift`) în Prepare, Transfer și Result;
+  se schimbă doar ce spune fiecare capăt și nodul. Conectorii se desenează din pozițiile reale ale capetelor
+  (anchor preferences), deci nu se rup la redimensionare, la 1–2 surse sau 1–4 copii.
+- **Layout adaptiv** (`RouteLayout`, pur și testat): orizontal complet de la 950 pt lățime utilă, orizontal
+  compact de la 740 pt (fereastra minimă 1024 × 700), stivuit cu scroll sub acest prag. Obiectele mari doar dacă
+  încap; altfel compacte, dar niciodată sub 72 pt. Coloana de incidente: 300 pt, 264 pt sub 1180 pt fereastră.
+- **Incidente** (`Domain/Incident.swift`): critic / avertisment / informație, fiecare cu cauză și acțiune;
+  doar incidentele de preflight blocante dezactivează Start. Statusurile au simbol + text (inteligibile fără culoare).
+- **Dispozitive**: familie vectorială proprie (`DesignSystem/Devices/DeviceArt.swift`, originea în
+  `mac-native/ASSET_ORIGINS.md`); rolul, online/offline, activitatea și avertismentul sunt insigne separate.
+- **Animație**: doar fluxul de pe traseu, doar cât se scrie, oprită de Reduce Motion (`RouteMotion`).
+- Settings rămâne fereastra nativă (⌘,); coada de carduri e în header, profilurile/istoricul/jurnalul în footer.
+
+## Clasificarea mediilor
+
+`Platform/MediaProbe.swift` citește pasiv faptele (DiskArbitration: protocol, intern, amovibil, model;
+IOKit: „Medium Type”; volum/rădăcină; structura de card de cameră) și `Domain/MediaClass.swift` decide, pur:
+folder ales manual → volum intern → rețea/virtual (dispozitiv extern) → cititor SD integrat → card de cameră
+pe mediu amovibil (CFexpress/SD doar dacă modelul cititorului o spune, altfel „card de memorie”) → stick USB
+→ SSD/HDD după tipul mediului → indicii din nume (doar când faptele tac) → **dispozitiv extern** (fallback).
+Numele volumului nu contrazice niciodată un fapt.
+
 ## Contractul de copiere
 
 1. Sursa se deschide **doar pentru citire**. Nimic din aplicație nu scrie,

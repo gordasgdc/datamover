@@ -337,10 +337,18 @@ struct ContentView: View {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { openWindowDebug(id: "design-gallery") }
         }
         guard let root = env["DATAMOVER_UI_DEMO"] else { return }
-        projectName = "Demo"
-        cardName = "A001"
-        addSource((root as NSString).appendingPathComponent("CARD"))
-        for d in ["BACKUP_A", "BACKUP_B"] { addDestination((root as NSString).appendingPathComponent(d)) }
+        projectName = env["DATAMOVER_UI_DEMO_PROJECT"] ?? "SOARE DE IARNĂ"
+        cardName = env["DATAMOVER_UI_DEMO_CARD"] ?? "A001"
+        let list = { (key: String, fallback: String) in
+            (env[key] ?? fallback).split(separator: ",").map { (root as NSString).appendingPathComponent(String($0)) }
+        }
+        for s in list("DATAMOVER_UI_DEMO_SOURCES", "CF_A001") { addSource(s) }
+        for d in list("DATAMOVER_UI_DEMO_DESTS", "SSD_SHUTTLE-01,RAID_BACKUP-RAID-02") { addDestination(d) }
+        if let dims = env["DATAMOVER_UI_DEMO_WINDOW"]?.split(separator: "x").compactMap({ Double($0) }), dims.count == 2 {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                NSApp.windows.first { $0.isVisible && !($0 is NSPanel) }?.setContentSize(NSSize(width: dims[0], height: dims[1]))
+            }
+        }
         if env["DATAMOVER_DESIGN_GALLERY"] == "1" {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { openWindowDebug(id: "design-gallery") }
         }
@@ -618,7 +626,8 @@ struct ContentView: View {
                 } else if let parentCard {
                     // Cazul cel mai scump de pe platou: s-a selectat un
                     // subfolder al cardului, nu radacina lui.
-                    runner.logExternal("⚠ \((path as NSString).lastPathComponent) pare a fi un SUBFOLDER al cardului \((parentCard as NSString).lastPathComponent) — copiat singur, pierzi metadatele cardului.")
+                    runner.logExternal("⚠ " + String(format: L.t("card.warn.subfolder"), (path as NSString).lastPathComponent,
+                                                             (parentCard as NSString).lastPathComponent))
                 }
             }
         }
@@ -713,7 +722,10 @@ struct ContentView: View {
     }
 
     private func displayName(_ path: String) -> String {
-        FileManager.default.displayName(atPath: path)
+        #if DEBUG
+        if let demo = VolumeInfo.demoDisplayName(path) { return demo }
+        #endif
+        return FileManager.default.displayName(atPath: path)
     }
 
     private var sourceEndpoints: [RouteEndpoint] {
@@ -792,12 +804,12 @@ struct ContentView: View {
     }
 
     private var routeNode: RouteNodeModel {
-        var n = RouteNodeModel(stage: stage, method: "\(job.verificationModel.label) · \(L.t(job.depth.labelKey))")
+        var n = RouteNodeModel(stage: stage, method: "\(job.verificationModel.shortLabel) · \(L.t("depth.short.\(job.depth.rawValue)"))")
         switch stage {
         case .prepare:
             n.phaseText = L.t("node.prepare")
         case .transfer:
-            n.method = "\(job.verificationModel.label) · \(L.t(runner.lastVerificationDepth.labelKey))"
+            n.method = "\(job.verificationModel.shortLabel) · \(L.t("depth.short.\(runner.lastVerificationDepth.rawValue)"))"
             n.phaseText = runner.isPaused ? L.t("footer.pause") : L.t(runner.phase.labelKey)
             n.percent = runner.progressPercent
             n.status = .active
@@ -807,7 +819,7 @@ struct ContentView: View {
             }
             n.etaText = runner.etaSeconds.map { String(format: L.t("node.eta"), duration($0)) }
         case .result:
-            n.method = "\(job.verificationModel.label) · \(L.t(runner.lastVerificationDepth.labelKey))"
+            n.method = "\(job.verificationModel.shortLabel) · \(L.t("depth.short.\(runner.lastVerificationDepth.rawValue)"))"
             if let o = runner.lastOutcome {
                 n.verdict = o
                 n.status = DMStatus(o)
@@ -878,8 +890,20 @@ struct ContentView: View {
             let list = IncidentBuilder.result(runner.lastResults)
             let o = runner.lastOutcome ?? .failure
             IncidentPanel(headline: L.t(o.labelKey), headlineStatus: DMStatus(o), incidents: list,
-                          footnote: L.t("outcomeHelp.\(o.rawValue)"))
+                          passed: resultFigures, footnote: L.t("outcomeHelp.\(o.rawValue)"))
         }
+    }
+
+    /// Cifrele finale, măsurate (nu estimate).
+    private var resultFigures: [String] {
+        let r = runner.lastResults
+        guard !r.isEmpty else { return [] }
+        let confirmed = r.reduce(0) { $0 + $1.okCount + $1.skipCount }
+        var list = [String(format: L.t("result.fig.files"), confirmed, r.count),
+                    String(format: L.t("result.fig.read"), formatBytes(runner.bytesDone / Int64(max(runner.destinationCount, 1)))),
+                    String(format: L.t("fig.duration"), duration(runner.elapsedSeconds))]
+        if r.allSatisfy({ $0.mhlPath != nil }) { list.append(L.t("result.fig.mhl")) }
+        return list
     }
 
     // MARK: Raftul de dispozitive
@@ -1169,4 +1193,3 @@ struct ContentView: View {
         return String(format: L.t("footer.summary"), sourcePaths.count, destinationPaths.count)
     }
 }
-
