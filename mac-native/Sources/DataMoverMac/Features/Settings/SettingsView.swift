@@ -22,7 +22,7 @@ struct SettingsView: View {
             AccountSettingsTab()
                 .tabItem { Label(L.t("settingsTab.account"), systemImage: "person.crop.circle") }
         }
-        .frame(width: 560)
+        .frame(width: DM.Layout.settingsWidth)
         .id(langStore.lang) // relayout la schimbarea limbii
     }
 }

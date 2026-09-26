@@ -21,6 +21,16 @@ struct VolumeInfo: Identifiable, Hashable {
 
     static func detectAll() -> [VolumeInfo] {
         let fm = FileManager.default
+        #if DEBUG
+        // Mod demo (capturi): doar folderele sintetice, niciun volum real.
+        if let root = ProcessInfo.processInfo.environment["DATAMOVER_UI_DEMO"] {
+            return ["CARD", "BACKUP_A", "BACKUP_B"].map { name in
+                let path = (root as NSString).appendingPathComponent(name)
+                let free = try? fm.attributesOfFileSystem(forPath: path)[.systemFreeSize] as? Int64
+                return VolumeInfo(id: path, name: name, path: path, freeBytes: free ?? nil)
+            }
+        }
+        #endif
         guard let names = try? fm.contentsOfDirectory(atPath: "/Volumes") else { return [] }
         return names.sorted().compactMap { name in
             let path = "/Volumes/\(name)"

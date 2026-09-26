@@ -14,8 +14,12 @@ struct ResultPanel: View {
         ScrollView {
             VStack(alignment: .leading, spacing: DM.Space.l) {
                 banner
-                ForEach(results, id: \.destRoot) { result in
-                    DestinationResultRow(result: result)
+                DMSectionHeader(title: L.t("dest.title"))
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: DM.Layout.destinationMinWidth), spacing: DM.Space.m)],
+                          alignment: .leading, spacing: DM.Space.m) {
+                    ForEach(results, id: \.destRoot) { result in
+                        DestinationResultRow(result: result)
+                    }
                 }
                 HStack {
                     Spacer()
@@ -24,7 +28,7 @@ struct ResultPanel: View {
                 }
             }
             .padding(DM.Space.l)
-            .frame(maxWidth: 820, alignment: .leading)
+            .frame(maxWidth: DM.Layout.contentMaxWidth, alignment: .leading)
             .frame(maxWidth: .infinity)
         }
     }
@@ -33,7 +37,7 @@ struct ResultPanel: View {
 
     private var banner: some View {
         HStack(alignment: .top, spacing: DM.Space.m) {
-            Image(systemName: status.symbol).font(.system(size: 30)).foregroundStyle(status.color)
+            Image(systemName: status.symbol).font(.system(size: DM.IconSize.banner)).foregroundStyle(status.color)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: DM.Space.xs) {
                 Text(L.t(outcome.labelKey)).font(DM.Font.title)
@@ -47,8 +51,8 @@ struct ResultPanel: View {
             Spacer()
         }
         .padding(DM.Space.l)
-        .background(status.color.opacity(0.10), in: RoundedRectangle(cornerRadius: DM.Radius.l))
-        .overlay(RoundedRectangle(cornerRadius: DM.Radius.l).strokeBorder(status.color.opacity(0.45)))
+        .background(status.color.opacity(DM.Opacity.bannerFill), in: RoundedRectangle(cornerRadius: DM.Radius.l))
+        .overlay(RoundedRectangle(cornerRadius: DM.Radius.l).strokeBorder(status.color.opacity(DM.Opacity.bannerStroke)))
         .accessibilityElement(children: .combine)
     }
 }
@@ -130,7 +134,7 @@ struct ActivityLogView: View {
                 Spacer()
                 if expanded {
                     TextField(L.t("log.filter"), text: $filter)
-                        .textFieldStyle(.roundedBorder).frame(width: 180).controlSize(.small)
+                        .textFieldStyle(.roundedBorder).frame(width: DM.Layout.logFilterWidth).controlSize(.small)
                     Button(L.t("log.copy")) {
                         NSPasteboard.general.clearContents()
                         NSPasteboard.general.setString(visible.joined(separator: "\n"), forType: .string)
@@ -141,7 +145,7 @@ struct ActivityLogView: View {
             if expanded {
                 ScrollViewReader { proxy in
                     ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 1) {
+                        LazyVStack(alignment: .leading, spacing: DM.Space.line) {
                             ForEach(Array(visible.enumerated()), id: \.offset) { index, line in
                                 Text(line).font(DM.Font.mono)
                                     .foregroundStyle(color(for: line))
@@ -152,7 +156,7 @@ struct ActivityLogView: View {
                         }
                         .padding(DM.Space.s)
                     }
-                    .frame(height: 120)
+                    .frame(height: DM.Layout.logHeight)
                     .background(DM.consoleBackground, in: RoundedRectangle(cornerRadius: DM.Radius.m))
                     .overlay(RoundedRectangle(cornerRadius: DM.Radius.m).strokeBorder(DM.border))
                     .onChange(of: visible.count) { _, count in

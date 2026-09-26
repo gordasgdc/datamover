@@ -18,7 +18,7 @@ struct TransferMonitorView: View {
                 destinations
             }
             .padding(DM.Space.l)
-            .frame(maxWidth: 820, alignment: .leading)
+            .frame(maxWidth: DM.Layout.contentMaxWidth, alignment: .leading)
             .frame(maxWidth: .infinity)
         }
     }
@@ -51,7 +51,7 @@ struct TransferMonitorView: View {
                         .foregroundStyle(index == current ? DM.textPrimary : DM.textSecondary)
                 }
                 if index < Self.phases.count - 1 {
-                    Rectangle().fill(DM.border).frame(height: 1).frame(maxWidth: .infinity)
+                    Rectangle().fill(DM.border).frame(height: DM.Layout.hairline).frame(maxWidth: .infinity)
                 }
             }
         }
@@ -75,23 +75,36 @@ struct TransferMonitorView: View {
         }
     }
 
+    /// Metricile, ca listă tipizată: pe ferestre late, un singur rând de 6;
+    /// pe ferestre înguste, 3 × 2.
+    private var metricItems: [DMMetric] {
+        [
+            DMMetric(label: L.t("monitor.read"), value: rate(runner.readBytesPerSecond)),
+            DMMetric(label: L.t("monitor.write"), value: rate(runner.writeBytesPerSecond),
+                     detail: runner.destinationCount > 1 ? String(format: L.t("monitor.copies"), runner.destinationCount) : nil),
+            DMMetric(label: L.t("monitor.eta"), value: runner.etaSeconds.map(duration) ?? "—",
+                     detail: L.t("monitor.elapsed") + " " + duration(runner.elapsedSeconds)),
+            DMMetric(label: L.t("monitor.data"), value: formatBytes(runner.bytesDone),
+                     detail: "/ " + formatBytes(runner.totalBytes)),
+            DMMetric(label: L.t("monitor.files"), value: "\(runner.filesDone)", detail: "/ \(runner.totalUnits)"),
+            DMMetric(label: L.t("monitor.memory"), value: runner.memoryUsedText.isEmpty ? "—" : runner.memoryUsedText,
+                     detail: L.t("io.allocated") + " " + runner.bufferAllocatedText),
+        ]
+    }
+
     private var metrics: some View {
-        DMPanel {
-            Grid(horizontalSpacing: DM.Space.l, verticalSpacing: DM.Space.m) {
-                GridRow {
-                    DMMetric(label: L.t("monitor.read"), value: rate(runner.readBytesPerSecond))
-                    DMMetric(label: L.t("monitor.write"), value: rate(runner.writeBytesPerSecond),
-                             detail: runner.destinationCount > 1 ? String(format: L.t("monitor.copies"), runner.destinationCount) : nil)
-                    DMMetric(label: L.t("monitor.eta"), value: runner.etaSeconds.map(duration) ?? "—",
-                             detail: L.t("monitor.elapsed") + " " + duration(runner.elapsedSeconds))
+        let items = metricItems
+        return DMPanel {
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .top, spacing: DM.Space.l) {
+                    ForEach(items.indices, id: \.self) { i in
+                        items[i].frame(minWidth: DM.Layout.labelColumn * 1.2)
+                        if i < items.count - 1 { Divider() }
+                    }
                 }
-                GridRow {
-                    DMMetric(label: L.t("monitor.data"), value: formatBytes(runner.bytesDone),
-                             detail: "/ " + formatBytes(runner.totalBytes))
-                    DMMetric(label: L.t("monitor.files"), value: "\(runner.filesDone)",
-                             detail: "/ \(runner.totalUnits)")
-                    DMMetric(label: L.t("monitor.memory"), value: runner.memoryUsedText.isEmpty ? "—" : runner.memoryUsedText,
-                             detail: L.t("io.allocated") + " " + runner.bufferAllocatedText)
+                Grid(horizontalSpacing: DM.Space.l, verticalSpacing: DM.Space.m) {
+                    GridRow { items[0]; items[1]; items[2] }
+                    GridRow { items[3]; items[4]; items[5] }
                 }
             }
         }
@@ -100,9 +113,12 @@ struct TransferMonitorView: View {
     private var destinations: some View {
         VStack(alignment: .leading, spacing: DM.Space.s) {
             DMSectionHeader(title: L.t("dest.title"))
-            ForEach(runner.destinationStates) { dest in
-                DestinationProgressRow(state: dest,
-                                       expectedBytes: runner.totalBytes / Int64(max(runner.destinationCount, 1)))
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: DM.Layout.destinationMinWidth), spacing: DM.Space.m)],
+                      alignment: .leading, spacing: DM.Space.m) {
+                ForEach(runner.destinationStates) { dest in
+                    DestinationProgressRow(state: dest,
+                                           expectedBytes: runner.totalBytes / Int64(max(runner.destinationCount, 1)))
+                }
             }
         }
     }

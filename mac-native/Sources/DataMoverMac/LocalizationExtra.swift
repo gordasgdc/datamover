@@ -72,6 +72,16 @@ extension L {
         "prep.freeShort": [.ro: "%@ liberi", .en: "%@ free", .es: "%@ libres"],
         "prep.weakVerification": [.ro: "Verificare slabă", .en: "Weak verification", .es: "Verificación débil"],
 
+        "prep.checks": [.ro: "Verificări", .en: "Checks", .es: "Comprobaciones"],
+        "prep.check.noOverlap": [.ro: "Sursa și destinațiile nu se suprapun", .en: "Source and destinations do not overlap", .es: "Origen y destinos no se solapan"],
+        "prep.check.spaceOk": [.ro: "Spațiu suficient la fiecare destinație", .en: "Enough space at every destination", .es: "Espacio suficiente en cada destino"],
+        "prep.check.spaceLow": [.ro: "Spațiu insuficient — pornirea va cere confirmare", .en: "Not enough space — starting will ask for confirmation", .es: "Espacio insuficiente — el inicio pedirá confirmación"],
+        "prep.check.checksum": [.ro: "Fiecare copie e comparată cu sursa prin checksum", .en: "Every copy is compared with the source by checksum", .es: "Cada copia se compara con el origen por checksum"],
+        "prep.state.ready": [.ro: "Gata de pornire", .en: "Ready to start", .es: "Listo para iniciar"],
+        "prep.state.warnings": [.ro: "Gata, cu avertismente", .en: "Ready, with warnings", .es: "Listo, con avisos"],
+        "prep.state.blocked": [.ro: "Blocat", .en: "Blocked", .es: "Bloqueado"],
+        "prep.state.incomplete": [.ro: "Incomplet", .en: "Incomplete", .es: "Incompleto"],
+
         // Monitor
         "monitor.phase": [.ro: "Faza", .en: "Phase", .es: "Fase"],
         "monitor.total": [.ro: "Progres total", .en: "Total progress", .es: "Progreso total"],

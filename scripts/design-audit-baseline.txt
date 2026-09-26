@@ -1,0 +1,5 @@
+ActivationSheet.swift 17
+ContentView.swift 77
+HelpView.swift 6
+HistoryView.swift 17
+OffloadEngine.swift 3

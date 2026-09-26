@@ -31,11 +31,16 @@ enum DM {
     static let textSecondary = Color(nsColor: .secondaryLabelColor)
     static let textTertiary = Color(nsColor: .tertiaryLabelColor)
     static let background = Color(nsColor: .windowBackgroundColor)
+    /// Panou ridicat: mai deschis decât fundalul ferestrei în AMBELE teme
+    /// (în dark, un panou mai închis decât fundalul pare o gaură).
     static let surface = dynamic(light: NSColor(white: 1, alpha: 1),
-                                 dark: NSColor(white: 0.155, alpha: 1))
-    static let surfaceSunken = dynamic(light: NSColor(white: 0.955, alpha: 1),
-                                       dark: NSColor(white: 0.11, alpha: 1))
-    static let border = Color(nsColor: .separatorColor)
+                                 dark: NSColor(white: 0.235, alpha: 1))
+    static let surfaceSunken = dynamic(light: NSColor(white: 0.93, alpha: 1),
+                                       dark: NSColor(white: 0.13, alpha: 1))
+    /// Bordura panourilor: mai fermă decât separatorul de sistem în light.
+    static let border = dynamic(light: NSColor(white: 0, alpha: 0.14),
+                                dark: NSColor(white: 1, alpha: 0.10))
+    static let divider = Color(nsColor: .separatorColor)
     static let consoleBackground = dynamic(light: NSColor(white: 0.97, alpha: 1),
                                            dark: NSColor(white: 0.08, alpha: 1))
 
@@ -43,12 +48,53 @@ enum DM {
     enum Space {
         static let xxs: CGFloat = 2, xs: CGFloat = 4, s: CGFloat = 8, m: CGFloat = 12
         static let l: CGFloat = 16, xl: CGFloat = 24
+        /// Distanța dintre rândurile unui jurnal monospace.
+        static let line: CGFloat = 1
     }
     enum Radius {
         static let s: CGFloat = 4, m: CGFloat = 6, l: CGFloat = 8
     }
     /// Țintă minimă de click (HIG macOS: 20–24 pt pe controale dense).
     static let minHit: CGFloat = 22
+
+    // MARK: Layout (lățimi adaptive)
+    enum Layout {
+        /// Lățimea maximă a conținutului central — dincolo de ea, liniile de
+        /// citit devin prea lungi; sub ea, totul se întinde.
+        static let contentMaxWidth: CGFloat = 1240
+        /// Peste această lățime, panourile trec pe două coloane.
+        static let wideBreakpoint: CGFloat = 900
+        /// Lățimea minimă a unei carduri de destinație în grilă.
+        static let destinationMinWidth: CGFloat = 400
+        static let sideColumnWidth: CGFloat = 240
+        static let labelColumn: CGFloat = 104
+        static let keyColumn: CGFloat = 118
+        static let capacityBarMaxWidth: CGFloat = 280
+        static let logHeight: CGFloat = 140
+        static let logFilterWidth: CGFloat = 200
+        static let windowMinWidth: CGFloat = 1040
+        static let windowMinHeight: CGFloat = 640
+        static let windowDefaultWidth: CGFloat = 1280
+        static let windowDefaultHeight: CGFloat = 800
+        static let settingsWidth: CGFloat = 560
+        /// Linie de 1 pt (separatoare, stepper).
+        static let hairline: CGFloat = 1
+    }
+
+    // MARK: Opacități semantice
+    enum Opacity {
+        /// Fundalul unei insigne de stare.
+        static let tint: Double = 0.14
+        /// Fundalul bannerului de rezultat.
+        static let bannerFill: Double = 0.10
+        /// Bordura bannerului de rezultat.
+        static let bannerStroke: Double = 0.50
+    }
+
+    enum IconSize {
+        static let banner: CGFloat = 30
+        static let capacityBar: CGFloat = 6
+    }
 
     // MARK: Tipografie (text semantic → respectă Dynamic Type, Regula 24)
     enum Font {
@@ -58,6 +104,9 @@ enum DM {
         static let label = SwiftUI.Font.system(.callout)
         static let detail = SwiftUI.Font.system(.caption)
         static let metric = SwiftUI.Font.system(.title2, design: .rounded, weight: .semibold).monospacedDigit()
+        static let metricLarge = SwiftUI.Font.system(.title, design: .rounded, weight: .semibold).monospacedDigit()
+        static let panelTitle = SwiftUI.Font.system(.headline)
+        static let sectionTracking: CGFloat = 0.6
         static let mono = SwiftUI.Font.system(.caption, design: .monospaced)
     }
 }
@@ -116,7 +165,7 @@ struct DMSectionHeader: View {
         HStack(spacing: DM.Space.s) {
             Text(title.uppercased())
                 .font(DM.Font.sectionTitle)
-                .tracking(0.6)
+                .tracking(DM.Font.sectionTracking)
                 .foregroundStyle(DM.textSecondary)
                 .accessibilityAddTraits(.isHeader)
             Spacer(minLength: 0)
@@ -148,7 +197,7 @@ struct DMStatusBadge: View {
         .foregroundStyle(status.color)
         .padding(.horizontal, DM.Space.s)
         .padding(.vertical, DM.Space.xxs + 1)
-        .background(status.color.opacity(0.12), in: Capsule())
+        .background(status.color.opacity(DM.Opacity.tint), in: Capsule())
         .accessibilityElement(children: .combine)
     }
 }
@@ -182,7 +231,7 @@ struct DMKeyValue: View {
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: DM.Space.m) {
             Text(key).font(DM.Font.detail).foregroundStyle(DM.textSecondary)
-                .frame(width: 118, alignment: .leading)
+                .frame(width: DM.Layout.keyColumn, alignment: .leading)
             Text(value)
                 .font(mono ? DM.Font.mono : DM.Font.label)
                 .foregroundStyle(status?.color ?? DM.textPrimary)
@@ -215,7 +264,7 @@ struct DMCapacityBar: View {
             }
             .clipShape(Capsule())
         }
-        .frame(height: 5)
+        .frame(height: DM.IconSize.capacityBar)
         .accessibilityHidden(true)
     }
 }

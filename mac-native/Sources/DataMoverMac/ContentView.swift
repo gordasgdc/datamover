@@ -311,6 +311,9 @@ struct ContentView: View {
     }
 
     #if DEBUG
+    @Environment(\.openWindow) private var openWindowDebug
+    @Environment(\.openSettings) private var openSettingsDebug
+
     /// Doar în build-urile DEBUG: `DATAMOVER_UI_DEMO=<folder>` precompletează
     /// sursa `<folder>/CARD` și destinațiile `<folder>/BACKUP_A|B` (foldere
     /// temporare create de test), iar `DATAMOVER_UI_DEMO_START=1` pornește
@@ -318,11 +321,20 @@ struct ContentView: View {
     /// volume reale și nu există în build-ul Release.
     private func applyUIDemoIfRequested() {
         let env = ProcessInfo.processInfo.environment
+        if env["DATAMOVER_DESIGN_GALLERY"] == "1" && env["DATAMOVER_UI_DEMO"] == nil {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { openWindowDebug(id: "design-gallery") }
+        }
         guard let root = env["DATAMOVER_UI_DEMO"] else { return }
         projectName = "Demo"
         cardName = "A001"
         addSource((root as NSString).appendingPathComponent("CARD"))
         for d in ["BACKUP_A", "BACKUP_B"] { addDestination((root as NSString).appendingPathComponent(d)) }
+        if env["DATAMOVER_DESIGN_GALLERY"] == "1" {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { openWindowDebug(id: "design-gallery") }
+        }
+        if env["DATAMOVER_UI_DEMO_SETTINGS"] == "1" {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { openSettingsDebug() }
+        }
         if env["DATAMOVER_UI_DEMO_START"] == "1" {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { attemptStart() }
         }

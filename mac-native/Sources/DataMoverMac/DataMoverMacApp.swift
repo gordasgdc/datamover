@@ -23,9 +23,9 @@ struct DataMoverMacApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(license)
-                .frame(minWidth: 1040, minHeight: 640)
+                .frame(minWidth: DM.Layout.windowMinWidth, minHeight: DM.Layout.windowMinHeight)
         }
-        .defaultSize(width: 1280, height: 800)
+        .defaultSize(width: DM.Layout.windowDefaultWidth, height: DM.Layout.windowDefaultHeight)
         .commands {
             CommandGroup(replacing: .appInfo) {
                 Button(L.t("menu.about")) { showAboutPanel() }
@@ -46,6 +46,12 @@ struct DataMoverMacApp: App {
         Settings {
             SettingsView()
         }
+
+        #if DEBUG
+        WindowGroup(id: "design-gallery") {
+            DesignGallery()
+        }
+        #endif
 
         WindowGroup(id: "help") {
             HelpView()
