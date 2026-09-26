@@ -26,6 +26,22 @@ public sealed class FanOutDestResult
     public string? Hash { get; init; }
     public long BytesWritten { get; init; }
     public Exception? Error { get; init; }
+    /// [2026-09-26] True DOAR daca fisierul a fost confirmat (hash/marime =
+    /// sursa, sursa nemodificata) si mutat la numele final. Success fara
+    /// Verified = scris complet, dar neconfirmat: partialul a fost sters,
+    /// numele final nu a fost atins. Paritate cu `.mismatch` din Swift.
+    public bool Verified { get; init; }
+    public string? MismatchReason { get; init; }
+}
+
+/// Numele temporar sub care se scrie un fisier pana e confirmat — identic
+/// cu `PartialFile` (Mac). Nu e niciodata raportat drept verificat.
+public static class PartialFile
+{
+    public const string Suffix = ".dmpart";
+    public static string PathFor(string finalPath) =>
+        System.IO.Path.Combine(System.IO.Path.GetDirectoryName(finalPath) ?? "",
+            "." + System.IO.Path.GetFileName(finalPath) + Suffix);
 }
 
 public sealed class FanOutResult
@@ -96,6 +112,11 @@ public sealed record ChunkBuffer(byte[] Data, int Length);
 
 public sealed class FanOutCopier
 {
+    private static void TryDelete(string path)
+    {
+        try { if (File.Exists(path)) File.Delete(path); } catch { /* parțial propriu, best-effort */ }
+    }
+
     private readonly string _sourcePath;
     private readonly IReadOnlyList<string> _destinationPaths;
     private readonly int _chunkSize;
@@ -103,10 +124,12 @@ public sealed class FanOutCopier
     private readonly VerificationModel _model;
     private readonly CancelToken _cancel;
     private readonly PauseToken _pause;
+    private readonly long? _expectedSize;
 
     public FanOutCopier(string sourcePath, IReadOnlyList<string> destinationPaths, int chunkSize,
-        VerificationModel model, CancelToken cancel, PauseToken pause, int ringDepth = 3)
+        VerificationModel model, CancelToken cancel, PauseToken pause, int ringDepth = 3, long? expectedSize = null)
     {
+        _expectedSize = expectedSize;
         _sourcePath = sourcePath;
         _destinationPaths = destinationPaths;
         _chunkSize = chunkSize;
@@ -128,7 +151,7 @@ public sealed class FanOutCopier
             var queue = queues[dst];
             try
             {
-                using var output = new FileStream(dst, FileMode.Create, FileAccess.Write, FileShare.None, _chunkSize);
+                using var output = new FileStream(PartialFile.PathFor(dst), FileMode.Create, FileAccess.Write, FileShare.None, _chunkSize);
                 using var hasher = new IncrementalHasher(_model);
                 long written = 0;
                 foreach (var chunk in queue.GetConsumingEnumerable())
@@ -150,12 +173,17 @@ public sealed class FanOutCopier
             catch (Exception ex)
             {
                 results[dst] = new FanOutDestResult { Success = false, Error = ex };
-                try { queue.CompleteAdding(); } catch (ObjectDisposedException) { /* deja completat */ }
+                // [2026-09-26] Golim coada in loc de CompleteAdding: un
+                // producator blocat in Add() pe o coada plina nu era trezit de
+                // CompleteAdding -> blocaj al intregului transfer.
+                foreach (var _ in queue.GetConsumingEnumerable()) { }
             }
         })).ToArray();
 
         // Thread-ul de CITIRE — singurul care atinge sursa. Ruleaza sincron
         // pe thread-ul apelant (deja de fundal in OffloadRunner).
+        var infoBefore = new FileInfo(_sourcePath);
+        var stampBefore = (infoBefore.Length, infoBefore.LastWriteTimeUtc);
         using var input = new FileStream(_sourcePath, FileMode.Open, FileAccess.Read, FileShare.Read,
             _chunkSize, FileOptions.SequentialScan);
         using var sourceHasher = new IncrementalHasher(_model);
@@ -207,13 +235,56 @@ public sealed class FanOutCopier
 
         Task.WaitAll(tasks);
 
-        if (readError != null) throw readError;
+        if (readError != null)
+        {
+            foreach (var dst in _destinationPaths) TryDelete(PartialFile.PathFor(dst));
+            throw readError;
+        }
+
+        var sourceHash = sourceHasher.FinalizeHex();
+        string? sourceProblem = null;
+        var infoAfter = new FileInfo(_sourcePath);
+        if (_expectedSize.HasValue && bytesRead != _expectedSize.Value)
+            sourceProblem = $"Sursa are {bytesRead} octeti cititi, dar {_expectedSize.Value} la scanare — s-a modificat in timpul copierii.";
+        else if (infoAfter.Length != stampBefore.Length || infoAfter.LastWriteTimeUtc != stampBefore.LastWriteTimeUtc)
+            sourceProblem = "Sursa s-a modificat in timpul copierii.";
+
+        var final = new Dictionary<string, FanOutDestResult>();
+        foreach (var dst in _destinationPaths)
+        {
+            var part = PartialFile.PathFor(dst);
+            if (!results.TryGetValue(dst, out var r) || !r.Success)
+            {
+                TryDelete(part);
+                final[dst] = r ?? new FanOutDestResult { Success = false, Error = new FanOutError("Fara rezultat de la motorul de copiere") };
+                continue;
+            }
+            string? reason = sourceProblem;
+            if (reason == null && r.BytesWritten != bytesRead) reason = $"Scrisi {r.BytesWritten} din {bytesRead} octeti.";
+            if (reason == null && _model != VerificationModel.SizeOnly && r.Hash != sourceHash) reason = "Checksum diferit.";
+            if (reason != null)
+            {
+                TryDelete(part);
+                final[dst] = new FanOutDestResult { Success = true, Verified = false, Hash = r.Hash, BytesWritten = r.BytesWritten, MismatchReason = reason };
+                continue;
+            }
+            try
+            {
+                File.Move(part, dst, overwrite: true);
+                final[dst] = new FanOutDestResult { Success = true, Verified = true, Hash = r.Hash, BytesWritten = r.BytesWritten };
+            }
+            catch (Exception ex)
+            {
+                TryDelete(part);
+                final[dst] = new FanOutDestResult { Success = false, Error = new FanOutError($"Finalizarea (redenumirea) a esuat: {ex.Message}") };
+            }
+        }
 
         return new FanOutResult
         {
-            SourceHash = sourceHasher.FinalizeHex(),
+            SourceHash = sourceHash,
             BytesRead = bytesRead,
-            Destinations = results.ToDictionary(kv => kv.Key, kv => kv.Value),
+            Destinations = final,
         };
     }
 }

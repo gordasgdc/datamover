@@ -132,7 +132,10 @@ public sealed class DestinationContext
         if (outcome.Success)
         {
             var hash = outcome.Hash ?? "";
-            bool same = hash == sourceHash;
+            // [2026-09-26] Verdictul vine din motor (confirmat + redenumit),
+            // nu din compararea hash-urilor aici: la „doar marime” ambele
+            // hash-uri erau "" si orice fisier trecea drept OK.
+            bool same = outcome.Verified;
             var status = same ? (isRetry ? "OK (reîncercat)" : "OK") : (isRetry ? "NEPOTRIVIRE (reîncercat)" : "NEPOTRIVIRE");
             if (same)
             {
@@ -148,7 +151,7 @@ public sealed class DestinationContext
                 else OnActivity($"Eșuat și la reîncercare: {entry.RelPath}");
                 _filesStatus[entry.RelPath] = "fail";
             }
-            LogRow(new ReportRow { File = entry.RelPath, SizeBytes = entry.Size, SrcHash = sourceHash, DstHash = hash, Status = status, DestPath = DestPath(entry) });
+            LogRow(new ReportRow { File = entry.RelPath, SizeBytes = entry.Size, SrcHash = sourceHash, DstHash = hash, Status = status, Error = outcome.MismatchReason ?? "", DestPath = DestPath(entry) });
         }
         else
         {
@@ -173,7 +176,9 @@ public sealed class DestinationContext
 
     public void PrepareForRetry(FileEntry entry)
     {
-        try { var p = DestPath(entry); if (File.Exists(p)) File.Delete(p); } catch { /* ignora */ }
+        // [2026-09-26] Fisierul final nu se mai sterge: copierea il inlocuieste
+        // atomic doar la confirmare. Se curata doar un partial ramas.
+        try { var p = PartialFile.PathFor(DestPath(entry)); if (File.Exists(p)) File.Delete(p); } catch { /* ignora */ }
     }
 
     private static bool IsPermissionError(Exception ex) =>

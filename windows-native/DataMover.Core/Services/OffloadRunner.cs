@@ -476,7 +476,7 @@ public sealed class OffloadRunner : INotifyPropertyChanged
                         }
                         try
                         {
-                            var copier = new FanOutCopier(entry.FullPath, destPaths, chunkBytes, model, token, pauseTok);
+                            var copier = new FanOutCopier(entry.FullPath, destPaths, chunkBytes, model, token, pauseTok, expectedSize: entry.Size);
                             var result = copier.Run(_ => { });
                             foreach (var ctx in toCopy) ctx.OnActivity($"Verificare checksum: {entry.RelPath}…");
                             for (int i = 0; i < toCopy.Count; i++)
@@ -587,7 +587,16 @@ public sealed class OffloadRunner : INotifyPropertyChanged
         // stie ca transferul a avut probleme tranzitorii, chiar daca s-a
         // terminat cu bine (indiciu de cablu/card/disc care da rateuri).
         if (totalRecovered > 0) summary += $", {totalRecovered} recuperate la reîncercare";
-        StatusText = anyCancelled ? "Anulat." : summary + ".";
+        // [2026-09-26] Verdict neambiguu, aceleasi reguli ca TransferOutcome
+        // (Mac): nicio destinatie esuata nu poate da „succes”.
+        int failedDests = results.Count(r => r.FailCount > 0);
+        string verdict = anyCancelled ? "Transfer anulat"
+            : failedDests == results.Count ? "Transfer eșuat"
+            : failedDests > 0 ? "Eșec parțial — nu formata cardul"
+            : totalRecovered > 0 ? "Verificat, cu avertismente"
+            : "Transfer verificat";
+        LastVerdict = verdict;
+        StatusText = anyCancelled ? "Anulat." : verdict + " — " + summary + ".";
 
         // [2026-09-03] Ejectare automata a cardului sursa, DOAR daca totul a
         // mers bine. Un card cu erori nu se scoate niciodata automat: s-ar
@@ -607,6 +616,9 @@ public sealed class OffloadRunner : INotifyPropertyChanged
     /// drepturi de administrator; daca nu le are, esecul e RAPORTAT in feed,
     /// nu ascuns (userul trebuie sa stie ca mai trebuie sa scoata cardul
     /// manual, nu sa creada ca s-a facut).
+    /// Verdictul ultimului transfer (vezi Finish).
+    public string LastVerdict { get; private set; } = "";
+
     private void EjectSourceVolumes(IEnumerable<string> sources)
     {
         var done = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
