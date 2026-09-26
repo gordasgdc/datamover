@@ -270,24 +270,14 @@ extension DeliveryReport {
 // MARK: - PDF (CoreText, A4, paginare în două treceri)
 
 extension DeliveryReport {
-    private struct Palette {
-        static let ink = NSColor(srgbRed: 0.10, green: 0.11, blue: 0.13, alpha: 1)
-        static let dim = NSColor(srgbRed: 0.36, green: 0.39, blue: 0.44, alpha: 1)
-        static let rule = NSColor(srgbRed: 0.84, green: 0.85, blue: 0.87, alpha: 1)
-        static let band = NSColor(srgbRed: 0.965, green: 0.97, blue: 0.975, alpha: 1)
-        static let amber = NSColor(srgbRed: 0.72, green: 0.41, blue: 0.12, alpha: 1)
-        static let ok = NSColor(srgbRed: 0.12, green: 0.48, blue: 0.27, alpha: 1)
-        static let warn = NSColor(srgbRed: 0.60, green: 0.38, blue: 0.0, alpha: 1)
-        static let fail = NSColor(srgbRed: 0.71, green: 0.14, blue: 0.09, alpha: 1)
-    }
     private func color(forKind k: String) -> NSColor {
-        switch k { case "ok": return Palette.ok; case "warn": return Palette.warn; case "fail": return Palette.fail; default: return Palette.dim }
+        switch k { case "ok": return DMReportPalette.ok; case "warn": return DMReportPalette.warn; case "fail": return DMReportPalette.fail; default: return DMReportPalette.dim }
     }
     private var verdictColor: NSColor {
-        switch outcome { case .verified: return Palette.ok; case .verifiedWithWarnings: return Palette.warn; case .failed: return Palette.fail; case .cancelled: return Palette.dim }
+        switch outcome { case .verified: return DMReportPalette.ok; case .verifiedWithWarnings: return DMReportPalette.warn; case .failed: return DMReportPalette.fail; case .cancelled: return DMReportPalette.dim }
     }
 
-    private static func attr(_ s: String, _ size: CGFloat, bold: Bool = false, mono: Bool = false, color: NSColor = Palette.ink, align: NSTextAlignment = .left) -> NSAttributedString {
+    private static func attr(_ s: String, _ size: CGFloat, bold: Bool = false, mono: Bool = false, color: NSColor = DMReportPalette.ink, align: NSTextAlignment = .left) -> NSAttributedString {
         let font = mono ? NSFont.monospacedSystemFont(ofSize: size, weight: bold ? .semibold : .regular)
                         : NSFont.systemFont(ofSize: size, weight: bold ? .semibold : .regular)
         let p = NSMutableParagraphStyle(); p.alignment = align; p.lineBreakMode = mono ? .byCharWrapping : .byWordWrapping; p.lineSpacing = 1
@@ -319,15 +309,15 @@ extension DeliveryReport {
         // Rânduri pregătite (text + înălțime) — aceleași în ambele treceri.
         struct Row { let cells: [NSAttributedString]; let height: CGFloat }
         let tableHead = [ "#", t("col.file"), t("col.size"), t("col.checksum"), t("col.status") ]
-            .map { Self.attr($0.uppercased(), 7, bold: true, color: Palette.dim) }
+            .map { Self.attr($0.uppercased(), 7, bold: true, color: DMReportPalette.dim) }
         let headH: CGFloat = 16
         let rowsPrepared: [Row] = rows.enumerated().map { i, r in
             let st = statusText(r.status)
             let file = NSMutableAttributedString(attributedString: Self.attr(r.file, 7.5, mono: true))
-            if let m = mediaLine?(r), !m.isEmpty { file.append(Self.attr("\n" + m, 7, color: Palette.dim)) }
-            if !r.error.isEmpty { file.append(Self.attr("\n" + r.error, 7, color: Palette.fail)) }
+            if let m = mediaLine?(r), !m.isEmpty { file.append(Self.attr("\n" + m, 7, color: DMReportPalette.dim)) }
+            if !r.error.isEmpty { file.append(Self.attr("\n" + r.error, 7, color: DMReportPalette.fail)) }
             let cells = [
-                Self.attr(String(i + 1), 7.5, color: Palette.dim, align: .right),
+                Self.attr(String(i + 1), 7.5, color: DMReportPalette.dim, align: .right),
                 file,
                 Self.attr(bytes(r.sizeBytes), 7.5, align: .right),
                 Self.attr(checksumText(r), 7, mono: true),
@@ -339,14 +329,14 @@ extension DeliveryReport {
 
         // Blocul de deschidere (doar pagina 1).
         let title = Self.attr("\(t("doc")) — \(folderName)", 17, bold: true)
-        let dest = Self.attr("\(t("destination")): \(destination)", 8, mono: true, color: Palette.dim)
+        let dest = Self.attr("\(t("destination")): \(destination)", 8, mono: true, color: DMReportPalette.dim)
         let vTitle = Self.attr(verdictTitle, 15, bold: true, color: verdictColor)
         let vHelp = Self.attr(verdictHelp, 9)
         let vSym = Self.attr(verdictSymbol, 26, bold: true, color: verdictColor, align: .center)
         let labelW: CGFloat = 150
-        let details = detailFields.map { (Self.attr($0.0, 8.5, color: Palette.dim), Self.attr($0.1, 8.5, mono: $0.0 == t("f.job") || $0.0 == t("f.mhl") || $0.0 == t("f.csv"))) }
+        let details = detailFields.map { (Self.attr($0.0, 8.5, color: DMReportPalette.dim), Self.attr($0.1, 8.5, mono: $0.0 == t("f.job") || $0.0 == t("f.mhl") || $0.0 == t("f.csv"))) }
         let notesA = notes.isEmpty ? nil : Self.attr("\(t("f.notes")): \(notes)", 8.5)
-        let sample = isTruncated ? Self.attr(String(format: t("files.sample"), rows.count, totalFiles), 8, color: Palette.dim) : nil
+        let sample = isTruncated ? Self.attr(String(format: t("files.sample"), rows.count, totalFiles), 8, color: DMReportPalette.dim) : nil
         let vInner = contentW - 16 - 44 - 12
         let verdictH = max(44, Self.height(vTitle, width: vInner) + 4 + Self.height(vHelp, width: vInner)) + 20
         let summaryH: CGFloat = 40
@@ -378,7 +368,7 @@ extension DeliveryReport {
         NSGraphicsContext.saveGraphicsState()
         defer { NSGraphicsContext.restoreGraphicsState() }
 
-        func rule(_ y: CGFloat, _ c: NSColor = Palette.rule, _ w: CGFloat = 0.6) {
+        func rule(_ y: CGFloat, _ c: NSColor = DMReportPalette.rule, _ w: CGFloat = 0.6) {
             ctx.setStrokeColor(c.cgColor); ctx.setLineWidth(w)
             ctx.move(to: CGPoint(x: M, y: y)); ctx.addLine(to: CGPoint(x: W - M, y: y)); ctx.strokePath()
         }
@@ -392,8 +382,8 @@ extension DeliveryReport {
             p.move(to: pt(232, 512)); p.addLine(to: pt(430, 512))
             p.addCurve(to: pt(598, 392), control1: pt(505, 512), control2: pt(520, 392)); p.addLine(to: pt(792, 392))
             p.move(to: pt(430, 512)); p.addCurve(to: pt(598, 632), control1: pt(505, 512), control2: pt(520, 632)); p.addLine(to: pt(792, 632))
-            ctx.addPath(p); ctx.setStrokeColor(Palette.amber.cgColor); ctx.setLineWidth(2.0); ctx.setLineCap(.round); ctx.strokePath()
-            ctx.setFillColor(Palette.ink.cgColor); ctx.fillEllipse(in: CGRect(x: pt(430, 512).x - 2.6, y: pt(430, 512).y - 2.6, width: 5.2, height: 5.2))
+            ctx.addPath(p); ctx.setStrokeColor(DMReportPalette.amber.cgColor); ctx.setLineWidth(2.0); ctx.setLineCap(.round); ctx.strokePath()
+            ctx.setFillColor(DMReportPalette.ink.cgColor); ctx.fillEllipse(in: CGRect(x: pt(430, 512).x - 2.6, y: pt(430, 512).y - 2.6, width: 5.2, height: 5.2))
             ctx.restoreGState()
             Self.draw(Self.attr("DataMover", 10, bold: true), in: ctx, x: M + 27, top: H - M - 2, width: 120)
             if let logo, n == 1 {
@@ -401,19 +391,19 @@ extension DeliveryReport {
                 let w = CGFloat(logo.width) * r, h = CGFloat(logo.height) * r
                 ctx.draw(logo, in: CGRect(x: W - M - w, y: H - M - h - 2, width: w, height: h))
             } else {
-                Self.draw(Self.attr(t("doc").uppercased(), 7.5, bold: true, color: Palette.dim, align: .right), in: ctx, x: W - M - 220, top: H - M, width: 220)
+                Self.draw(Self.attr(t("doc").uppercased(), 7.5, bold: true, color: DMReportPalette.dim, align: .right), in: ctx, x: W - M - 220, top: H - M, width: 220)
             }
-            rule(headerBottom + 6, Palette.ink, 1.2)
+            rule(headerBottom + 6, DMReportPalette.ink, 1.2)
             rule(footerTop - 4)
-            Self.draw(Self.attr(footerLine, 7, color: Palette.dim), in: ctx, x: M, top: footerTop - 10, width: contentW - 90)
-            Self.draw(Self.attr(t("footer.basis"), 7, color: Palette.dim), in: ctx, x: M, top: footerTop - 20, width: contentW - 90)
-            Self.draw(Self.attr(String(format: t("footer.page"), n, total), 7.5, bold: true, color: Palette.dim, align: .right), in: ctx, x: W - M - 90, top: footerTop - 10, width: 90)
+            Self.draw(Self.attr(footerLine, 7, color: DMReportPalette.dim), in: ctx, x: M, top: footerTop - 10, width: contentW - 90)
+            Self.draw(Self.attr(t("footer.basis"), 7, color: DMReportPalette.dim), in: ctx, x: M, top: footerTop - 20, width: contentW - 90)
+            Self.draw(Self.attr(String(format: t("footer.page"), n, total), 7.5, bold: true, color: DMReportPalette.dim, align: .right), in: ctx, x: W - M - 90, top: footerTop - 10, width: 90)
         }
         func tableHeader(_ top: CGFloat) -> CGFloat {
-            ctx.setFillColor(Palette.band.cgColor); ctx.fill(CGRect(x: M, y: top - headH, width: contentW, height: headH))
+            ctx.setFillColor(DMReportPalette.band.cgColor); ctx.fill(CGRect(x: M, y: top - headH, width: contentW, height: headH))
             var x = M
             for (a, w) in zip(tableHead, cols) { Self.draw(a, in: ctx, x: x + pad, top: top - 5, width: w - 2 * pad); x += w }
-            rule(top - headH, Palette.ink, 0.9)
+            rule(top - headH, DMReportPalette.ink, 0.9)
             return top - headH
         }
 
@@ -438,11 +428,11 @@ extension DeliveryReport {
                 y -= verdictH + 12
                 // Rezumat numeric.
                 let sf = summaryFields, cw = contentW / CGFloat(sf.count)
-                ctx.setStrokeColor(Palette.rule.cgColor); ctx.setLineWidth(0.6); ctx.stroke(CGRect(x: M, y: y - summaryH, width: contentW, height: summaryH))
+                ctx.setStrokeColor(DMReportPalette.rule.cgColor); ctx.setLineWidth(0.6); ctx.stroke(CGRect(x: M, y: y - summaryH, width: contentW, height: summaryH))
                 for (i, f) in sf.enumerated() {
                     let x = M + CGFloat(i) * cw
                     if i > 0 { ctx.move(to: CGPoint(x: x, y: y)); ctx.addLine(to: CGPoint(x: x, y: y - summaryH)); ctx.strokePath() }
-                    Self.draw(Self.attr(f.0.uppercased(), 6.5, bold: true, color: Palette.dim), in: ctx, x: x + 8, top: y - 7, width: cw - 12)
+                    Self.draw(Self.attr(f.0.uppercased(), 6.5, bold: true, color: DMReportPalette.dim), in: ctx, x: x + 8, top: y - 7, width: cw - 12)
                     Self.draw(Self.attr(f.1, 9.5, bold: true), in: ctx, x: x + 8, top: y - 20, width: cw - 12)
                 }
                 y -= summaryH + 14
@@ -453,7 +443,7 @@ extension DeliveryReport {
                 }
                 y -= 10
                 if let notesA {
-                    ctx.setFillColor(Palette.amber.cgColor)
+                    ctx.setFillColor(DMReportPalette.amber.cgColor)
                     let h = Self.height(notesA, width: contentW - 12)
                     ctx.fill(CGRect(x: M, y: y - h, width: 2.5, height: h))
                     Self.draw(notesA, in: ctx, x: M + 12, top: y, width: contentW - 12); y -= h + 12
