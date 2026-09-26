@@ -14,9 +14,9 @@ final class JobSettings: ObservableObject {
     @Published var verificationModel: VerificationModel {
         didSet { defaults.set(verificationModel.rawValue, forKey: "dm_verificationModel") }
     }
-    /// Recitire completă a destinației de pe disc, ocolind cache-ul, după
-    /// flush. Mai lent (o citire în plus per destinație), dar e singura
-    /// dovadă că datele se pot citi înapoi de pe mediul fizic.
+    /// Recitire separată a fiecărei copii după flush, cu F_NOCACHE cerut
+    /// (vezi `readBackHash`). O a doua citire independentă prin sistemul de
+    /// fișiere — nu o dovadă a mediului fizic (cache-ul discului rămâne).
     @Published var readBackVerification: Bool {
         didSet { defaults.set(readBackVerification, forKey: "dm_readBackVerification") }
     }

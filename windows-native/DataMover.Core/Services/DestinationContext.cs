@@ -20,6 +20,7 @@ public sealed class DestinationContext
     public bool GenerateMhl { get; }
     public ProductionMeta Meta { get; }
     public string? SourceRoot { get; }
+    public SourceIdentity SourceIdentity { get; }
     public CloudUploadQueue? CloudUploadQueue { get; }
     public string AppVersion { get; }
     public Action<string> OnActivity { get; }
@@ -39,6 +40,9 @@ public sealed class DestinationContext
     private readonly DateTime _startedAt;
     private HashSet<string> _alreadyDone = new();
     private readonly Dictionary<string, string> _filesStatus = new();
+    /// Amprenta sursei (marime:mtime) pentru fiecare fisier confirmat.
+    private readonly Dictionary<string, string> _fileStamps = new();
+    private bool _checkpointErrorLogged;
     private int _filesSinceCheckpoint;
     private DateTime _lastCheckpointTime = DateTime.MinValue;
     private const int PdfSampleLimit = 500;
@@ -49,7 +53,7 @@ public sealed class DestinationContext
     private string? _mhlPath;
 
     public DestinationContext(string destRoot, string folderName, VerificationModel model,
-        bool generateMhl, ProductionMeta meta, string? sourceRoot, CloudUploadQueue? cloudUploadQueue,
+        bool generateMhl, ProductionMeta meta, string? sourceRoot, SourceIdentity sourceIdentity, CloudUploadQueue? cloudUploadQueue,
         DateTime startedAt, string appVersion, Action<string> onActivity, Action<string> onPermissionError)
     {
         DestRoot = destRoot;
@@ -58,6 +62,7 @@ public sealed class DestinationContext
         GenerateMhl = generateMhl;
         Meta = meta;
         SourceRoot = sourceRoot;
+        SourceIdentity = sourceIdentity;
         CloudUploadQueue = cloudUploadQueue;
         AppVersion = appVersion;
         OnActivity = onActivity;
@@ -86,14 +91,16 @@ public sealed class DestinationContext
         }
         if (resume)
         {
-            var saved = CheckpointStore.Load(TargetRoot);
-            if (saved != null)
+            // [2026-09-26] Politica Mac: checkpoint acceptat doar pentru aceeasi
+            // sursa (identitate), acelasi folder, acelasi model, stari cunoscute.
+            var loaded = CheckpointStore.LoadValidated(TargetRoot, FolderName, Model.Key(), SourceIdentity);
+            if (loaded.Kind == CheckpointLoadKind.Rejected)
+                OnActivity($"Checkpoint ignorat ({loaded.Reason}) — fișierele existente se reverifică.");
+            else if (loaded.Kind == CheckpointLoadKind.Valid)
             {
-                foreach (var kv in saved) _filesStatus[kv.Key] = kv.Value;
-                var done = new HashSet<string>();
-                foreach (var kv in saved)
-                    if (kv.Value is "ok" or "sarit") done.Add(kv.Key);
-                _alreadyDone = done;
+                foreach (var kv in loaded.Files) _filesStatus[kv.Key] = kv.Value;
+                foreach (var kv in loaded.Stamps) _fileStamps[kv.Key] = kv.Value;
+                _alreadyDone = loaded.Files.Where(kv => kv.Value is "ok" or "sarit").Select(kv => kv.Key).ToHashSet();
             }
         }
     }
@@ -102,7 +109,16 @@ public sealed class DestinationContext
 
     public Classification Classify(FileEntry entry, bool allowSkipExisting)
     {
-        if (_alreadyDone.Contains(entry.RelPath)) return Classification.AlreadyDone;
+        if (_alreadyDone.Contains(entry.RelPath))
+        {
+            _filesStatus.TryGetValue(entry.RelPath, out var st);
+            _fileStamps.TryGetValue(entry.RelPath, out var stamp);
+            if (CheckpointStore.CanSkip(st, stamp, entry, DestPath(entry))) return Classification.AlreadyDone;
+            _alreadyDone.Remove(entry.RelPath);
+            _filesStatus.Remove(entry.RelPath);
+            _fileStamps.Remove(entry.RelPath);
+            OnActivity($"Checkpoint depășit: {entry.RelPath} lipsește, are altă mărime sau sursa diferă — se reverifică.");
+        }
         if (!allowSkipExisting) return Classification.NeedsCopy;
         var path = DestPath(entry);
         if (!File.Exists(path)) return Classification.NeedsCopy;
@@ -121,6 +137,7 @@ public sealed class DestinationContext
     {
         SkipCount++;
         _filesStatus[entry.RelPath] = "sarit";
+        _fileStamps[entry.RelPath] = entry.Stamp;
         LogRow(new ReportRow { File = entry.RelPath, SizeBytes = entry.Size, SrcHash = srcHash, DstHash = dstHash, Status = "SARIT", DestPath = DestPath(entry) });
         RecordInMhl(entry, srcHash);
         CloudUploadQueue?.Enqueue(entry.RelPath);
@@ -142,6 +159,7 @@ public sealed class DestinationContext
                 if (isRetry) { FailCount--; RecoveredCount++; OnActivity($"Recuperat la reîncercare: {entry.RelPath}"); }
                 OkCount++;
                 _filesStatus[entry.RelPath] = "ok";
+                _fileStamps[entry.RelPath] = entry.Stamp;
                 RecordInMhl(entry, sourceHash);
                 CloudUploadQueue?.Enqueue(entry.RelPath);
             }
@@ -199,7 +217,13 @@ public sealed class DestinationContext
         bool dueByCount = _filesSinceCheckpoint >= 10;
         bool dueByTime = (now - _lastCheckpointTime).TotalSeconds >= 5.0;
         if (!(force || dueByCount || dueByTime)) return;
-        CheckpointStore.Save(TargetRoot, SourceRoot, FolderName, Model.Key(), _filesStatus, force && !Cancelled, _filesStatus.Count);
+        var stamps = _fileStamps.Where(kv => _filesStatus.ContainsKey(kv.Key)).ToDictionary(kv => kv.Key, kv => kv.Value);
+        var error = CheckpointStore.Save(TargetRoot, FolderName, Model.Key(), SourceIdentity, new Dictionary<string, string>(_filesStatus), stamps, force && !Cancelled);
+        if (error != null && !_checkpointErrorLogged)
+        {
+            _checkpointErrorLogged = true;
+            OnActivity($"Checkpoint nesalvat ({error.Message}) — nu afectează fișierele confirmate; o reluare le va reverifica.");
+        }
         _filesSinceCheckpoint = 0;
         _lastCheckpointTime = now;
     }

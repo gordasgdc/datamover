@@ -9,13 +9,22 @@ public readonly struct FileEntry
     public string FullPath { get; }
     public string RelPath { get; }
     public long Size { get; }
+    /// Data modificarii la scanare (UTC, microsecunde) — parte din identitatea
+    /// sursei (vezi SourceIdentity). 0 = necunoscuta.
+    public long MtimeMicros { get; }
+    /// „marime:mtime” — amprenta salvata in checkpoint.
+    public string Stamp => $"{Size}:{MtimeMicros}";
 
-    public FileEntry(string fullPath, string relPath, long size)
+    public FileEntry(string fullPath, string relPath, long size, long mtimeMicros = 0)
     {
         FullPath = fullPath;
         RelPath = relPath;
         Size = size;
+        MtimeMicros = mtimeMicros;
     }
+
+    public static long MicrosOf(FileInfo info) =>
+        (info.LastWriteTimeUtc.Ticks - DateTime.UnixEpoch.Ticks) / 10;
 }
 
 public sealed class ReportRow

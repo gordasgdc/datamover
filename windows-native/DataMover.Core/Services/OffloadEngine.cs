@@ -109,9 +109,9 @@ public static class FileScanner
             var name = Path.GetFileName(full);
             if (IsExcluded(name, exclusions)) continue;
             var rel = Path.GetRelativePath(root, full);
-            long size = 0;
-            try { size = new FileInfo(full).Length; } catch { /* ignora */ }
-            results.Add(new FileEntry(full, rel, size));
+            long size = 0, mtime = 0;
+            try { var fi = new FileInfo(full); size = fi.Length; mtime = FileEntry.MicrosOf(fi); } catch { /* ignora */ }
+            results.Add(new FileEntry(full, rel, size, mtime));
         }
         return results;
     }
@@ -167,49 +167,4 @@ public static class FileHashing
         return Convert.ToHexString(hasher.Hash!).ToLowerInvariant();
     }
 }
-public static class CheckpointStore
-{
-    private const string Filename = "offload_checkpoint.json";
-
-    private sealed class CheckpointData
-    {
-        public string? Source { get; set; }
-        public string FolderName { get; set; } = "";
-        public string VerificationModel { get; set; } = "";
-        public bool Completed { get; set; }
-        public Dictionary<string, string> Files { get; set; } = new();
-        public int? TotalFiles { get; set; }
-    }
-
-    public static Dictionary<string, string>? Load(string targetRoot)
-    {
-        var path = Path.Combine(targetRoot, Filename);
-        if (!File.Exists(path)) return null;
-        try
-        {
-            var json = File.ReadAllText(path);
-            var data = JsonSerializer.Deserialize<CheckpointData>(json);
-            return data?.Files;
-        }
-        catch { return null; }
-    }
-
-    public static void Save(string targetRoot, string? source, string folderName, string verificationModel,
-        Dictionary<string, string> files, bool completed, int totalFiles)
-    {
-        var payload = new CheckpointData
-        {
-            Source = source, FolderName = folderName, VerificationModel = verificationModel,
-            Completed = completed, Files = files, TotalFiles = totalFiles,
-        };
-        var path = Path.Combine(targetRoot, Filename);
-        var tmp = path + ".tmp";
-        try
-        {
-            File.WriteAllText(tmp, JsonSerializer.Serialize(payload));
-            if (File.Exists(path)) File.Delete(path);
-            File.Move(tmp, path);
-        }
-        catch { /* best-effort, ca in Python/Mac */ }
-    }
-}
+// CheckpointStore: vezi CheckpointPolicy.cs (schema 2, identitatea sursei).

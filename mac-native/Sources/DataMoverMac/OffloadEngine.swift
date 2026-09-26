@@ -878,7 +878,11 @@ final class OffloadRunner: ObservableObject {
         }
 
         DispatchQueue.global(qos: .utility).async { [weak self] in
-            for ctx in contexts { ctx.prepare(resume: resume) }
+            let depthText = L.t(VerificationDepth.for(verificationModel, readBack: readBackVerification).labelKey)
+            for ctx in contexts {
+                ctx.verificationDescription = "\(verificationModel.label) — \(depthText)"
+                ctx.prepare(resume: resume)
+            }
             Task { @MainActor [weak self] in self?.phase = .copying }
             let readBack = readBackVerification
 

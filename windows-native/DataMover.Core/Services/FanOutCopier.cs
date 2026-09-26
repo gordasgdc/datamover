@@ -125,11 +125,16 @@ public sealed class FanOutCopier
     private readonly CancelToken _cancel;
     private readonly PauseToken _pause;
     private readonly long? _expectedSize;
+    private readonly Func<string, string, Stream> _openOutput;
 
+    /// `openOutput(partialPath, finalPath)` — injectabil in teste (ex. o
+    /// destinatie care esueaza la a N-a scriere).
     public FanOutCopier(string sourcePath, IReadOnlyList<string> destinationPaths, int chunkSize,
-        VerificationModel model, CancelToken cancel, PauseToken pause, int ringDepth = 3, long? expectedSize = null)
+        VerificationModel model, CancelToken cancel, PauseToken pause, int ringDepth = 3, long? expectedSize = null,
+        Func<string, string, Stream>? openOutput = null)
     {
         _expectedSize = expectedSize;
+        _openOutput = openOutput ?? ((part, _) => new FileStream(part, FileMode.Create, FileAccess.Write, FileShare.None, chunkSize));
         _sourcePath = sourcePath;
         _destinationPaths = destinationPaths;
         _chunkSize = chunkSize;
@@ -144,14 +149,13 @@ public sealed class FanOutCopier
         var queues = _destinationPaths.ToDictionary(
             d => d, d => new BlockingCollection<ChunkBuffer>(boundedCapacity: _ringDepth));
         var results = new ConcurrentDictionary<string, FanOutDestResult>();
-        var failedDestinations = new HashSet<string>();
 
         var tasks = _destinationPaths.Select(dst => Task.Run(() =>
         {
             var queue = queues[dst];
             try
             {
-                using var output = new FileStream(PartialFile.PathFor(dst), FileMode.Create, FileAccess.Write, FileShare.None, _chunkSize);
+                using var output = _openOutput(PartialFile.PathFor(dst), dst);
                 using var hasher = new IncrementalHasher(_model);
                 long written = 0;
                 foreach (var chunk in queue.GetConsumingEnumerable())
@@ -167,7 +171,7 @@ public sealed class FanOutCopier
                 // de OS pe Windows (nu doar bufferul intern .NET) - fara
                 // P/Invoke necesar. O eroare aici opreste DOAR aceasta
                 // destinatie, nu si celelalte.
-                output.Flush(true);
+                if (output is FileStream fsOut) fsOut.Flush(true); else output.Flush();
                 results[dst] = new FanOutDestResult { Success = true, Hash = hasher.FinalizeHex(), BytesWritten = written };
             }
             catch (Exception ex)
@@ -206,19 +210,10 @@ public sealed class FanOutCopier
                 onBytesRead(read);
 
                 var chunk = new ChunkBuffer(buffer, read);
-                foreach (var (dst, queue) in queues)
-                {
-                    if (failedDestinations.Contains(dst)) continue;
-                    try { queue.Add(chunk); }
-                    catch (InvalidOperationException)
-                    {
-                        // consumatorul acelei destinatii a esuat deja si a
-                        // inchis coada (CompleteAdding) - ignoram tacit
-                        // pentru restul transferului acestui fisier, dar
-                        // NU oprim celelalte destinatii sanatoase.
-                        failedDestinations.Add(dst);
-                    }
-                }
+                // Un consumator esuat isi goleste singur coada (vezi catch-ul
+                // de mai sus), deci Add nu se poate bloca definitiv si coada nu
+                // creste peste capacitate (BlockingCollection marginita).
+                foreach (var queue in queues.Values) queue.Add(chunk);
             }
         }
         catch (Exception ex)
@@ -229,7 +224,7 @@ public sealed class FanOutCopier
         {
             foreach (var q in queues.Values)
             {
-                try { q.CompleteAdding(); } catch (InvalidOperationException) { /* deja completat de esec */ }
+                q.CompleteAdding();
             }
         }
 
@@ -270,7 +265,7 @@ public sealed class FanOutCopier
             }
             try
             {
-                File.Move(part, dst, overwrite: true);
+                AtomicReplace.Move(part, dst);
                 final[dst] = new FanOutDestResult { Success = true, Verified = true, Hash = r.Hash, BytesWritten = r.BytesWritten };
             }
             catch (Exception ex)

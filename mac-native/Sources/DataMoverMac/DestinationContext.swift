@@ -51,6 +51,9 @@ final class DestinationContext: @unchecked Sendable {
     /// Amprenta sursei (mărime:mtime) pentru fiecare fișier confirmat.
     private var fileStamps: [String: String] = [:]
     private var checkpointErrorLogged = false
+    /// Ce s-a verificat, exact, pentru rapoarte (algoritm + nivel).
+    var verificationDescription: String = ""
+
     private var durabilityNotes: Set<String> = []
     private var filesSinceCheckpoint = 0
     private var lastCheckpointTime = Date.distantPast
@@ -78,6 +81,7 @@ final class DestinationContext: @unchecked Sendable {
         self.onActivity = onActivity
         self.onPermissionError = onPermissionError
         self.targetRoot = (destRoot as NSString).appendingPathComponent(folderName)
+        self.verificationDescription = verificationModel.label
     }
 
     func destPath(for entry: FileEntry) -> String {
@@ -355,14 +359,14 @@ final class DestinationContext: @unchecked Sendable {
             meta: meta, startedAt: startedAt, finishedAt: finishedAt,
             okCount: okCount, skipCount: skipCount, failCount: failCount,
             recoveredCount: recoveredCount, cancelled: cancelled,
-            verificationLabel: verificationModel.label, mhlPath: mhlPath,
+            verificationLabel: verificationDescription, mhlPath: mhlPath,
             truncatedNote: truncatedNote)
         if !htmlOK { onActivity("Nu s-a putut genera raportul HTML.") }
 
         let pdfResult = writePDFReport(
             path: pdfPath, destination: destRoot, folderName: folderName, rows: pdfSampleRows,
             startedAt: startedAt, finishedAt: finishedAt, okCount: okCount, skipCount: skipCount,
-            failCount: failCount, cancelled: cancelled, verificationLabel: verificationModel.label,
+            failCount: failCount, cancelled: cancelled, verificationLabel: verificationDescription,
             meta: meta, recoveredCount: recoveredCount, mhlPath: mhlPath,
             truncatedNote: truncatedNote
         )

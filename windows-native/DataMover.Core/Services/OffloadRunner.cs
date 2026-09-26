@@ -295,9 +295,9 @@ public sealed class OffloadRunner : INotifyPropertyChanged
             {
                 var name = Path.GetFileName(src);
                 if (FileScanner.IsExcluded(name, exclusions)) continue;
-                long size = 0;
-                try { size = new FileInfo(src).Length; } catch { /* ignora */ }
-                files.Add(new FileEntry(src, name, size));
+                long size = 0, mtime = 0;
+                try { var fi = new FileInfo(src); size = fi.Length; mtime = FileEntry.MicrosOf(fi); } catch { /* ignora */ }
+                files.Add(new FileEntry(src, name, size, mtime));
             }
         }
         if (files.Count == 0)
@@ -326,6 +326,7 @@ public sealed class OffloadRunner : INotifyPropertyChanged
 
         var folderName = folderNameOverride ?? FolderName(meta.Project, meta.Card, folderTemplate, meta.Camera, meta.OperatorName);
         var sourceRoot = sources.FirstOrDefault();
+        var sourceIdentity = SourceIdentity.Compute(sources, files);
 
         // [2026-09-03] Spatiu insuficient: nu pornim deloc. MainWindow arata
         // un dialog cu cifrele exacte si un buton "Continua oricum", care
@@ -376,7 +377,7 @@ public sealed class OffloadRunner : INotifyPropertyChanged
             CloudUploadQueue? cloudQueue = trimmedRemote.Length > 0
                 ? new CloudUploadQueue(trimmedRemote, cloudRemoteFolder, Path.Combine(dest, folderName), line => LogActivity(line))
                 : null;
-            return new DestinationContext(dest, folderName, model, generateMhl, meta, sourceRoot,
+            return new DestinationContext(dest, folderName, model, generateMhl, meta, sourceRoot, sourceIdentity,
                 cloudQueue, started, appVersion,
                 onActivity: line => LogActivity(line),
                 onPermissionError: path =>
