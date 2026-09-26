@@ -382,9 +382,9 @@ struct ContentView: View {
                 .buttonStyle(.plain)
                 .fontWeight(.semibold)
         }
-        .font(.system(size: 12))
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
+        .font(DM.Font.label)
+        .padding(.horizontal, DM.Space.m)
+        .padding(.vertical, DM.Space.s)
     }
 
     private var trialBar: some View {

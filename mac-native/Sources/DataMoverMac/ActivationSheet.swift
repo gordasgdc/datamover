@@ -28,9 +28,9 @@ struct ActivationSheet: View {
 
             if license.needsReactivation {
                 // Migrarea la licențele generația 2: explicație scurtă + codul vechi mascat (suport).
-                Text(L.t("migration.body")).font(.system(size: 12)).fixedSize(horizontal: false, vertical: true)
+                Text(L.t("migration.body")).font(DM.Font.label).fixedSize(horizontal: false, vertical: true)
                 if let old = license.legacyCodeMasked {
-                    Text("\(L.t("migration.oldCode")): \(old)").font(.system(size: 11, design: .monospaced)).foregroundStyle(.secondary)
+                    Text("\(L.t("migration.oldCode")): \(old)").font(DM.Font.mono).foregroundStyle(.secondary)
                 }
             }
             VStack(alignment: .leading, spacing: 4) {
@@ -60,7 +60,7 @@ struct ActivationSheet: View {
                 Button {
                     NSWorkspace.shared.open(WhatsAppLink.url(text: "Buna, am nevoie de codul nou DataMover. ID calculator: \(MachineID.display)"))
                 } label: {
-                    Label(L.t("migration.contact"), systemImage: "message.fill").font(.system(size: 12))
+                    Label(L.t("migration.contact"), systemImage: "message.fill").font(DM.Font.label)
                 }
                 .buttonStyle(.bordered)
                 .tint(.green)
