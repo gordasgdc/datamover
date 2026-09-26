@@ -138,13 +138,14 @@ final class CheckpointTests: XCTestCase {
     func testCheckpointMustMatchModelFolderAndIdentity() {
         let sb = Sandbox()
         let root = sb.dir("dest/JOB")
+        let proof = FileProof(source: "0123456789abcdef0123456789abcdef", destination: "0123456789abcdef0123456789abcdef", verdict: "checksum")
         XCTAssertNil(CheckpointStore.save(targetRoot: root, folderName: "JOB", verificationModel: "md5", identity: identity,
-                                          files: ["a": "ok"], stamps: ["a": "1:2"], completed: false))
+                                          files: ["a": "ok"], stamps: ["a": "1:2"], proofs: ["a": proof], completed: false))
         if case .rejected = load(root, model: "xxhash64") {} else { XCTFail("model") }
         if case .rejected = load(root, folder: "OTHER", model: "md5") {} else { XCTFail("folder") }
         let other = SourceIdentity(roots: ["/src"], volumes: ["V"], manifestDigest: "zzz", fileCount: 1)
         if case .rejected = load(root, model: "md5", identity: other) {} else { XCTFail("identity") }
-        XCTAssertEqual(load(root, model: "md5"), .valid(.init(files: ["a": "ok"], stamps: ["a": "1:2"])))
+        XCTAssertEqual(load(root, model: "md5"), .valid(.init(files: ["a": "ok"], stamps: ["a": "1:2"], proofs: ["a": proof])))
         XCTAssertFalse(FileManager.default.fileExists(atPath: CheckpointStore.path(targetRoot: root) + ".tmp"))
     }
 
@@ -152,7 +153,7 @@ final class CheckpointTests: XCTestCase {
         let sb = Sandbox()
         let root = sb.dir("dest/JOB")
         CheckpointStore.save(targetRoot: root, folderName: "JOB", verificationModel: "xxhash64", identity: identity,
-                             files: ["a": "maybe"], stamps: [:], completed: false)
+                             files: ["a": "maybe"], stamps: [:], proofs: [:], completed: false)
         guard case .rejected = load(root) else { return XCTFail() }
     }
 
@@ -175,6 +176,89 @@ final class CheckpointTests: XCTestCase {
         // Aceeași sursă, neatinsă → identitate identică (reluarea legitimă merge).
         let again = SourceIdentity.compute(sources: [rootA], files: listAllFiles(root: rootA))
         XCTAssertEqual(again, SourceIdentity.compute(sources: [rootA], files: listAllFiles(root: rootA)))
+    }
+}
+
+final class ProofSchemaTests: XCTestCase {
+    let identity = SourceIdentity(roots: ["/src"], volumes: ["V"], manifestDigest: "abc", fileCount: 1)
+    let good = "0123456789abcdef0123456789abcdef"
+
+    func write(_ root: String, _ json: String) {
+        FileManager.default.createFile(atPath: CheckpointStore.path(targetRoot: root), contents: Data(json.utf8))
+    }
+    func load(_ root: String, model: String = "md5") -> CheckpointStore.LoadResult {
+        CheckpointStore.loadValidated(targetRoot: root, folderName: "JOB", verificationModel: model, identity: identity)
+    }
+    func identityJSON() -> String {
+        String(data: try! JSONEncoder().encode(identity), encoding: .utf8)!
+    }
+
+    /// Schema 2 (identitate + amprente, fără checksum) → respinsă.
+    func testSchema2IsRejected() {
+        let sb = Sandbox(); let root = sb.dir("d/JOB")
+        write(root, #"{"schema":2,"folder_name":"JOB","verification_model":"md5","completed":false,"files":{"a":"ok"},"file_stamps":{"a":"1:2"},"source_identity":"# + identityJSON() + "}")
+        guard case .rejected(let why) = load(root) else { return XCTFail() }
+        XCTAssertTrue(why.contains("format vechi"))
+    }
+
+    func testMissingProofIsRejected() {
+        let sb = Sandbox(); let root = sb.dir("d/JOB")
+        CheckpointStore.save(targetRoot: root, folderName: "JOB", verificationModel: "md5", identity: identity,
+                             files: ["a": "ok"], stamps: ["a": "1:2"], proofs: [:], completed: false)
+        guard case .rejected(let why) = load(root) else { return XCTFail() }
+        XCTAssertTrue(why.contains("absent"))
+    }
+
+    func testCorruptProofIsRejected() {
+        let sb = Sandbox(); let root = sb.dir("d/JOB")
+        for bad in ["xyz", String(good.dropLast()), good.uppercased()] {
+            CheckpointStore.save(targetRoot: root, folderName: "JOB", verificationModel: "md5", identity: identity,
+                                 files: ["a": "ok"], stamps: ["a": "1:2"],
+                                 proofs: ["a": FileProof(source: bad, destination: bad, verdict: "checksum")], completed: false)
+            guard case .rejected(let why) = load(root) else { return XCTFail(bad) }
+            XCTAssertTrue(why.contains("corupt"), bad)
+        }
+        // Sursă ≠ destinație în dovadă → corupt.
+        CheckpointStore.save(targetRoot: root, folderName: "JOB", verificationModel: "md5", identity: identity,
+                             files: ["a": "ok"], stamps: ["a": "1:2"],
+                             proofs: ["a": FileProof(source: good, destination: String(repeating: "0", count: 32), verdict: "checksum")],
+                             completed: false)
+        guard case .rejected = load(root) else { return XCTFail() }
+    }
+
+    func testChangedAlgorithmIsRejected() {
+        let sb = Sandbox(); let root = sb.dir("d/JOB")
+        CheckpointStore.save(targetRoot: root, folderName: "JOB", verificationModel: "md5", identity: identity,
+                             files: ["a": "ok"], stamps: ["a": "1:2"],
+                             proofs: ["a": FileProof(source: good, destination: good, verdict: "checksum")], completed: false)
+        guard case .rejected = load(root, model: "sha256") else { return XCTFail() }
+    }
+
+    func testRevalidationPolicy() {
+        let s = good, other = String(repeating: "1", count: 32)
+        XCTAssertEqual(RevalidationPolicy.decide(model: .md5, expected: s, sourceHash: s, destinationHash: s), .accept)
+        XCTAssertEqual(RevalidationPolicy.decide(model: .md5, expected: nil, sourceHash: s, destinationHash: s), .accept)
+        if case .recopy = RevalidationPolicy.decide(model: .md5, expected: other, sourceHash: s, destinationHash: s) {} else { XCTFail("sursa diferă de checkpoint") }
+        if case .recopy = RevalidationPolicy.decide(model: .md5, expected: s, sourceHash: s, destinationHash: other) {} else { XCTFail("destinația diferă") }
+        if case .recopy = RevalidationPolicy.decide(model: .md5, expected: s, sourceHash: nil, destinationHash: s) {} else { XCTFail("sursă ilizibilă") }
+        if case .recopy = RevalidationPolicy.decide(model: .md5, expected: s, sourceHash: s, destinationHash: nil) {} else { XCTFail("destinație ilizibilă") }
+        if case .recopy = RevalidationPolicy.decide(model: .sizeOnly, expected: nil, sourceHash: "", destinationHash: "") {} else { XCTFail("sizeOnly") }
+    }
+
+    /// Metadata identică (cale, volum injectat, listă, mărimi, mtime) → aceeași
+    /// identitate, deși octeții diferă. Deci identitatea NU poate acorda
+    /// verdictul; doar recitirea (politica de mai sus) o poate face.
+    func testIdentityCannotSeeBytes() throws {
+        let sb = Sandbox()
+        let f = sb.file("CARD/x.mov", bytes: 4096, seed: 1)
+        let root = (sb.root as NSString).appendingPathComponent("CARD")
+        let mtime = try FileManager.default.attributesOfItem(atPath: f)[.modificationDate] as! Date
+        let a = SourceIdentity.compute(sources: [root], files: listAllFiles(root: root), volumeOf: { _ in "VOL-1" })
+        let other = Data((0..<4096).map { UInt8(truncatingIfNeeded: $0 * 7 + 3) })
+        try other.write(to: URL(fileURLWithPath: f))
+        try FileManager.default.setAttributes([.modificationDate: mtime], ofItemAtPath: f)
+        let b = SourceIdentity.compute(sources: [root], files: listAllFiles(root: root), volumeOf: { _ in "VOL-1" })
+        XCTAssertEqual(a, b, "metadata identică → identitate identică")
     }
 }
 

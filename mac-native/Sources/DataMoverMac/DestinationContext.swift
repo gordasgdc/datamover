@@ -50,6 +50,8 @@ final class DestinationContext: @unchecked Sendable {
     private var filesStatus: [String: String] = [:]
     /// Amprenta sursei (mărime:mtime) pentru fiecare fișier confirmat.
     private var fileStamps: [String: String] = [:]
+    /// Dovada per fișier (checksum sursă/destinație) — schema 3.
+    private var fileProofs: [String: FileProof] = [:]
     private var checkpointErrorLogged = false
     /// Ce s-a verificat, exact, pentru rapoarte (algoritm + nivel).
     var verificationDescription: String = ""
@@ -140,18 +142,17 @@ final class DestinationContext: @unchecked Sendable {
     private func applyCheckpoint(_ saved: CheckpointStore.Loaded) {
         filesStatus = saved.files
         fileStamps = saved.stamps
+        fileProofs = saved.proofs
         alreadyDone = Set(saved.files.filter { $0.value == "ok" || $0.value == "sarit" }.keys)
     }
 
-    enum Classification {
-        /// Deja marcat complet în checkpoint-ul ACESTEI destinații — nimic
-        /// de citit/scris, nici măcar o verificare.
-        case alreadyDone
-        /// Fișier deja prezent la destinație, cu ACEEAȘI mărime ca sursa —
-        /// candidat pentru "verifică fără recopiere" (recuperare dintr-o
-        /// întrerupere fără checkpoint scris).
-        case existingSameSize
-        /// Nu există încă (sau mărimea diferă) — are nevoie de copiere
+    enum Classification: Equatable {
+        /// [2026-09-26, schema 3] Fișier prezent la destinație, cu mărimea
+        /// sursei: se RECITESC sursa și destinația (niciodată doar metadata).
+        /// `expected` = checksum-ul sursei din checkpoint, dacă există o
+        /// dovadă validă; atunci sursa curentă trebuie să-l reproducă.
+        case revalidate(expected: String?)
+        /// Nu există încă, mărimea diferă sau modul „doar octeți” — copiere
         /// reală prin fan-out.
         case needsCopy
     }
@@ -166,23 +167,26 @@ final class DestinationContext: @unchecked Sendable {
         // mărimea sursei. Altfel (șters, trunchiat) se recopiază.
         // În plus, amprenta sursei (mărime:mtime) trebuie să fie cea de la
         // confirmare — identitatea globală a sursei a fost deja verificată.
+        // „Doar octeți” nu are dovadă de conținut: niciun fișier existent nu e
+        // acceptat pe baza mărimii — se recopiază conservator.
+        if verificationModel == .sizeOnly { return .needsCopy }
+        var expected: String?
         if alreadyDone.contains(entry.relPath) {
-            if existingSize == entry.size, fileStamps[entry.relPath] == entry.stamp { return .alreadyDone }
+            // Metadata poate doar RESPINGE rapid dovada (fișier lipsă, altă
+            // mărime, altă amprentă a sursei); nu o poate accepta.
+            if existingSize == entry.size, fileStamps[entry.relPath] == entry.stamp,
+               let proof = fileProofs[entry.relPath] {
+                expected = proof.source
+            } else {
+                onActivity("Checkpoint depășit: \(entry.relPath) lipsește, are altă mărime sau sursa diferă — se reverifică.")
+            }
             alreadyDone.remove(entry.relPath)
             filesStatus[entry.relPath] = nil
             fileStamps[entry.relPath] = nil
-            onActivity("Checkpoint depășit: \(entry.relPath) lipsește, are altă mărime sau sursa diferă — se reverifică.")
+            fileProofs[entry.relPath] = nil
         }
         guard allowSkipExisting, existingSize == entry.size else { return .needsCopy }
-        return .existingSameSize
-    }
-
-    /// Fișier deja marcat OK/SARIT în checkpoint — doar contorizare,
-    /// FĂRĂ rând nou în CSV (identic cu ramura `alreadyDone` din vechiul
-    /// `DestinationJob.run()`, care nu apela `logRow` acolo).
-    func recordSkippedViaCheckpoint(entry: FileEntry) {
-        skipCount += 1
-        maybeCheckpoint()
+        return .revalidate(expected: expected)
     }
 
     /// Fișierul exista deja, cu hash IDENTIC — confirmat fără recopiere.
@@ -190,6 +194,7 @@ final class DestinationContext: @unchecked Sendable {
         skipCount += 1
         filesStatus[entry.relPath] = "sarit"
         fileStamps[entry.relPath] = entry.stamp
+        fileProofs[entry.relPath] = FileProof(source: srcHash, destination: dstHash, verdict: "checksum")
         logRow(ReportRow(file: entry.relPath, sizeBytes: entry.size, srcHash: srcHash, dstHash: dstHash,
                           status: "SARIT", error: "", destPath: destPath(for: entry)))
         recordInMHL(entry: entry, hash: srcHash)
@@ -211,6 +216,8 @@ final class DestinationContext: @unchecked Sendable {
             bytesConfirmed += written
             filesStatus[entry.relPath] = "ok"
             fileStamps[entry.relPath] = entry.stamp
+            fileProofs[entry.relPath] = FileProof(source: sourceHash, destination: hash,
+                                                  verdict: verificationModel == .sizeOnly ? "size" : "checksum")
             recordInMHL(entry: entry, hash: sourceHash)
             cloudUploadQueue?.enqueue(relPath: entry.relPath)
             logRow(ReportRow(file: entry.relPath, sizeBytes: entry.size, srcHash: sourceHash, dstHash: hash,
@@ -271,6 +278,7 @@ final class DestinationContext: @unchecked Sendable {
         if let error = CheckpointStore.save(targetRoot: targetRoot, folderName: folderName,
                                             verificationModel: verificationModel.rawValue, identity: sourceIdentity,
                                             files: filesStatus, stamps: fileStamps.filter { filesStatus[$0.key] != nil },
+                                            proofs: fileProofs.filter { filesStatus[$0.key] != nil },
                                             completed: force && !cancelled),
            !checkpointErrorLogged {
             checkpointErrorLogged = true

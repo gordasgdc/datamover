@@ -110,7 +110,7 @@ final class RunnerIntegrationTests: XCTestCase {
         XCTAssertEqual(runner.lastOutcome, .success)
         XCTAssertTrue(FileManager.default.fileExists(atPath: victim))
         XCTAssertEqual(runner.lastResults[0].okCount, 1, "doar fișierul lipsă se recopiază")
-        XCTAssertEqual(runner.lastResults[0].skipCount, 3)
+        XCTAssertEqual(runner.lastResults[0].skipCount, 3, "restul: recitite și acceptate")
     }
 
     /// Reluare cu alt algoritm: checkpoint-ul e ignorat, fișierele existente
@@ -171,6 +171,77 @@ final class RunnerIntegrationTests: XCTestCase {
         XCTAssertEqual(runner.lastOutcome, .success)
         XCTAssertTrue(runner.activityLines.contains { $0.contains("Checkpoint ignorat") })
         XCTAssertTrue(runner.activityLines.contains { $0.contains("Verificare fisier existent") })
+    }
+
+    /// Același card, aceeași cale, același volum, aceleași nume, mărimi și
+    /// mtime — dar alți octeți. Reluarea NU are voie să sară fișierul.
+    func testSameMetadataDifferentBytesIsRecopied() async throws {
+        let sb = Sandbox()
+        let src = makeCard(sb)
+        let d1 = sb.dir("A")
+        let runner = OffloadRunner()
+        try await runTransfer(runner, sources: [src], destinations: [d1])
+        XCTAssertEqual(runner.lastOutcome, .success)
+        let victim = src + "/CLIP/A002.mov"
+        let mtime = try FileManager.default.attributesOfItem(atPath: victim)[.modificationDate] as! Date
+        let size = try FileManager.default.attributesOfItem(atPath: victim)[.size] as! Int
+        try Data((0..<size).map { UInt8(truncatingIfNeeded: $0 &* 13 &+ 5) }).write(to: URL(fileURLWithPath: victim))
+        try FileManager.default.setAttributes([.modificationDate: mtime], ofItemAtPath: victim)
+        try await runTransfer(runner, sources: [src], destinations: [d1], resume: true)
+        XCTAssertEqual(runner.lastOutcome, .success)
+        XCTAssertFalse(runner.activityLines.contains { $0.contains("Checkpoint ignorat") }, "identitatea (metadata) trebuie să coincidă")
+        XCTAssertTrue(runner.activityLines.contains { $0.contains("sursa diferă de cea din checkpoint") })
+        XCTAssertEqual(try hashOfFile(path: d1 + "/JOB/CLIP/A002.mov", model: .sha256, cancel: CancelToken()),
+                       try hashOfFile(path: victim, model: .sha256, cancel: CancelToken()))
+        XCTAssertEqual(runner.lastResults[0].okCount, 1)
+        XCTAssertEqual(runner.lastResults[0].skipCount, 3, "celelalte: acceptate DOAR după recitirea ambelor părți")
+    }
+
+    /// Sursa neschimbată, destinația modificată după checkpoint (alți octeți,
+    /// aceeași mărime) → destinația e recitită, nepotrivirea e găsită.
+    func testTamperedDestinationSameSizeIsRecopied() async throws {
+        let sb = Sandbox()
+        let src = makeCard(sb)
+        let d1 = sb.dir("A")
+        let runner = OffloadRunner()
+        try await runTransfer(runner, sources: [src], destinations: [d1])
+        let copy = d1 + "/JOB/CLIP/A001.mov"
+        let attrs = try FileManager.default.attributesOfItem(atPath: copy)
+        let size = attrs[.size] as! Int
+        try Data(repeating: 0xAB, count: size).write(to: URL(fileURLWithPath: copy))
+        try FileManager.default.setAttributes([.modificationDate: attrs[.modificationDate] as! Date], ofItemAtPath: copy)
+        try await runTransfer(runner, sources: [src], destinations: [d1], resume: true)
+        XCTAssertEqual(runner.lastOutcome, .success)
+        XCTAssertTrue(runner.activityLines.contains { $0.contains("destinația diferă de sursă") })
+        XCTAssertEqual(try hashOfFile(path: copy, model: .sha256, cancel: CancelToken()),
+                       try hashOfFile(path: src + "/CLIP/A001.mov", model: .sha256, cancel: CancelToken()))
+    }
+
+    /// Fișierul de 0 octeți: acceptat la reluare doar prin recitire (hash-ul
+    /// gol al algoritmului), nu pe mărime.
+    func testZeroByteFileRevalidatedOnResume() async throws {
+        let sb = Sandbox()
+        let src = makeCard(sb)
+        let d1 = sb.dir("A")
+        let runner = OffloadRunner()
+        try await runTransfer(runner, sources: [src], destinations: [d1])
+        try await runTransfer(runner, sources: [src], destinations: [d1], resume: true)
+        XCTAssertEqual(runner.lastOutcome, .success)
+        XCTAssertEqual(runner.lastResults[0].skipCount, 4)
+        XCTAssertTrue(runner.activityLines.contains { $0.contains("Verificare fisier existent: CLIP/EMPTY.wav") })
+    }
+
+    /// „Doar octeți”: nicio dovadă de conținut → la reluare totul se recopiază.
+    func testSizeOnlyResumeRecopiesEverything() async throws {
+        let sb = Sandbox()
+        let src = makeCard(sb)
+        let d1 = sb.dir("A")
+        let runner = OffloadRunner()
+        try await runTransfer(runner, sources: [src], destinations: [d1], model: .sizeOnly)
+        try await runTransfer(runner, sources: [src], destinations: [d1], model: .sizeOnly, resume: true)
+        XCTAssertEqual(runner.lastOutcome, .success)
+        XCTAssertEqual(runner.lastResults[0].okCount, 4)
+        XCTAssertEqual(runner.lastResults[0].skipCount, 0)
     }
 
     func testPreflightBlocksDestinationInsideSource() async throws {

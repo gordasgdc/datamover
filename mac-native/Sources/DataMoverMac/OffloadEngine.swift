@@ -906,7 +906,7 @@ final class OffloadRunner: ObservableObject {
                     }
 
                     var toCopy: [DestinationContext] = []
-                    var toVerify: [DestinationContext] = []
+                    var toVerify: [(ctx: DestinationContext, expected: String?)] = []
                     for ctx in contexts {
                         if isRetry {
                             guard ctx.failedRelPaths.contains(entry.relPath) else { continue }
@@ -915,12 +915,8 @@ final class OffloadRunner: ObservableObject {
                             continue
                         }
                         switch ctx.classify(entry: entry, allowSkipExisting: resume) {
-                        case .alreadyDone:
-                            ctx.recordSkippedViaCheckpoint(entry: entry)
-                            let root = ctx.destRoot
-                            Task { @MainActor [weak self] in self?.advance(size: entry.size, file: entry.relPath, dest: root, confirmed: true) }
-                        case .existingSameSize:
-                            toVerify.append(ctx)
+                        case .revalidate(let expected):
+                            toVerify.append((ctx, expected))
                         case .needsCopy:
                             toCopy.append(ctx)
                         }
@@ -932,18 +928,20 @@ final class OffloadRunner: ObservableObject {
                     // acest bucket, daca sunt mai multe.
                     if !toVerify.isEmpty {
                         var verifiedSourceHash: String?
-                        for ctx in toVerify {
+                        for (ctx, expected) in toVerify {
                             ctx.onActivity("Verificare fisier existent: \(entry.relPath)…")
                             if verifiedSourceHash == nil {
                                 verifiedSourceHash = try? hashOfFile(path: entry.fullPath, model: verificationModel, cancel: token, chunkSize: chunkSize)
                             }
-                            let dstHash = (try? hashOfFile(path: ctx.destPath(for: entry), model: verificationModel, cancel: token, chunkSize: chunkSize)) ?? ""
-                            if let s = verifiedSourceHash, s == dstHash, !s.isEmpty || verificationModel == .sizeOnly {
-                                ctx.recordVerifiedExisting(entry: entry, srcHash: s, dstHash: dstHash)
+                            let dstHash = try? hashOfFile(path: ctx.destPath(for: entry), model: verificationModel, cancel: token, chunkSize: chunkSize)
+                            switch RevalidationPolicy.decide(model: verificationModel, expected: expected,
+                                                             sourceHash: verifiedSourceHash, destinationHash: dstHash) {
+                            case .accept:
+                                ctx.recordVerifiedExisting(entry: entry, srcHash: verifiedSourceHash ?? "", dstHash: dstHash ?? "")
                                 let root = ctx.destRoot
                                 Task { @MainActor [weak self] in self?.advance(size: entry.size, file: entry.relPath, dest: root, confirmed: true) }
-                            } else {
-                                // marimea coincidea dar continutul nu - recopiem normal
+                            case .recopy(let reason):
+                                ctx.onActivity("Se recopiază \(entry.relPath): \(reason).")
                                 toCopy.append(ctx)
                             }
                         }

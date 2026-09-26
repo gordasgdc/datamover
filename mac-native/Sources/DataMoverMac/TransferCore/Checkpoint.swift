@@ -33,19 +33,69 @@ struct SourceIdentity: Codable, Equatable {
         return v?.volumeUUIDString ?? "?"
     }
 
-    static func compute(sources: [String], files: [FileEntry]) -> SourceIdentity {
+    static func compute(sources: [String], files: [FileEntry],
+                        volumeOf: (String) -> String = volumeUUID(of:)) -> SourceIdentity {
         var hasher = SHA256()
         for f in files.sorted(by: { $0.relPath < $1.relPath || ($0.relPath == $1.relPath && $0.fullPath < $1.fullPath) }) {
             hasher.update(data: Data("\(f.relPath)\u{0}\(f.size)\u{0}\(f.mtimeMicros)\n".utf8))
         }
         let digest = hasher.finalize().map { String(format: "%02x", $0) }.joined()
         return SourceIdentity(roots: sources.map(Preflight.canonical),
-                              volumes: sources.map(volumeUUID(of:)),
+                              volumes: sources.map(volumeOf),
                               manifestDigest: digest, fileCount: files.count)
     }
 }
 
-// MARK: - Checkpoint (schema 2)
+// MARK: - Dovada per fișier (schema 3)
+
+/// Ce s-a dovedit pentru un fișier confirmat: checksum-ul sursei și al
+/// destinației la momentul confirmării. `verdict` = "checksum" sau "size"
+/// (mod „doar octeți” — nu e dovadă de conținut și nu permite sărirea).
+struct FileProof: Codable, Equatable {
+    let source: String
+    let destination: String
+    let verdict: String
+}
+
+/// Decizia la reluare, byte-safe: nici metadata, nici checkpoint-ul singure
+/// nu pot acorda „deja verificat”. Sursa curentă e recitită și trebuie să
+/// dea checksum-ul salvat; destinația e recitită și trebuie să dea același.
+enum RevalidationPolicy {
+    enum Decision: Equatable {
+        case accept
+        case recopy(String)
+    }
+
+    /// Lungimea în caractere hex a fiecărui algoritm — un hash cu altă
+    /// lungime sau caractere non-hex e „corupt”.
+    static func hexLength(_ model: VerificationModel) -> Int? {
+        switch model {
+        case .xxhash64: return 16
+        case .md5: return 32
+        case .sha1: return 40
+        case .sha256: return 64
+        case .sha512: return 128
+        case .sizeOnly: return nil
+        }
+    }
+
+    static func isWellFormed(_ hash: String, _ model: VerificationModel) -> Bool {
+        guard let n = hexLength(model), hash.count == n else { return false }
+        return hash.allSatisfy { $0.isHexDigit && !$0.isUppercase }
+    }
+
+    /// `expected` = checksum-ul sursei din checkpoint (nil = fișier găsit la
+    /// destinație fără checkpoint valid; se compară doar sursa cu destinația).
+    static func decide(model: VerificationModel, expected: String?, sourceHash: String?, destinationHash: String?) -> Decision {
+        if model == .sizeOnly { return .recopy("mod „doar octeți”: fără dovadă de conținut, se recopiază") }
+        guard let s = sourceHash, isWellFormed(s, model) else { return .recopy("sursa nu a putut fi recitită") }
+        if let expected, expected != s { return .recopy("sursa diferă de cea din checkpoint (alți octeți)") }
+        guard let d = destinationHash, d == s else { return .recopy("destinația diferă de sursă") }
+        return .accept
+    }
+}
+
+// MARK: - Checkpoint (schema 3)
 
 struct CheckpointData: Codable {
     var schema: Int?
@@ -58,6 +108,8 @@ struct CheckpointData: Codable {
     var sourceIdentity: SourceIdentity?
     /// Amprenta sursei (mărime:mtime) pentru fiecare fișier confirmat.
     var fileStamps: [String: String]?
+    /// Checksum-urile sursei și destinației la confirmare (schema 3).
+    var fileProofs: [String: FileProof]?
 
     enum CodingKeys: String, CodingKey {
         case schema, source, completed, files
@@ -66,12 +118,15 @@ struct CheckpointData: Codable {
         case totalFiles = "total_files"
         case sourceIdentity = "source_identity"
         case fileStamps = "file_stamps"
+        case fileProofs = "file_proofs"
     }
 }
 
 enum CheckpointStore {
     static let filename = "offload_checkpoint.json"
-    static let schema = 2
+    /// 3: dovada per fișier (checksum sursă + destinație). Schemele 1–2 sunt
+    /// respinse: nu au dovadă de conținut.
+    static let schema = 3
     static let allowedStates: Set<String> = ["ok", "sarit", "fail"]
 
     static func path(targetRoot: String) -> String {
@@ -81,6 +136,7 @@ enum CheckpointStore {
     struct Loaded: Equatable {
         let files: [String: String]
         let stamps: [String: String]
+        let proofs: [String: FileProof]
     }
 
     enum LoadResult: Equatable {
@@ -100,14 +156,26 @@ enum CheckpointStore {
         guard let d = try? JSONDecoder().decode(CheckpointData.self, from: data) else {
             return .rejected("fișier corupt")
         }
-        guard d.schema == schema, let saved = d.sourceIdentity, let stamps = d.fileStamps else {
-            return .rejected("format vechi, fără identitatea sursei")
+        guard d.schema == schema, let saved = d.sourceIdentity, let stamps = d.fileStamps, let proofs = d.fileProofs else {
+            return .rejected("format vechi, fără dovada de conținut")
         }
         if d.verificationModel != verificationModel { return .rejected("alt model de verificare: \(d.verificationModel)") }
         if d.folderName != folderName { return .rejected("alt folder: \(d.folderName)") }
         if saved != identity { return .rejected("altă sursă (cale, volum sau conținut listat diferit)") }
         if d.files.values.contains(where: { !allowedStates.contains($0) }) { return .rejected("stare necunoscută în fișier") }
-        return .valid(Loaded(files: d.files, stamps: stamps))
+        // Fiecare fișier confirmat trebuie să aibă o dovadă bine formată.
+        guard let model = VerificationModel(rawValue: verificationModel) else { return .rejected("model necunoscut") }
+        for (rel, state) in d.files where state == "ok" || state == "sarit" {
+            guard let p = proofs[rel] else { return .rejected("checksum absent pentru \(rel)") }
+            if model == .sizeOnly {
+                guard p.verdict == "size" else { return .rejected("verdict incoerent pentru \(rel)") }
+            } else {
+                guard p.verdict == "checksum", RevalidationPolicy.isWellFormed(p.source, model), p.destination == p.source else {
+                    return .rejected("checksum corupt pentru \(rel)")
+                }
+            }
+        }
+        return .valid(Loaded(files: d.files, stamps: stamps, proofs: proofs))
     }
 
     /// Scriere atomică: tmp + flush + rename(2). Întoarce eroarea, nu o
@@ -117,11 +185,11 @@ enum CheckpointStore {
     @discardableResult
     static func save(targetRoot: String, folderName: String, verificationModel: String,
                      identity: SourceIdentity, files: [String: String], stamps: [String: String],
-                     completed: Bool) -> Error? {
+                     proofs: [String: FileProof], completed: Bool) -> Error? {
         let payload = CheckpointData(schema: schema, source: identity.roots.first, folderName: folderName,
                                      verificationModel: verificationModel, completed: completed,
                                      files: files, totalFiles: files.count,
-                                     sourceIdentity: identity, fileStamps: stamps)
+                                     sourceIdentity: identity, fileStamps: stamps, fileProofs: proofs)
         let p = path(targetRoot: targetRoot)
         let tmp = p + ".tmp"
         do {
