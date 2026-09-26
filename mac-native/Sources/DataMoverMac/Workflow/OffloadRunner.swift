@@ -326,6 +326,16 @@ final class OffloadRunner: ObservableObject {
             statusText = L.t("footer.noFiles")
             return
         }
+        // [2026-09-26] Coliziuni de nume între surse: blocant (altfel a doua
+        // sursă ar înlocui fișierul confirmat al primeia, raportat totuși OK).
+        let collisions = Preflight.nameCollisions(files)
+        if !collisions.isEmpty {
+            preflightIssues += collisions
+            statusText = L.t("preflight.blockedStatus")
+            diag.log(.warning, "preflight", "preflight.nameCollision", "Coliziune de nume între surse", job: job,
+                     fields: ["count": "\(collisions.count)"])
+            return
+        }
 
         // Plafon de proba (2026-08-30) - vezi LicenseManager.
         // trialMaxTransferBytes. Verificat pe DIMENSIUNEA TOTALA a
@@ -532,6 +542,20 @@ final class OffloadRunner: ObservableObject {
                             }
                         }
                     }
+                    // Gardă: un symlink existent la destinație nu are voie să
+                    // ducă scrierea în afara folderului țintă.
+                    let escaping = toCopy.filter { !$0.isInsideTarget($0.destPath(for: entry)) }
+                    if !escaping.isEmpty {
+                        toCopy.removeAll { !$0.isInsideTarget($0.destPath(for: entry)) }
+                        for ctx in escaping {
+                            ctx.recordCopyOutcome(entry: entry, sourceHash: "", outcome: .failure(TransferIssueError(
+                                message: "Calea ar ieși din folderul destinației (link simbolic): \(ctx.destPath(for: entry))")), isRetry: isRetry)
+                            StructuredLog.shared.log(.error, "copy", "destination.pathEscape", "Scriere refuzată în afara țintei",
+                                                     job: ctx.jobID, dest: ctx.destLogID, fields: ["path": ctx.destPath(for: entry)])
+                            let root = ctx.destRoot
+                            Task { @MainActor [weak self] in self?.advance(size: entry.size, file: entry.relPath, dest: root, confirmed: false) }
+                        }
+                    }
                     if !toCopy.isEmpty {
                         for ctx in toCopy {
                             let dir = (ctx.destPath(for: entry) as NSString).deletingLastPathComponent
@@ -562,8 +586,7 @@ final class OffloadRunner: ObservableObject {
                                                              job: ctx.jobID, dest: ctx.destLogID,
                                                              fields: ["path": destPath, "retry": "\(isRetry)"], error: err)
                                 }
-                                var ok = false
-                                if case .success = outcome { ok = true }
+                                let ok: Bool = { if case .success = outcome { return true } else { return false } }()
                                 if !ok { ctx.onActivity("Neconfirmat: \(entry.relPath) — \(Self.describe(outcome))") }
                                 let root = ctx.destRoot
                                 Task { @MainActor [weak self] in self?.advance(size: entry.size, file: entry.relPath, dest: root, confirmed: ok) }

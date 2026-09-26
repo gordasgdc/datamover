@@ -105,6 +105,8 @@ struct ContentView: View {
     @State private var mediaByPath: [String: MediaClass] = [:]
     /// Octeții de copiat, per sursă (măsurați la scanare, nu estimați).
     @State private var bytesBySource: [String: Int64] = [:]
+    /// Coliziuni de nume între surse, găsite la scanare (blocante).
+    @State private var collisionIssues: [PreflightIssue] = []
     @State private var showQueue = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ObservedObject private var langStore = LanguageStore.shared
@@ -834,7 +836,7 @@ struct ContentView: View {
 
     private var prepareIncidents: [Incident] {
         var input = IncidentBuilder.PrepareInput()
-        input.issues = preflightIssues
+        input.issues = preflightIssues + collisionIssues
         input.cardWarnings = sourcePaths.flatMap { p in (cardInfoBySource[p]?.warnings ?? []).map { (p, $0) } }
         if let bytes = sourceBytes {
             input.spaceShort = destinationPaths.compactMap { d in
@@ -981,24 +983,31 @@ struct ContentView: View {
         capacities = caps
         let sources = sourcePaths
         let exclusions = job.exclusions
-        guard !sources.isEmpty else { sourceBytes = nil; bytesBySource = [:]; return }
+        guard !sources.isEmpty else { sourceBytes = nil; bytesBySource = [:]; collisionIssues = []; return }
         guard scanSources else { return }
         Task.detached(priority: .utility) {
             var per: [String: Int64] = [:]
+            var all: [FileEntry] = []
             for src in sources {
                 var isDir: ObjCBool = false
                 guard FileManager.default.fileExists(atPath: src, isDirectory: &isDir) else { continue }
                 if isDir.boolValue {
-                    per[src] = listAllFiles(root: src, exclusions: exclusions).reduce(0) { $0 + $1.size }
+                    let files = listAllFiles(root: src, exclusions: exclusions)
+                    per[src] = files.reduce(0) { $0 + $1.size }
+                    all += files
                 } else {
-                    per[src] = ((try? FileManager.default.attributesOfItem(atPath: src)[.size] as? Int64) ?? nil) ?? 0
+                    let size = ((try? FileManager.default.attributesOfItem(atPath: src)[.size] as? Int64) ?? nil) ?? 0
+                    per[src] = size
+                    all.append(FileEntry(fullPath: src, relPath: (src as NSString).lastPathComponent, size: size))
                 }
             }
             let measured = per
+            let collisions = sources.count > 1 ? Preflight.nameCollisions(all) : []
             await MainActor.run {
                 if sources == sourcePaths {
                     bytesBySource = measured
                     sourceBytes = measured.values.reduce(0, +)
+                    collisionIssues = collisions
                 }
             }
         }

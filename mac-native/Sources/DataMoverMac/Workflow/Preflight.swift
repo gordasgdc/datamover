@@ -18,6 +18,9 @@ struct PreflightIssue: Identifiable, Equatable {
         case destinationInsideSource, sourceInsideDestination, sameAsSource
         case duplicateDestination, nestedDestinations, sameVolumeAsSource
         case symlinkSource
+        /// Două surse produc aceeași cale relativă la destinație — a doua
+        /// ar înlocui prima (comparat fără majuscule, ca APFS/NTFS).
+        case sourceNameCollision
     }
 
     var id: String { code.rawValue + "|" + path }
@@ -113,6 +116,21 @@ enum Preflight {
                sources.contains(where: { volumeID(of: $0) == dv }),
                !issues.contains(where: { $0.path == dest && $0.severity == .blocking }) {
                 issues.append(.init(code: .sameVolumeAsSource, severity: .warning, path: dest))
+            }
+        }
+        return issues
+    }
+
+    /// Coliziuni de nume între fișierele tuturor surselor (după scanare).
+    static func nameCollisions(_ files: [FileEntry]) -> [PreflightIssue] {
+        var seen: [String: String] = [:]
+        var issues: [PreflightIssue] = []
+        for f in files {
+            let key = f.relPath.precomposedStringWithCanonicalMapping.lowercased()
+            if let first = seen[key], first != f.fullPath {
+                issues.append(PreflightIssue(code: .sourceNameCollision, severity: .blocking, path: f.relPath))
+            } else {
+                seen[key] = f.fullPath
             }
         }
         return issues

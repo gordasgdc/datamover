@@ -57,6 +57,7 @@ extension L {
         "preflight.duplicateDestination": [.ro: "Aceeași destinație e adăugată de două ori.", .en: "The same destination is added twice.", .es: "El mismo destino está añadido dos veces."],
         "preflight.nestedDestinations": [.ro: "O destinație se află în interiorul alteia.", .en: "One destination is inside another.", .es: "Un destino está dentro de otro."],
         "preflight.sameVolumeAsSource": [.ro: "Destinația e pe același disc cu sursa — nu e o copie de siguranță independentă.", .en: "The destination is on the same drive as the source — not an independent backup.", .es: "El destino está en el mismo disco que el origen — no es una copia de seguridad independiente."],
+        "preflight.sourceNameCollision": [.ro: "Două surse au un fișier cu același nume și aceeași cale — unul l-ar înlocui pe celălalt.", .en: "Two sources have a file with the same name and path — one would replace the other.", .es: "Dos orígenes tienen un archivo con el mismo nombre y ruta — uno sustituiría al otro."],
         "preflight.symlinkSource": [.ro: "Sursa este un link simbolic; se copiază conținutul țintei.", .en: "The source is a symbolic link; the target's content is copied.", .es: "El origen es un enlace simbólico; se copia el contenido del destino del enlace."],
 
         // Pregătire

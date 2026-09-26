@@ -93,6 +93,18 @@ final class DestinationContext: @unchecked Sendable {
         (targetRoot as NSString).appendingPathComponent(entry.relPath)
     }
 
+    /// Folderul părinte al căii, cu symlink-urile rezolvate, rămâne în
+    /// interiorul folderului țintă (rezolvat și el). Folderele încă
+    /// inexistente se verifică prin cel mai apropiat strămoș existent.
+    func isInsideTarget(_ path: String) -> Bool {
+        let fm = FileManager.default
+        var parent = (path as NSString).deletingLastPathComponent
+        while !fm.fileExists(atPath: parent) && parent.count > 1 { parent = (parent as NSString).deletingLastPathComponent }
+        let resolvedParent = Preflight.canonical(parent)
+        let resolvedTarget = Preflight.canonical(fm.fileExists(atPath: targetRoot) ? targetRoot : destRoot)
+        return Preflight.isSameOrInside(resolvedParent, resolvedTarget)
+    }
+
     /// Pregătește destinația: creează folderul țintă, deschide CSV-ul,
     /// pornește MHL-ul, încarcă checkpoint-ul existent (dacă `resume`).
     /// Identic ca efect cu începutul vechiului `DestinationJob.run()`.
@@ -198,6 +210,8 @@ final class DestinationContext: @unchecked Sendable {
         skipCount += 1
         filesStatus[entry.relPath] = "sarit"
         fileStamps[entry.relPath] = entry.stamp
+        // Un parțial rămas dintr-o oprire bruscă, lângă un fișier acum confirmat.
+        try? FileManager.default.removeItem(atPath: PartialFile.path(for: destPath(for: entry)))
         fileProofs[entry.relPath] = FileProof(source: srcHash, destination: dstHash, verdict: "checksum")
         logRow(ReportRow(file: entry.relPath, sizeBytes: entry.size, srcHash: srcHash, dstHash: dstHash,
                           status: "SARIT", error: "", destPath: destPath(for: entry)))
