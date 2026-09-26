@@ -157,7 +157,14 @@ try
 catch (Exception ex) { Check("exceptie neasteptata: " + ex.GetType().Name + " " + ex.Message, false); }
 finally
 {
-    try { Directory.Delete(root, true); } catch { }
+    // Jurnalul si firele runner-elor pot tine inca fisiere deschise cateva
+    // sute de ms; se reincearca, iar un esec final se raporteaza, nu se ascunde.
+    StructuredLog.Shared = new StructuredLog(new StructuredLog.Config(Path.Combine(Path.GetTempPath(), "dm-winchecks-log")));
+    for (int i = 0; i < 10 && Directory.Exists(root); i++)
+    {
+        try { Directory.Delete(root, true); } catch { GC.Collect(); GC.WaitForPendingFinalizers(); Thread.Sleep(500); }
+    }
+    if (Directory.Exists(root)) Console.WriteLine($"ATENTIE: folderul temporar {root} nu s-a putut sterge");
 }
 lines.Add(failures == 0 ? "TOATE VERIFICARILE WINDOWS AU TRECUT" : $"{failures} ESECURI");
 Console.WriteLine(lines[^1]);
