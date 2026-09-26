@@ -24,10 +24,17 @@ struct HistoryEntry: Codable, Identifiable {
     /// + folderName) - ce ar trebui deschis efectiv in Finder, nu discul
     /// intreg.
     var destinationTargetPaths: [String] = []
+    /// [2026-09-26] Verdictul (`TransferOutcome.rawValue`), metoda de
+    /// verificare și rapoartele — ca operația să poată fi reconstruită din
+    /// istoric. Opționale: intrările vechi nu le au.
+    var outcome: String? = nil
+    var verification: String? = nil
+    var reportPaths: [String] = []
 
     enum CodingKeys: String, CodingKey {
         case dateText, folderName, sourcesSummary, destSummary, okCount, skipCount, failCount
         case sourcePaths, destinationPaths, destinationTargetPaths
+        case outcome, verification, reportPaths
     }
 
     init(dateText: String, folderName: String, sourcesSummary: String, destSummary: String,
@@ -57,6 +64,9 @@ struct HistoryEntry: Codable, Identifiable {
         sourcePaths = try c.decodeIfPresent([String].self, forKey: .sourcePaths) ?? []
         destinationPaths = try c.decodeIfPresent([String].self, forKey: .destinationPaths) ?? []
         destinationTargetPaths = try c.decodeIfPresent([String].self, forKey: .destinationTargetPaths) ?? []
+        outcome = try c.decodeIfPresent(String.self, forKey: .outcome)
+        verification = try c.decodeIfPresent(String.self, forKey: .verification)
+        reportPaths = try c.decodeIfPresent([String].self, forKey: .reportPaths) ?? []
     }
 }
 
@@ -87,7 +97,8 @@ final class HistoryStore: ObservableObject {
     }
 
     func record(folderName: String, sources: [String], destinations: [String],
-                okCount: Int, skipCount: Int, failCount: Int) {
+                okCount: Int, skipCount: Int, failCount: Int,
+                outcome: TransferOutcome? = nil, verification: String? = nil, reportPaths: [String] = []) {
         let df = DateFormatter()
         df.dateFormat = "dd.MM.yyyy HH:mm"
         let entry = HistoryEntry(
@@ -99,7 +110,11 @@ final class HistoryStore: ObservableObject {
             sourcePaths: sources, destinationPaths: destinations,
             destinationTargetPaths: destinations.map { ($0 as NSString).appendingPathComponent(folderName) }
         )
-        entries.append(entry)
+        var full = entry
+        full.outcome = outcome?.rawValue
+        full.verification = verification
+        full.reportPaths = reportPaths
+        entries.append(full)
         if entries.count > 200 { entries.removeFirst(entries.count - 200) }
         save()
     }

@@ -20,9 +20,9 @@ struct DataMoverMacApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(license)
-                .frame(minWidth: 900, minHeight: 560)
+                .frame(minWidth: 1040, minHeight: 640)
         }
-        .windowResizability(.contentSize)
+        .defaultSize(width: 1280, height: 800)
         .commands {
             CommandGroup(replacing: .appInfo) {
                 Button(L.t("menu.about")) { showAboutPanel() }
@@ -38,6 +38,10 @@ struct DataMoverMacApp: App {
                     NSWorkspace.shared.open(WhatsAppLink.url())
                 }
             }
+        }
+
+        Settings {
+            SettingsView()
         }
 
         WindowGroup(id: "help") {

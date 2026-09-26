@@ -260,6 +260,13 @@ struct DestinationResult {
     /// Cate fisiere esuate la prima trecere au fost recuperate de pasul
     /// automat de reincercare (vezi retryFailedFiles).
     var recoveredCount: Int = 0
+    /// Folderul concret scris la această destinație (`<dest>/<folderName>`).
+    var targetFolder: String? = nil
+
+    /// Verdictul destinației — sursa unică pentru UI, istoric și ejectare.
+    var outcome: DestinationOutcome {
+        DestinationOutcome.evaluate(failCount: failCount, recoveredCount: recoveredCount, cancelled: cancelled)
+    }
 }
 
 // MARK: - Checkpoint (identic ca format cu core/checkpoint.py)
@@ -287,6 +294,35 @@ enum CheckpointStore {
         (targetRoot as NSString).appendingPathComponent(filename)
     }
 
+    enum LoadResult: Equatable {
+        case none
+        case valid([String: String])
+        case rejected(String)
+    }
+
+    /// Încarcă checkpoint-ul DOAR dacă aparține aceluiași transfer: același
+    /// folder țintă și același model de verificare. Un checkpoint corupt sau
+    /// făcut cu alt algoritm e respins (motivul e întors, nu înghițit) — o
+    /// reluare nu are voie să considere „verificat” ceva verificat altfel.
+    static func loadValidated(targetRoot: String, folderName: String, verificationModel: String) -> LoadResult {
+        let p = path(targetRoot: targetRoot)
+        guard let data = FileManager.default.contents(atPath: p) else { return .none }
+        guard let decoded = try? JSONDecoder().decode(CheckpointData.self, from: data) else {
+            return .rejected("fișier corupt")
+        }
+        if decoded.verificationModel != verificationModel {
+            return .rejected("alt model de verificare: \(decoded.verificationModel)")
+        }
+        if decoded.folderName != folderName {
+            return .rejected("alt folder: \(decoded.folderName)")
+        }
+        let known: Set<String> = ["ok", "sarit", "fail"]
+        if decoded.files.values.contains(where: { !known.contains($0) }) {
+            return .rejected("stare necunoscută în fișier")
+        }
+        return .valid(decoded.files)
+    }
+
     static func load(targetRoot: String) -> [String: String]? {
         let p = path(targetRoot: targetRoot)
         guard let data = FileManager.default.contents(atPath: p),
@@ -303,11 +339,14 @@ enum CheckpointStore {
         guard let data = try? JSONEncoder().encode(payload) else { return }
         let p = path(targetRoot: targetRoot)
         let tmp = p + ".tmp"
+        // Scriere atomică: tmp + flush + rename(2), care înlocuiește ținta
+        // într-un singur pas. Varianta veche (remove, apoi move) lăsa o
+        // fereastră fără niciun checkpoint pe disc.
         do {
             try data.write(to: URL(fileURLWithPath: tmp))
-            _ = try? FileManager.default.removeItem(atPath: p)
-            try FileManager.default.moveItem(atPath: tmp, toPath: p)
-        } catch { /* best-effort, ca in Python */ }
+            if let h = FileHandle(forWritingAtPath: tmp) { try? physicalFlush(h); try? h.close() }
+            if Darwin.rename(tmp, p) != 0 { _ = try? FileManager.default.removeItem(atPath: tmp) }
+        } catch { /* best-effort: checkpoint-ul e o optimizare, nu o dovadă */ }
     }
 }
 
@@ -536,6 +575,14 @@ final class OffloadRunner: ObservableObject {
     /// Capat la `activityLogLimit` — nu tinem tot istoricul unui transfer
     /// de mii de fisiere in memorie/UI, doar ce s-a intamplat recent.
     @Published private(set) var activityLines: [String] = []
+    /// Faza reală (Domain) și stările per destinație — sursa unică pentru UI.
+    @Published private(set) var phase: TransferPhase = .idle
+    @Published private(set) var destinationStates: [DestinationLiveState] = []
+    @Published private(set) var lastOutcome: TransferOutcome? = nil
+    /// Probleme de preflight găsite de `start` (apărare în adâncime).
+    @Published var preflightIssues: [PreflightIssue] = []
+    @Published private(set) var lastFolderName = ""
+    @Published private(set) var lastVerificationDepth: VerificationDepth = .streamChecksum
     private let activityLogLimit = 200
 
     // Pauza (2026-08-28) - vezi PauseToken. Butonul de Pauza din UI leaga
@@ -762,8 +809,19 @@ final class OffloadRunner: ObservableObject {
                cloudRemote: String = "", cloudRemoteFolder: String = "",
                generateMHL: Bool = true, retryFailedFiles: Bool = true,
                ejectSourceWhenDone: Bool = false,
-               ignoreSpaceWarning: Bool = false) {
+               ignoreSpaceWarning: Bool = false,
+               readBackVerification: Bool = false) {
         guard !isRunning else { return }
+
+        let issues = Preflight.check(sources: sources, destinations: destinations)
+        preflightIssues = issues
+        if Preflight.hasBlocking(issues) {
+            statusText = L.t("preflight.blockedStatus")
+            for issue in issues where issue.severity == .blocking {
+                logActivity("Preflight: \(L.t(issue.messageKey)) \(issue.path)")
+            }
+            return
+        }
 
         var files: [FileEntry] = []
         for src in sources {
@@ -824,6 +882,11 @@ final class OffloadRunner: ObservableObject {
         pauseToken = PauseToken()
         isPaused = false
         isRunning = true
+        phase = .preparing
+        lastOutcome = nil
+        lastFolderName = folderName
+        lastVerificationDepth = VerificationDepth.for(verificationModel, readBack: readBackVerification)
+        destinationStates = destinations.map { DestinationLiveState(destRoot: $0) }
         startTime = Date()
         bytesDone = 0
         filesDone = 0
@@ -877,6 +940,8 @@ final class OffloadRunner: ObservableObject {
 
         DispatchQueue.global(qos: .utility).async { [weak self] in
             for ctx in contexts { ctx.prepare(resume: resume) }
+            Task { @MainActor [weak self] in self?.phase = .copying }
+            let readBack = readBackVerification
 
             var cancelledFlag = false
 
@@ -909,7 +974,8 @@ final class OffloadRunner: ObservableObject {
                         switch ctx.classify(entry: entry, allowSkipExisting: resume) {
                         case .alreadyDone:
                             ctx.recordSkippedViaCheckpoint(entry: entry)
-                            Task { @MainActor [weak self] in self?.advance(size: entry.size, file: entry.relPath) }
+                            let root = ctx.destRoot
+                            Task { @MainActor [weak self] in self?.advance(size: entry.size, file: entry.relPath, dest: root, confirmed: true) }
                         case .existingSameSize:
                             toVerify.append(ctx)
                         case .needsCopy:
@@ -931,7 +997,8 @@ final class OffloadRunner: ObservableObject {
                             let dstHash = (try? hashOfFile(path: ctx.destPath(for: entry), model: verificationModel, cancel: token, chunkSize: chunkSize)) ?? ""
                             if let s = verifiedSourceHash, s == dstHash, !s.isEmpty || verificationModel == .sizeOnly {
                                 ctx.recordVerifiedExisting(entry: entry, srcHash: s, dstHash: dstHash)
-                                Task { @MainActor [weak self] in self?.advance(size: entry.size, file: entry.relPath) }
+                                let root = ctx.destRoot
+                                Task { @MainActor [weak self] in self?.advance(size: entry.size, file: entry.relPath, dest: root, confirmed: true) }
                             } else {
                                 // marimea coincidea dar continutul nu - recopiem normal
                                 toCopy.append(ctx)
@@ -943,6 +1010,21 @@ final class OffloadRunner: ObservableObject {
                     // Copiere REALA prin fan-out — o singura citire a sursei
                     // pentru TOATE destinatiile care au nevoie de copiere la
                     // acest fisier (vezi FanOutCopier.swift).
+                    // Destinație dispărută (disc scos): fișierul eșuează DOAR
+                    // acolo, cu motiv explicit; celelalte continuă.
+                    let vanished = toCopy.filter { !$0.isAvailable }
+                    if !vanished.isEmpty {
+                        toCopy.removeAll { !$0.isAvailable }
+                        for ctx in vanished {
+                            ctx.recordCopyOutcome(entry: entry, sourceHash: "", outcome: .failure(TransferIssueError(
+                                message: "Destinația nu mai e disponibilă (disc deconectat?): \(ctx.destRoot)")), isRetry: isRetry)
+                            let root = ctx.destRoot
+                            Task { @MainActor [weak self] in
+                                self?.markDestination(root, available: false)
+                                self?.advance(size: entry.size, file: entry.relPath, dest: root, confirmed: false)
+                            }
+                        }
+                    }
                     if !toCopy.isEmpty {
                         for ctx in toCopy {
                             let dir = (ctx.destPath(for: entry) as NSString).deletingLastPathComponent
@@ -953,21 +1035,26 @@ final class OffloadRunner: ObservableObject {
                         do {
                             let copier = FanOutCopier(sourcePath: entry.fullPath, destinationPaths: destPaths,
                                                        chunkSize: chunkSize, model: verificationModel,
-                                                       cancel: token, pause: pauseTok)
+                                                       cancel: token, pause: pauseTok,
+                                                       expectedSize: entry.size, readBack: readBack)
                             let result = try copier.run { _ in }
-                            for ctx in toCopy { ctx.onActivity("Verificare checksum: \(entry.relPath)…") }
                             for (ctx, destPath) in zip(toCopy, destPaths) {
                                 let outcome = result.destinations[destPath] ?? .failure(
-                                    NSError(domain: "DataMover", code: 3, userInfo: [NSLocalizedDescriptionKey: "Fara rezultat de la motorul de copiere"]))
+                                    TransferIssueError(message: "Fără rezultat de la motorul de copiere"))
                                 ctx.recordCopyOutcome(entry: entry, sourceHash: result.sourceHash, outcome: outcome, isRetry: isRetry)
-                                Task { @MainActor [weak self] in self?.advance(size: entry.size, file: entry.relPath) }
+                                var ok = false
+                                if case .success = outcome { ok = true }
+                                if !ok { ctx.onActivity("Neconfirmat: \(entry.relPath) — \(Self.describe(outcome))") }
+                                let root = ctx.destRoot
+                                Task { @MainActor [weak self] in self?.advance(size: entry.size, file: entry.relPath, dest: root, confirmed: ok) }
                             }
                         } catch is OffloadCancelled {
                             cancelledFlag = true; return
                         } catch {
                             for ctx in toCopy {
                                 ctx.recordSourceReadFailure(entry: entry, error: error, isRetry: isRetry)
-                                Task { @MainActor [weak self] in self?.advance(size: entry.size, file: entry.relPath) }
+                                let root = ctx.destRoot
+                                Task { @MainActor [weak self] in self?.advance(size: entry.size, file: entry.relPath, dest: root, confirmed: false) }
                             }
                         }
                     }
@@ -991,6 +1078,7 @@ final class OffloadRunner: ObservableObject {
             }
 
             if cancelledFlag { for ctx in contexts { ctx.markCancelled() } }
+            Task { @MainActor [weak self] in self?.phase = .reporting }
             let results = contexts.map { $0.finalize() }
 
             Task { @MainActor [weak self] in
@@ -1023,7 +1111,28 @@ final class OffloadRunner: ObservableObject {
         }
     }
 
-    private func advance(size: Int64, file: String = "") {
+    nonisolated static func describe(_ outcome: FanOutDestOutcome) -> String {
+        switch outcome {
+        case .success: return "OK"
+        case .mismatch(_, _, let reason): return reason
+        case .failure(let error): return error.localizedDescription
+        }
+    }
+
+    private func markDestination(_ root: String, available: Bool) {
+        guard let i = destinationStates.firstIndex(where: { $0.destRoot == root }) else { return }
+        destinationStates[i].available = available
+    }
+
+    private func advance(size: Int64, file: String = "", dest: String? = nil, confirmed: Bool = true) {
+        if let dest, let i = destinationStates.firstIndex(where: { $0.destRoot == dest }) {
+            if confirmed {
+                destinationStates[i].bytesWritten += size
+                destinationStates[i].filesConfirmed += 1
+            } else {
+                destinationStates[i].filesFailed += 1
+            }
+        }
         filesDone += 1
         bytesDone += size
         if !file.isEmpty { currentFile = file }
@@ -1043,7 +1152,15 @@ final class OffloadRunner: ObservableObject {
                         destinations: [String], ejectSource: Bool = false) {
         isRunning = false
         lastResults = results
-        let anyCancelled = results.contains { $0.cancelled }
+        let outcome = TransferOutcome.evaluate(results.map { $0.outcome })
+        lastOutcome = outcome
+        phase = .finished
+        for r in results {
+            if let i = destinationStates.firstIndex(where: { $0.destRoot == r.destRoot }) {
+                destinationStates[i].outcome = r.outcome
+            }
+        }
+        let anyCancelled = outcome == .cancelled
         let totalOK = results.reduce(0) { $0 + $1.okCount }
         let totalSkip = results.reduce(0) { $0 + $1.skipCount }
         let totalFail = results.reduce(0) { $0 + $1.failCount }
@@ -1054,7 +1171,7 @@ final class OffloadRunner: ObservableObject {
         // sa stie ca transferul a avut probleme tranzitorii, chiar daca
         // s-a terminat cu bine (indiciu de cablu/card/disc care da rateuri).
         if totalRecovered > 0 { summary += ", \(totalRecovered) \(L.t("footer.recovered"))" }
-        statusText = anyCancelled ? L.t("footer.cancelled") : summary + "."
+        statusText = anyCancelled ? L.t("footer.cancelled") : L.t(outcome.labelKey) + " — " + summary + "."
         NSSound(named: "Glass")?.play()
 
         // [2026-09-03] Notificare de sistem: la un transfer de ore, userul
@@ -1070,12 +1187,16 @@ final class OffloadRunner: ObservableObject {
         // s-ar putea sa mai fie nevoie de o reluare de pe el, iar
         // scoaterea lui ar transforma o problema reparabila in pierdere
         // de material.
-        if ejectSource && !anyCancelled && totalFail == 0 {
+        if ejectSource && outcome.allowsSourceEject && totalFail == 0 {
             ejectSourceVolumes(sources)
+        } else if ejectSource {
+            logActivity("Cardul NU a fost ejectat: \(L.t(outcome.labelKey)).")
         }
 
         HistoryStore.shared.record(folderName: folderName, sources: sources, destinations: destinations,
-                                    okCount: totalOK, skipCount: totalSkip, failCount: totalFail)
+                                    okCount: totalOK, skipCount: totalSkip, failCount: totalFail,
+                                    outcome: outcome, verification: lastVerificationDepth.rawValue,
+                                    reportPaths: results.flatMap { [$0.csvPath, $0.pdfPath, $0.htmlPath, $0.mhlPath].compactMap { $0 } })
     }
 
     /// Demonteaza volumele amovibile de pe care s-a citit. Un folder de pe

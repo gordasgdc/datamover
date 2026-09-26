@@ -39,8 +39,20 @@ enum FanOutError: Error {
 /// (o destinație poate eșua — disc plin, deconectat — fără să oprească
 /// scrierea către celelalte).
 enum FanOutDestOutcome {
+    /// Fișierul e confirmat și MUTAT la numele final (rename atomic după
+    /// flush). Singurul caz în care fișierul final există din această copiere.
     case success(hash: String, bytesWritten: Int64)
+    /// Scris complet, dar neconfirmat (hash/mărime diferită, sursă modificată
+    /// în timpul citirii). Fișierul parțial a fost șters; numele final NU a
+    /// fost atins.
+    case mismatch(hash: String, bytesWritten: Int64, reason: String)
     case failure(Error)
+}
+
+/// Erori cu mesaj pentru operator (ce s-a întâmplat, nu cod intern).
+struct TransferIssueError: LocalizedError {
+    let message: String
+    var errorDescription: String? { message }
 }
 
 struct FanOutResult {
@@ -185,6 +197,35 @@ func physicalFlush(_ handle: FileHandle) throws {
     }
 }
 
+/// `fsync` pe folderul părinte după `rename` — altfel redenumirea poate
+/// rămâne doar în cache la o scoatere bruscă a discului. Unele sisteme de
+/// fișiere (exFAT, SMB) nu suportă operația pe foldere: se ignoră.
+func flushDirectory(_ dir: String) {
+    let fd = open(dir, O_RDONLY)
+    guard fd >= 0 else { return }
+    if fcntl(fd, F_FULLFSYNC) == -1 { _ = fsync(fd) }
+    close(fd)
+}
+
+/// Recitește un fișier de pe disc ocolind cache-ul (`F_NOCACHE`) și îi
+/// calculează hash-ul. Folosit de verificarea „read-back”.
+func readBackHash(path: String, model: VerificationModel, chunkSize: Int, cancel: CancelToken) throws -> String {
+    guard let handle = FileHandle(forReadingAtPath: path) else {
+        throw TransferIssueError(message: "Nu pot reciti \(path)")
+    }
+    defer { try? handle.close() }
+    _ = fcntl(handle.fileDescriptor, F_NOCACHE, 1)
+    var hasher = IncrementalHasher(model: model)
+    while true {
+        if cancel.isCancelled { throw OffloadCancelled() }
+        var chunk: Data?
+        try autoreleasepool { chunk = try handle.read(upToCount: chunkSize) }
+        guard let chunk, !chunk.isEmpty else { break }
+        hasher.update(chunk)
+    }
+    return hasher.finalizeHex()
+}
+
 final class FanOutCopier {
     private let sourcePath: String
     private let destinationPaths: [String]
@@ -193,10 +234,13 @@ final class FanOutCopier {
     private let model: VerificationModel
     private let cancel: CancelToken
     private let pause: PauseToken
+    private let expectedSize: Int64?
+    private let readBack: Bool
 
     init(sourcePath: String, destinationPaths: [String], chunkSize: Int,
          ringDepth: Int = 3, model: VerificationModel,
-         cancel: CancelToken, pause: PauseToken) {
+         cancel: CancelToken, pause: PauseToken,
+         expectedSize: Int64? = nil, readBack: Bool = false) {
         self.sourcePath = sourcePath
         self.destinationPaths = destinationPaths
         self.chunkSize = chunkSize
@@ -204,11 +248,26 @@ final class FanOutCopier {
         self.model = model
         self.cancel = cancel
         self.pause = pause
+        self.expectedSize = expectedSize
+        self.readBack = readBack
     }
 
-    /// `onBytesRead` — apelat de pe thread-ul de citire, o dată per bucată
-    /// citită din sursă (pentru progres live în UI, ca înainte).
+    private static func sourceStamp(_ path: String) -> (size: Int64, mtime: Date)? {
+        guard let a = try? FileManager.default.attributesOfItem(atPath: path),
+              let size = a[.size] as? Int64, let m = a[.modificationDate] as? Date else { return nil }
+        return (size, m)
+    }
+
+    /// Contract:
+    /// - sursa e doar citită (`O_RDONLY`), niciodată scrisă sau mutată;
+    /// - fiecare destinație se scrie în `PartialFile.path(for:)`, primește
+    ///   flush fizic, apoi e redenumită la numele final DOAR dacă hash-ul (sau
+    ///   mărimea, la `.sizeOnly`) coincide cu sursa și sursa nu s-a schimbat;
+    /// - la orice eșec/anulare, fișierul parțial se șterge, iar un fișier
+    ///   final preexistent rămâne neatins.
+    /// `onBytesRead` — apelat de pe thread-ul de citire, o dată per bucată.
     func run(onBytesRead: @escaping (Int64) -> Void) throws -> FanOutResult {
+        let stampBefore = Self.sourceStamp(sourcePath)
         guard let input = FileHandle(forReadingAtPath: sourcePath) else {
             throw FanOutError.cannotOpenSource(sourcePath)
         }
@@ -222,15 +281,18 @@ final class FanOutCopier {
         var results: [String: FanOutDestOutcome] = [:]
         let resultsLock = NSLock()
         let group = DispatchGroup()
+        let fm = FileManager.default
 
         for dst in destinationPaths {
             group.enter()
             DispatchQueue.global(qos: .userInitiated).async { [self] in
                 defer { group.leave() }
                 let queue = queues[dst]!
+                let part = PartialFile.path(for: dst)
                 do {
-                    FileManager.default.createFile(atPath: dst, contents: nil)
-                    guard let output = FileHandle(forWritingAtPath: dst) else {
+                    try? fm.removeItem(atPath: part)
+                    guard fm.createFile(atPath: part, contents: nil),
+                          let output = FileHandle(forWritingAtPath: part) else {
                         throw FanOutError.cannotOpenDestination(dst)
                     }
                     defer { try? output.close() }
@@ -243,9 +305,7 @@ final class FanOutCopier {
                         hasher.update(chunk)
                         written += Int64(chunk.count)
                     }
-                    // [M2] Flush fizic OBLIGATORIU inainte de a marca fisierul
-                    // OK - vezi comentariul din physicalFlush(). O eroare reala
-                    // aici (nu ENOTSUP) opreste DOAR aceasta destinatie.
+                    // [M2] Flush fizic OBLIGATORIU inainte de confirmare.
                     try physicalFlush(output)
                     resultsLock.lock()
                     results[dst] = .success(hash: hasher.finalizeHex(), bytesWritten: written)
@@ -259,10 +319,7 @@ final class FanOutCopier {
             }
         }
 
-        // Thread-ul de CITIRE — singurul care atinge sursa. Rulează pe
-        // thread-ul curent (cel care a apelat `run`), care e deja de
-        // fundal in OffloadRunner — nu mai are nevoie de propriul lui
-        // DispatchQueue.
+        // Thread-ul de CITIRE — singurul care atinge sursa.
         var sourceHasher = IncrementalHasher(model: model)
         var bytesRead: Int64 = 0
         var readError: Error?
@@ -293,7 +350,68 @@ final class FanOutCopier {
 
         group.wait()
 
-        if let readError { throw readError }
-        return FanOutResult(sourceHash: sourceHasher.finalizeHex(), bytesRead: bytesRead, destinations: results)
+        if let readError {
+            for dst in destinationPaths { try? fm.removeItem(atPath: PartialFile.path(for: dst)) }
+            throw readError
+        }
+
+        let sourceHash = sourceHasher.finalizeHex()
+        // Sursa s-a schimbat în timpul citirii (fișier încă în scriere, card
+        // defect): nimic nu se confirmă, oricât de bine arată hash-urile.
+        var sourceProblem: String?
+        let stampAfter = Self.sourceStamp(sourcePath)
+        if let expectedSize, bytesRead != expectedSize {
+            sourceProblem = "Sursa are \(bytesRead) octeți citiți, dar \(expectedSize) la scanare — s-a modificat în timpul copierii."
+        } else if let b = stampBefore, let a = stampAfter, (b.size != a.size || b.mtime != a.mtime) {
+            sourceProblem = "Sursa s-a modificat în timpul copierii."
+        }
+
+        var final: [String: FanOutDestOutcome] = [:]
+        for dst in destinationPaths {
+            let part = PartialFile.path(for: dst)
+            let outcome = results[dst] ?? .failure(TransferIssueError(message: "Fără rezultat de la motorul de copiere"))
+            guard case .success(let hash, let written) = outcome else {
+                try? fm.removeItem(atPath: part)
+                final[dst] = outcome
+                continue
+            }
+            var reason: String? = sourceProblem
+            if reason == nil && written != bytesRead {
+                reason = "Scriși \(written) din \(bytesRead) octeți."
+            }
+            if reason == nil && model != .sizeOnly && hash != sourceHash {
+                reason = "Checksum diferit."
+            }
+            var confirmedHash = hash
+            if reason == nil && readBack && model != .sizeOnly {
+                do {
+                    let rb = try readBackHash(path: part, model: model, chunkSize: chunkSize, cancel: cancel)
+                    if rb != sourceHash { reason = "Checksum diferit la recitirea de pe disc." }
+                    confirmedHash = rb
+                } catch is OffloadCancelled {
+                    try? fm.removeItem(atPath: part)
+                    for d in destinationPaths { try? fm.removeItem(atPath: PartialFile.path(for: d)) }
+                    throw OffloadCancelled()
+                } catch {
+                    reason = "Recitirea a eșuat: \(error.localizedDescription)"
+                }
+            }
+            if let reason {
+                try? fm.removeItem(atPath: part)
+                final[dst] = .mismatch(hash: confirmedHash, bytesWritten: written, reason: reason)
+                continue
+            }
+            // rename(2) înlocuiește atomic un fișier final preexistent.
+            if Darwin.rename(part, dst) != 0 {
+                let code = errno
+                try? fm.removeItem(atPath: part)
+                final[dst] = .failure(NSError(domain: NSPOSIXErrorDomain, code: Int(code), userInfo: [
+                    NSLocalizedDescriptionKey: "Finalizarea (redenumirea) a eșuat: \(String(cString: strerror(code)))"]))
+                continue
+            }
+            flushDirectory((dst as NSString).deletingLastPathComponent)
+            final[dst] = .success(hash: confirmedHash, bytesWritten: written)
+        }
+        return FanOutResult(sourceHash: sourceHash, bytesRead: bytesRead, destinations: final)
     }
 }

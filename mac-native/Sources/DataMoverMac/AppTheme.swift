@@ -17,11 +17,7 @@ enum AppTheme: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 
     var label: String {
-        switch self {
-        case .system: return "Sistem"
-        case .light: return "Luminos"
-        case .dark: return "Întunecat"
-        }
+        L.t("theme.\(rawValue)")
     }
 
     var nsAppearance: NSAppearance? {

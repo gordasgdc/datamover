@@ -36,6 +36,8 @@ final class DestinationContext: @unchecked Sendable {
     private(set) var cancelled = false
     private(set) var okCount = 0, skipCount = 0, failCount = 0
     private(set) var recoveredCount = 0
+    /// Octeți confirmați (copiați + verificați) la această destinație.
+    private(set) var bytesConfirmed: Int64 = 0
     /// Fișierele eșuate (EROARE/NEPOTRIVIRE) la prima trecere — reținute
     /// ca să poată fi reîncercate la finalul transferului. Cheie = relPath,
     /// ca să poată fi intersectate rapid cu lista globală de reîncercare
@@ -79,7 +81,23 @@ final class DestinationContext: @unchecked Sendable {
     /// Pregătește destinația: creează folderul țintă, deschide CSV-ul,
     /// pornește MHL-ul, încarcă checkpoint-ul existent (dacă `resume`).
     /// Identic ca efect cu începutul vechiului `DestinationJob.run()`.
+    /// Rădăcina destinației există încă (volum montat). Dacă un disc extern
+    /// e scos, `/Volumes/X` dispare; fără garda asta, `createDirectory` cu
+    /// directoare intermediare ar putea recrea calea pe discul intern.
+    var isAvailable: Bool {
+        var isDir: ObjCBool = false
+        return FileManager.default.fileExists(atPath: destRoot, isDirectory: &isDir) && isDir.boolValue
+    }
+
+    /// Motivul pentru care checkpoint-ul existent a fost ignorat (nil = fie
+    /// valid, fie inexistent). Consemnat în jurnal, nu înghițit.
+    private(set) var checkpointRejection: String?
+
     func prepare(resume: Bool) {
+        guard isAvailable else {
+            onActivity("Destinația nu mai e disponibilă: \(destRoot)")
+            return
+        }
         try? FileManager.default.createDirectory(atPath: targetRoot, withIntermediateDirectories: true)
         openCSV()
         if generateMHL {
@@ -95,14 +113,22 @@ final class DestinationContext: @unchecked Sendable {
                 onActivity("MHL: nu se poate genera cu \(verificationModel.label) — standardul MHL acceptă doar xxHash64, MD5 sau SHA-1.")
             }
         }
-        if resume, let saved = CheckpointStore.load(targetRoot: targetRoot) {
-            filesStatus = saved
-            var done: Set<String> = []
-            for (relPath, status) in saved where status == "ok" || status == "sarit" {
-                done.insert(relPath)
+        if resume {
+            switch CheckpointStore.loadValidated(targetRoot: targetRoot, folderName: folderName,
+                                                  verificationModel: verificationModel.rawValue) {
+            case .none: break
+            case .rejected(let reason):
+                checkpointRejection = reason
+                onActivity("Checkpoint ignorat (\(reason)) — fișierele existente se reverifică.")
+            case .valid(let saved):
+                applyCheckpoint(saved)
             }
-            alreadyDone = done
         }
+    }
+
+    private func applyCheckpoint(_ saved: [String: String]) {
+        filesStatus = saved
+        alreadyDone = Set(saved.filter { $0.value == "ok" || $0.value == "sarit" }.keys)
     }
 
     enum Classification {
@@ -122,14 +148,17 @@ final class DestinationContext: @unchecked Sendable {
     /// fișierul PENTRU ACEASTĂ destinație (fiecare destinație poate avea
     /// un răspuns diferit pentru același fișier).
     func classify(entry: FileEntry, allowSkipExisting: Bool) -> Classification {
-        if alreadyDone.contains(entry.relPath) { return .alreadyDone }
-        guard allowSkipExisting else { return .needsCopy }
         let path = destPath(for: entry)
-        guard FileManager.default.fileExists(atPath: path),
-              let existingSize = (try? FileManager.default.attributesOfItem(atPath: path)[.size] as? Int64) ?? nil,
-              existingSize == entry.size else {
-            return .needsCopy
+        let existingSize = (try? FileManager.default.attributesOfItem(atPath: path)[.size] as? Int64) ?? nil
+        // Checkpoint-ul spune „gata”, dar fișierul trebuie să existe încă, cu
+        // mărimea sursei. Altfel (șters, trunchiat) se recopiază.
+        if alreadyDone.contains(entry.relPath) {
+            if existingSize == entry.size { return .alreadyDone }
+            alreadyDone.remove(entry.relPath)
+            filesStatus[entry.relPath] = nil
+            onActivity("Checkpoint depășit: \(entry.relPath) lipsește sau are altă mărime — se recopiază.")
         }
+        guard allowSkipExisting, existingSize == entry.size else { return .needsCopy }
         return .existingSameSize
     }
 
@@ -158,22 +187,24 @@ final class DestinationContext: @unchecked Sendable {
     /// printr-o recitire a destinației de pe disc).
     func recordCopyOutcome(entry: FileEntry, sourceHash: String, outcome: FanOutDestOutcome, isRetry: Bool) {
         switch outcome {
-        case .success(let hash, _):
-            let same = hash == sourceHash
-            let status = same ? (isRetry ? "OK (reîncercat)" : "OK") : (isRetry ? "NEPOTRIVIRE (reîncercat)" : "NEPOTRIVIRE")
-            if same {
-                if isRetry { failCount -= 1; recoveredCount += 1; onActivity("Recuperat la reîncercare: \(entry.relPath)") }
-                okCount += 1
-                filesStatus[entry.relPath] = "ok"
-                recordInMHL(entry: entry, hash: sourceHash)
-                cloudUploadQueue?.enqueue(relPath: entry.relPath)
-            } else {
-                if !isRetry { failCount += 1; failedRelPaths.insert(entry.relPath) }
-                else { onActivity("Eșuat și la reîncercare: \(entry.relPath)") }
-                filesStatus[entry.relPath] = "fail"
-            }
+        case .success(let hash, let written):
+            // `.success` vine DOAR după confirmare + redenumire la numele final
+            // (vezi FanOutCopier.run) — nu se mai compară nimic aici.
+            if isRetry { failCount -= 1; recoveredCount += 1; failedRelPaths.remove(entry.relPath); onActivity("Recuperat la reîncercare: \(entry.relPath)") }
+            okCount += 1
+            bytesConfirmed += written
+            filesStatus[entry.relPath] = "ok"
+            recordInMHL(entry: entry, hash: sourceHash)
+            cloudUploadQueue?.enqueue(relPath: entry.relPath)
             logRow(ReportRow(file: entry.relPath, sizeBytes: entry.size, srcHash: sourceHash, dstHash: hash,
-                              status: status, error: "", destPath: destPath(for: entry)))
+                              status: isRetry ? "OK (reîncercat)" : "OK", error: "", destPath: destPath(for: entry)))
+        case .mismatch(let hash, _, let reason):
+            if !isRetry { failCount += 1; failedRelPaths.insert(entry.relPath) }
+            else { onActivity("Eșuat și la reîncercare: \(entry.relPath)") }
+            filesStatus[entry.relPath] = "fail"
+            logRow(ReportRow(file: entry.relPath, sizeBytes: entry.size, srcHash: sourceHash, dstHash: hash,
+                              status: isRetry ? "NEPOTRIVIRE (reîncercat)" : "NEPOTRIVIRE", error: reason,
+                              destPath: destPath(for: entry)))
         case .failure(let error):
             if !isRetry { failCount += 1; failedRelPaths.insert(entry.relPath) }
             else { onActivity("Eșuat și la reîncercare: \(entry.relPath)") }
@@ -200,8 +231,12 @@ final class DestinationContext: @unchecked Sendable {
     /// Șterge fișierul parțial de la destinație înainte de reîncercare —
     /// identic cu vechiul `retryFailed` (altfel logica "există deja,
     /// verific doar" l-ar putea considera bun).
+    /// [2026-09-26] Nu mai șterge fișierul final: copierea scrie într-un
+    /// fișier parțial și îl înlocuiește atomic doar la confirmare, deci un
+    /// fișier final vechi nu mai poate fi confundat cu unul verificat. Se
+    /// curăță doar un parțial rămas.
     func prepareForRetry(entry: FileEntry) {
-        try? FileManager.default.removeItem(atPath: destPath(for: entry))
+        try? FileManager.default.removeItem(atPath: PartialFile.path(for: destPath(for: entry)))
     }
 
     private func recordInMHL(entry: FileEntry, hash: String) {
@@ -308,10 +343,12 @@ final class DestinationContext: @unchecked Sendable {
             try? "Generarea raportului PDF a esuat la \(Date()).\n\nMotiv: \(reason)\n".write(toFile: errPath, atomically: true, encoding: .utf8)
         }
 
-        return DestinationResult(destRoot: destRoot, okCount: okCount, skipCount: skipCount,
+        var result = DestinationResult(destRoot: destRoot, okCount: okCount, skipCount: skipCount,
                                   failCount: failCount, cancelled: cancelled,
                                   csvPath: csvPath, pdfPath: savedPDF,
                                   htmlPath: htmlOK ? htmlPath : nil, mhlPath: mhlPath,
                                   recoveredCount: recoveredCount)
+        result.targetFolder = targetRoot
+        return result
     }
 }

@@ -28,7 +28,8 @@ enum L {
     }
 
     static func t(_ key: String) -> String {
-        table[key]?[current] ?? table[key]?[.ro] ?? key
+        let entry = table[key] ?? extraTable[key]
+        return entry?[current] ?? entry?[.ro] ?? key
     }
 
     fileprivate static let table: [String: [AppLanguage: String]] = [
