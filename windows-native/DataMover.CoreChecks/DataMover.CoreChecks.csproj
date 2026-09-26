@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Verificari deterministe ale motorului de copiere (FanOutCopier), fara
+       dependinte Windows: compileaza DOAR sursele pure ale Core si ruleaza
+       pe orice OS (inclusiv macOS, cu SDK-ul instalat). Nu e livrat. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RollForward>Major</RollForward>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../DataMover.Core/Services/FanOutCopier.cs" />
+    <Compile Include="../DataMover.Core/Services/XxHash64.cs" />
+    <Compile Include="../DataMover.Core/Services/OffloadEngine.cs" />
+    <Compile Include="../DataMover.Core/Models/*.cs" />
+  </ItemGroup>
+</Project>

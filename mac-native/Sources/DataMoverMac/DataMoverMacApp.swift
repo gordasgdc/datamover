@@ -11,6 +11,9 @@ struct DataMoverMacApp: App {
         // (politica de activare, alerta, terminarea după mutare).
         NotificationCenter.default.addObserver(forName: NSApplication.didFinishLaunchingNotification,
                                                object: nil, queue: .main) { _ in
+            // Aici NSApp există sigur; apelul din `init` de mai jos rula
+            // înainte de el, deci tema salvată (Dark/Light) nu se aplica.
+            ThemeManager.shared.applyNow()
             AppMover.promptIfNeeded()
         }
         ThemeManager.shared.applyNow()
