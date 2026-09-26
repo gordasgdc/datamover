@@ -126,6 +126,53 @@ final class RunnerIntegrationTests: XCTestCase {
         XCTAssertTrue(runner.activityLines.contains { $0.contains("Checkpoint ignorat") })
     }
 
+    /// Card nou la ACEEAȘI cale, cu aceleași nume și mărimi, dar alt
+    /// conținut: checkpoint-ul vechi nu are voie să sară nimic. Destinația
+    /// ajunge să conțină exact noua sursă.
+    func testReplacedSourceAtSamePathIsNeverSkipped() async throws {
+        let sb = Sandbox()
+        let src = makeCard(sb)
+        let d1 = sb.dir("A")
+        let runner = OffloadRunner()
+        try await runTransfer(runner, sources: [src], destinations: [d1])
+        XCTAssertEqual(runner.lastOutcome, .success)
+        // „Alt card”: aceleași căi relative și mărimi, alt conținut.
+        try FileManager.default.removeItem(atPath: src)
+        sb.file("CARD/CLIP/A001.mov", bytes: 700_000, seed: 91)
+        sb.file("CARD/CLIP/A002.mov", bytes: 123_457, seed: 92)
+        sb.file("CARD/CLIP/EMPTY.wav", bytes: 0)
+        sb.file("CARD/META/index.xml", bytes: 999, seed: 93)
+        for rel in ["CLIP/A001.mov", "CLIP/A002.mov", "CLIP/EMPTY.wav", "META/index.xml"] {
+            try FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(3600)],
+                                                  ofItemAtPath: src + "/" + rel)
+        }
+        try await runTransfer(runner, sources: [src], destinations: [d1], resume: true)
+        XCTAssertEqual(runner.lastOutcome, .success)
+        XCTAssertTrue(runner.activityLines.contains { $0.contains("altă sursă") })
+        let r = runner.lastResults[0]
+        XCTAssertEqual(r.skipCount + r.okCount, 4)
+        for rel in ["CLIP/A001.mov", "CLIP/A002.mov", "META/index.xml"] {
+            XCTAssertEqual(try hashOfFile(path: d1 + "/JOB/" + rel, model: .sha256, cancel: CancelToken()),
+                           try hashOfFile(path: src + "/" + rel, model: .sha256, cancel: CancelToken()), rel)
+        }
+    }
+
+    /// Același conținut, altă cale a sursei → checkpoint respins; fișierele
+    /// existente se reverifică prin citire (sărite doar după comparare).
+    func testSameContentOtherPathReverifiesInsteadOfTrustingCheckpoint() async throws {
+        let sb = Sandbox()
+        let src = makeCard(sb)
+        let d1 = sb.dir("A")
+        let runner = OffloadRunner()
+        try await runTransfer(runner, sources: [src], destinations: [d1])
+        let moved = (sb.root as NSString).appendingPathComponent("CARD2")
+        try FileManager.default.copyItem(atPath: src, toPath: moved)
+        try await runTransfer(runner, sources: [moved], destinations: [d1], resume: true)
+        XCTAssertEqual(runner.lastOutcome, .success)
+        XCTAssertTrue(runner.activityLines.contains { $0.contains("Checkpoint ignorat") })
+        XCTAssertTrue(runner.activityLines.contains { $0.contains("Verificare fisier existent") })
+    }
+
     func testPreflightBlocksDestinationInsideSource() async throws {
         let sb = Sandbox()
         let src = makeCard(sb)

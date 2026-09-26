@@ -55,12 +55,21 @@ struct TransferIssueError: LocalizedError {
     var errorDescription: String? { message }
 }
 
+/// Ce s-a obținut efectiv la o destinație (pentru jurnal și rapoarte).
+struct DestinationDurability: Equatable {
+    var fileFlush: FlushLevel?
+    var directoryFlush: FlushLevel?
+    /// nil = recitirea nu a rulat; false = F_NOCACHE refuzat de volum.
+    var readBackCacheBypass: Bool?
+}
+
 struct FanOutResult {
     /// Hash-ul sursei, calculat o singură dată, din bucățile citite.
     let sourceHash: String
     let bytesRead: Int64
     /// Cheie = calea destinației.
     let destinations: [String: FanOutDestOutcome]
+    var durability: [String: DestinationDurability] = [:]
 }
 
 /// Wrapper incremental unificat peste toate modelele de verificare —
@@ -163,67 +172,14 @@ final class BoundedChunkQueue {
     }
 }
 
-/// [M2, 2026-09-06] Flush FIZIC pe disc — obligatoriu înainte de a marca
-/// un fișier "OK". Motiv: apelurile standard de scriere (`FileHandle.write`)
-/// scriu doar în cache-ul RAM al sistemului de operare, NU garantează că
-/// datele au ajuns pe cipurile flash. Dacă userul scoate cardul/SSD-ul din
-/// mufă imediat după ce bara de progres arată 100%, fișierele pot rămâne
-/// corupte — exact scenariul pe care un ofloader profesional trebuie să-l
-/// elimine matematic, nu doar statistic.
-///
-/// `fsync(2)` obișnuit NU e suficient pe macOS — documentat oficial de
-/// Apple (`man fsync`): pe multe dispozitive de stocare, controllerul
-/// hardware raportează scrierea ca „terminată" imediat ce a ajuns în
-/// propriul cache electric, ÎNAINTE de a ajunge fizic pe celulele flash.
-/// `F_FULLFSYNC` (specific Apple, via `fcntl`) e singurul apel care cere
-/// explicit controllerului să golească ACEL cache și să confirme scrierea
-/// fizică reală.
-///
-/// Degradare controlată: unele sisteme de fișiere (volume de rețea SMB/
-/// NFS, unele formatări exFAT/FAT32 vechi) NU suportă `F_FULLFSYNC` —
-/// întorc `ENOTSUP`. În acel caz, cade pe `fsync()` simplu (tot mai bine
-/// decât nimic) — NU tratăm asta ca eroare de transfer. Orice ALTĂ eroare
-/// (disc efectiv deconectat, defect) chiar trebuie să oprească fișierul
-/// respectiv cu eroare — datele nu sunt confirmate pe disc.
-func physicalFlush(_ handle: FileHandle) throws {
-    if fcntl(handle.fileDescriptor, F_FULLFSYNC) == -1 {
-        let code = errno
-        if code == ENOTSUP {
-            _ = fsync(handle.fileDescriptor) // fallback - vezi comentariul de mai sus
-        } else {
-            throw NSError(domain: NSPOSIXErrorDomain, code: Int(code),
-                           userInfo: [NSLocalizedDescriptionKey: "Flush fizic eșuat: \(String(cString: strerror(code)))"])
-        }
-    }
-}
 
-/// `fsync` pe folderul părinte după `rename` — altfel redenumirea poate
-/// rămâne doar în cache la o scoatere bruscă a discului. Unele sisteme de
-/// fișiere (exFAT, SMB) nu suportă operația pe foldere: se ignoră.
-func flushDirectory(_ dir: String) {
-    let fd = open(dir, O_RDONLY)
-    guard fd >= 0 else { return }
-    if fcntl(fd, F_FULLFSYNC) == -1 { _ = fsync(fd) }
-    close(fd)
-}
+/// Operațiile de scriere, injectabile în teste (ex. o destinație care
+/// eșuează la a N-a bucată).
+struct FanOutIO {
+    var write: (FileHandle, Data, String) throws -> Void
+    var flush: FlushPrimitives
 
-/// Recitește un fișier de pe disc ocolind cache-ul (`F_NOCACHE`) și îi
-/// calculează hash-ul. Folosit de verificarea „read-back”.
-func readBackHash(path: String, model: VerificationModel, chunkSize: Int, cancel: CancelToken) throws -> String {
-    guard let handle = FileHandle(forReadingAtPath: path) else {
-        throw TransferIssueError(message: "Nu pot reciti \(path)")
-    }
-    defer { try? handle.close() }
-    _ = fcntl(handle.fileDescriptor, F_NOCACHE, 1)
-    var hasher = IncrementalHasher(model: model)
-    while true {
-        if cancel.isCancelled { throw OffloadCancelled() }
-        var chunk: Data?
-        try autoreleasepool { chunk = try handle.read(upToCount: chunkSize) }
-        guard let chunk, !chunk.isEmpty else { break }
-        hasher.update(chunk)
-    }
-    return hasher.finalizeHex()
+    static let system = FanOutIO(write: { h, d, _ in try h.write(contentsOf: d) }, flush: .system)
 }
 
 final class FanOutCopier {
@@ -236,11 +192,12 @@ final class FanOutCopier {
     private let pause: PauseToken
     private let expectedSize: Int64?
     private let readBack: Bool
+    private let io: FanOutIO
 
     init(sourcePath: String, destinationPaths: [String], chunkSize: Int,
          ringDepth: Int = 3, model: VerificationModel,
          cancel: CancelToken, pause: PauseToken,
-         expectedSize: Int64? = nil, readBack: Bool = false) {
+         expectedSize: Int64? = nil, readBack: Bool = false, io: FanOutIO = .system) {
         self.sourcePath = sourcePath
         self.destinationPaths = destinationPaths
         self.chunkSize = chunkSize
@@ -250,6 +207,7 @@ final class FanOutCopier {
         self.pause = pause
         self.expectedSize = expectedSize
         self.readBack = readBack
+        self.io = io
     }
 
     private static func sourceStamp(_ path: String) -> (size: Int64, mtime: Date)? {
@@ -258,14 +216,16 @@ final class FanOutCopier {
         return (size, m)
     }
 
-    /// Contract:
-    /// - sursa e doar citită (`O_RDONLY`), niciodată scrisă sau mutată;
+    /// Contract (vezi ARCHITECTURE.md):
+    /// - sursa e doar citită, niciodată scrisă sau mutată;
     /// - fiecare destinație se scrie în `PartialFile.path(for:)`, primește
-    ///   flush fizic, apoi e redenumită la numele final DOAR dacă hash-ul (sau
-    ///   mărimea, la `.sizeOnly`) coincide cu sursa și sursa nu s-a schimbat;
-    /// - la orice eșec/anulare, fișierul parțial se șterge, iar un fișier
-    ///   final preexistent rămâne neatins.
-    /// `onBytesRead` — apelat de pe thread-ul de citire, o dată per bucată.
+    ///   flush obligatoriu (`Durability.swift`), apoi e redenumită la numele
+    ///   final DOAR dacă mărimea și checksum-ul coincid cu sursa, iar sursa
+    ///   nu s-a schimbat în timpul citirii;
+    /// - la orice eșec/anulare, parțialul se șterge; un fișier final
+    ///   preexistent rămâne neatins;
+    /// - o destinație care eșuează își golește coada (nu blochează cititorul)
+    ///   și nu le afectează pe celelalte.
     func run(onBytesRead: @escaping (Int64) -> Void) throws -> FanOutResult {
         let stampBefore = Self.sourceStamp(sourcePath)
         guard let input = FileHandle(forReadingAtPath: sourcePath) else {
@@ -279,9 +239,11 @@ final class FanOutCopier {
         }
 
         var results: [String: FanOutDestOutcome] = [:]
+        var durability: [String: DestinationDurability] = [:]
         let resultsLock = NSLock()
         let group = DispatchGroup()
         let fm = FileManager.default
+        let io = self.io
 
         for dst in destinationPaths {
             group.enter()
@@ -300,15 +262,15 @@ final class FanOutCopier {
                     var written: Int64 = 0
                     while let chunk = queue.pop() {
                         try autoreleasepool {
-                            try output.write(contentsOf: chunk)
+                            try io.write(output, chunk, dst)
                         }
                         hasher.update(chunk)
                         written += Int64(chunk.count)
                     }
-                    // [M2] Flush fizic OBLIGATORIU inainte de confirmare.
-                    try physicalFlush(output)
+                    let level = try physicalFlush(output, using: io.flush)
                     resultsLock.lock()
                     results[dst] = .success(hash: hasher.finalizeHex(), bytesWritten: written)
+                    durability[dst, default: DestinationDurability()].fileFlush = level
                     resultsLock.unlock()
                 } catch {
                     resultsLock.lock()
@@ -382,14 +344,14 @@ final class FanOutCopier {
             if reason == nil && model != .sizeOnly && hash != sourceHash {
                 reason = "Checksum diferit."
             }
-            var confirmedHash = hash
+            // Recitirea e o verificare SEPARATĂ, după checksum-ul din flux:
+            // ambele trebuie să coincidă cu sursa.
             if reason == nil && readBack && model != .sizeOnly {
                 do {
                     let rb = try readBackHash(path: part, model: model, chunkSize: chunkSize, cancel: cancel)
-                    if rb != sourceHash { reason = "Checksum diferit la recitirea de pe disc." }
-                    confirmedHash = rb
+                    durability[dst, default: DestinationDurability()].readBackCacheBypass = rb.cacheBypassRequested
+                    if rb.hash != sourceHash { reason = "Checksum diferit la recitire." }
                 } catch is OffloadCancelled {
-                    try? fm.removeItem(atPath: part)
                     for d in destinationPaths { try? fm.removeItem(atPath: PartialFile.path(for: d)) }
                     throw OffloadCancelled()
                 } catch {
@@ -398,20 +360,27 @@ final class FanOutCopier {
             }
             if let reason {
                 try? fm.removeItem(atPath: part)
-                final[dst] = .mismatch(hash: confirmedHash, bytesWritten: written, reason: reason)
+                final[dst] = .mismatch(hash: hash, bytesWritten: written, reason: reason)
                 continue
             }
             // rename(2) înlocuiește atomic un fișier final preexistent.
             if Darwin.rename(part, dst) != 0 {
                 let code = errno
                 try? fm.removeItem(atPath: part)
-                final[dst] = .failure(NSError(domain: NSPOSIXErrorDomain, code: Int(code), userInfo: [
-                    NSLocalizedDescriptionKey: "Finalizarea (redenumirea) a eșuat: \(String(cString: strerror(code)))"]))
+                final[dst] = .failure(posixError(code, "Finalizarea (redenumirea) a eșuat"))
                 continue
             }
-            flushDirectory((dst as NSString).deletingLastPathComponent)
-            final[dst] = .success(hash: confirmedHash, bytesWritten: written)
+            do {
+                let level = try flushDirectory((dst as NSString).deletingLastPathComponent, using: io.flush)
+                durability[dst, default: DestinationDurability()].directoryFlush = level
+                final[dst] = .success(hash: hash, bytesWritten: written)
+            } catch {
+                // Conținutul e confirmat, dar persistența numelui nu: fișierul
+                // rămâne la destinație, raportat NECONFIRMAT (reîncercarea îl
+                // rescrie).
+                final[dst] = .failure(TransferIssueError(message: "Fișier scris, dar persistența pe disc neconfirmată: \(error.localizedDescription)"))
+            }
         }
-        return FanOutResult(sourceHash: sourceHash, bytesRead: bytesRead, destinations: final)
+        return FanOutResult(sourceHash: sourceHash, bytesRead: bytesRead, destinations: final, durability: durability)
     }
 }

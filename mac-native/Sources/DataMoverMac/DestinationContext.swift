@@ -28,6 +28,7 @@ final class DestinationContext: @unchecked Sendable {
     let generateMHL: Bool
     let meta: ProductionMeta
     let sourceRoot: String?
+    let sourceIdentity: SourceIdentity
     let cloudUploadQueue: CloudUploadQueue?
     let onActivity: (_ line: String) -> Void
     let onPermissionError: (_ path: String) -> Void
@@ -47,6 +48,10 @@ final class DestinationContext: @unchecked Sendable {
 
     private var alreadyDone: Set<String> = []
     private var filesStatus: [String: String] = [:]
+    /// Amprenta sursei (mărime:mtime) pentru fiecare fișier confirmat.
+    private var fileStamps: [String: String] = [:]
+    private var checkpointErrorLogged = false
+    private var durabilityNotes: Set<String> = []
     private var filesSinceCheckpoint = 0
     private var lastCheckpointTime = Date.distantPast
     private var pdfSampleRows: [ReportRow] = []
@@ -57,7 +62,7 @@ final class DestinationContext: @unchecked Sendable {
     let startedAt: Date
 
     init(destRoot: String, folderName: String, verificationModel: VerificationModel,
-         generateMHL: Bool, meta: ProductionMeta, sourceRoot: String?,
+         generateMHL: Bool, meta: ProductionMeta, sourceRoot: String?, sourceIdentity: SourceIdentity,
          cloudUploadQueue: CloudUploadQueue?, startedAt: Date,
          onActivity: @escaping (_ line: String) -> Void,
          onPermissionError: @escaping (_ path: String) -> Void) {
@@ -67,6 +72,7 @@ final class DestinationContext: @unchecked Sendable {
         self.generateMHL = generateMHL
         self.meta = meta
         self.sourceRoot = sourceRoot
+        self.sourceIdentity = sourceIdentity
         self.cloudUploadQueue = cloudUploadQueue
         self.startedAt = startedAt
         self.onActivity = onActivity
@@ -115,7 +121,8 @@ final class DestinationContext: @unchecked Sendable {
         }
         if resume {
             switch CheckpointStore.loadValidated(targetRoot: targetRoot, folderName: folderName,
-                                                  verificationModel: verificationModel.rawValue) {
+                                                  verificationModel: verificationModel.rawValue,
+                                                  identity: sourceIdentity) {
             case .none: break
             case .rejected(let reason):
                 checkpointRejection = reason
@@ -126,9 +133,10 @@ final class DestinationContext: @unchecked Sendable {
         }
     }
 
-    private func applyCheckpoint(_ saved: [String: String]) {
-        filesStatus = saved
-        alreadyDone = Set(saved.filter { $0.value == "ok" || $0.value == "sarit" }.keys)
+    private func applyCheckpoint(_ saved: CheckpointStore.Loaded) {
+        filesStatus = saved.files
+        fileStamps = saved.stamps
+        alreadyDone = Set(saved.files.filter { $0.value == "ok" || $0.value == "sarit" }.keys)
     }
 
     enum Classification {
@@ -152,11 +160,14 @@ final class DestinationContext: @unchecked Sendable {
         let existingSize = (try? FileManager.default.attributesOfItem(atPath: path)[.size] as? Int64) ?? nil
         // Checkpoint-ul spune „gata”, dar fișierul trebuie să existe încă, cu
         // mărimea sursei. Altfel (șters, trunchiat) se recopiază.
+        // În plus, amprenta sursei (mărime:mtime) trebuie să fie cea de la
+        // confirmare — identitatea globală a sursei a fost deja verificată.
         if alreadyDone.contains(entry.relPath) {
-            if existingSize == entry.size { return .alreadyDone }
+            if existingSize == entry.size, fileStamps[entry.relPath] == entry.stamp { return .alreadyDone }
             alreadyDone.remove(entry.relPath)
             filesStatus[entry.relPath] = nil
-            onActivity("Checkpoint depășit: \(entry.relPath) lipsește sau are altă mărime — se recopiază.")
+            fileStamps[entry.relPath] = nil
+            onActivity("Checkpoint depășit: \(entry.relPath) lipsește, are altă mărime sau sursa diferă — se reverifică.")
         }
         guard allowSkipExisting, existingSize == entry.size else { return .needsCopy }
         return .existingSameSize
@@ -174,6 +185,7 @@ final class DestinationContext: @unchecked Sendable {
     func recordVerifiedExisting(entry: FileEntry, srcHash: String, dstHash: String) {
         skipCount += 1
         filesStatus[entry.relPath] = "sarit"
+        fileStamps[entry.relPath] = entry.stamp
         logRow(ReportRow(file: entry.relPath, sizeBytes: entry.size, srcHash: srcHash, dstHash: dstHash,
                           status: "SARIT", error: "", destPath: destPath(for: entry)))
         recordInMHL(entry: entry, hash: srcHash)
@@ -194,6 +206,7 @@ final class DestinationContext: @unchecked Sendable {
             okCount += 1
             bytesConfirmed += written
             filesStatus[entry.relPath] = "ok"
+            fileStamps[entry.relPath] = entry.stamp
             recordInMHL(entry: entry, hash: sourceHash)
             cloudUploadQueue?.enqueue(relPath: entry.relPath)
             logRow(ReportRow(file: entry.relPath, sizeBytes: entry.size, srcHash: sourceHash, dstHash: hash,
@@ -251,14 +264,32 @@ final class DestinationContext: @unchecked Sendable {
         let dueByCount = filesSinceCheckpoint >= 10
         let dueByTime = now.timeIntervalSince(lastCheckpointTime) >= 5.0
         guard force || dueByCount || dueByTime else { return }
-        CheckpointStore.save(targetRoot: targetRoot, source: sourceRoot, folderName: folderName,
-                              verificationModel: verificationModel.rawValue, files: filesStatus,
-                              completed: force && !cancelled, totalFiles: filesStatus.count)
+        if let error = CheckpointStore.save(targetRoot: targetRoot, folderName: folderName,
+                                            verificationModel: verificationModel.rawValue, identity: sourceIdentity,
+                                            files: filesStatus, stamps: fileStamps.filter { filesStatus[$0.key] != nil },
+                                            completed: force && !cancelled),
+           !checkpointErrorLogged {
+            checkpointErrorLogged = true
+            onActivity("Checkpoint nesalvat (\(error.localizedDescription)) — nu afectează fișierele confirmate; o reluare le va reverifica.")
+        }
         filesSinceCheckpoint = 0
         lastCheckpointTime = now
     }
 
     func markCancelled() { cancelled = true }
+
+    /// Consemnează (o singură dată per tip) o garanție mai slabă obținută
+    /// efectiv la această destinație — raportată, nu ascunsă.
+    func noteDurability(_ d: DestinationDurability) {
+        var notes: [String] = []
+        if d.fileFlush == .fsyncFallback { notes.append("Volumul nu acceptă F_FULLFSYNC — s-a folosit fsync (cache-ul discului poate să nu fie golit).") }
+        if d.directoryFlush == .unsupported { notes.append("Volumul nu acceptă flush pe foldere — persistența numelor de fișier depinde de sistemul de fișiere.") }
+        if d.readBackCacheBypass == false { notes.append("Volumul a refuzat F_NOCACHE — recitirea poate fi servită din memoria cache.") }
+        for n in notes where !durabilityNotes.contains(n) {
+            durabilityNotes.insert(n)
+            onActivity("⚠ \((destRoot as NSString).lastPathComponent): \(n)")
+        }
+    }
 
     private func openCSV() {
         let formatter = DateFormatter()

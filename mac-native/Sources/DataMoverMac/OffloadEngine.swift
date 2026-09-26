@@ -15,6 +15,17 @@ struct FileEntry {
     let fullPath: String
     let relPath: String
     let size: Int64
+    /// Data modificării la scanare, în microsecunde — parte din identitatea
+    /// sursei (vezi `SourceIdentity`). 0 = necunoscută.
+    var mtimeMicros: Int64 = 0
+
+    /// „mărime:mtime” — amprenta per fișier salvată în checkpoint.
+    var stamp: String { "\(size):\(mtimeMicros)" }
+}
+
+func mtimeMicros(_ attrs: [FileAttributeKey: Any]) -> Int64 {
+    guard let d = attrs[.modificationDate] as? Date else { return 0 }
+    return Int64((d.timeIntervalSince1970 * 1_000_000).rounded())
 }
 
 /// Token de anulare thread-safe, echivalentul lui threading.Event() din
@@ -120,8 +131,11 @@ func listAllFiles(root: String, exclusions: [String] = []) -> [FileEntry] {
         let full = (root as NSString).appendingPathComponent(relPath)
         var isDir: ObjCBool = false
         guard fm.fileExists(atPath: full, isDirectory: &isDir), !isDir.boolValue else { continue }
-        let size = (try? fm.attributesOfItem(atPath: full)[.size] as? Int64) ?? nil
-        results.append(FileEntry(fullPath: full, relPath: relPath, size: size ?? 0))
+        // Symlink către fișier: se copiază conținutul țintei, deci mărimea și
+        // data trebuie să fie ale țintei (altfel verificarea mărimii ar eșua).
+        let attrs = (try? fm.attributesOfItem(atPath: (full as NSString).resolvingSymlinksInPath)) ?? [:]
+        results.append(FileEntry(fullPath: full, relPath: relPath, size: attrs[.size] as? Int64 ?? 0,
+                                 mtimeMicros: mtimeMicros(attrs)))
     }
     return results
 }
@@ -266,87 +280,6 @@ struct DestinationResult {
     /// Verdictul destinației — sursa unică pentru UI, istoric și ejectare.
     var outcome: DestinationOutcome {
         DestinationOutcome.evaluate(failCount: failCount, recoveredCount: recoveredCount, cancelled: cancelled)
-    }
-}
-
-// MARK: - Checkpoint (identic ca format cu core/checkpoint.py)
-
-private struct CheckpointData: Codable {
-    var source: String?
-    var folderName: String
-    var verificationModel: String
-    var completed: Bool
-    var files: [String: String]
-    var totalFiles: Int?
-
-    enum CodingKeys: String, CodingKey {
-        case source, completed, files
-        case folderName = "folder_name"
-        case verificationModel = "verification_model"
-        case totalFiles = "total_files"
-    }
-}
-
-enum CheckpointStore {
-    static let filename = "offload_checkpoint.json"
-
-    static func path(targetRoot: String) -> String {
-        (targetRoot as NSString).appendingPathComponent(filename)
-    }
-
-    enum LoadResult: Equatable {
-        case none
-        case valid([String: String])
-        case rejected(String)
-    }
-
-    /// Încarcă checkpoint-ul DOAR dacă aparține aceluiași transfer: același
-    /// folder țintă și același model de verificare. Un checkpoint corupt sau
-    /// făcut cu alt algoritm e respins (motivul e întors, nu înghițit) — o
-    /// reluare nu are voie să considere „verificat” ceva verificat altfel.
-    static func loadValidated(targetRoot: String, folderName: String, verificationModel: String) -> LoadResult {
-        let p = path(targetRoot: targetRoot)
-        guard let data = FileManager.default.contents(atPath: p) else { return .none }
-        guard let decoded = try? JSONDecoder().decode(CheckpointData.self, from: data) else {
-            return .rejected("fișier corupt")
-        }
-        if decoded.verificationModel != verificationModel {
-            return .rejected("alt model de verificare: \(decoded.verificationModel)")
-        }
-        if decoded.folderName != folderName {
-            return .rejected("alt folder: \(decoded.folderName)")
-        }
-        let known: Set<String> = ["ok", "sarit", "fail"]
-        if decoded.files.values.contains(where: { !known.contains($0) }) {
-            return .rejected("stare necunoscută în fișier")
-        }
-        return .valid(decoded.files)
-    }
-
-    static func load(targetRoot: String) -> [String: String]? {
-        let p = path(targetRoot: targetRoot)
-        guard let data = FileManager.default.contents(atPath: p),
-              let decoded = try? JSONDecoder().decode(CheckpointData.self, from: data) else { return nil }
-        return decoded.files
-    }
-
-    static func save(targetRoot: String, source: String?, folderName: String,
-                      verificationModel: String, files: [String: String],
-                      completed: Bool, totalFiles: Int) {
-        let payload = CheckpointData(source: source, folderName: folderName,
-                                      verificationModel: verificationModel, completed: completed,
-                                      files: files, totalFiles: totalFiles)
-        guard let data = try? JSONEncoder().encode(payload) else { return }
-        let p = path(targetRoot: targetRoot)
-        let tmp = p + ".tmp"
-        // Scriere atomică: tmp + flush + rename(2), care înlocuiește ținta
-        // într-un singur pas. Varianta veche (remove, apoi move) lăsa o
-        // fereastră fără niciun checkpoint pe disc.
-        do {
-            try data.write(to: URL(fileURLWithPath: tmp))
-            if let h = FileHandle(forWritingAtPath: tmp) { try? physicalFlush(h); try? h.close() }
-            if Darwin.rename(tmp, p) != 0 { _ = try? FileManager.default.removeItem(atPath: tmp) }
-        } catch { /* best-effort: checkpoint-ul e o optimizare, nu o dovadă */ }
     }
 }
 
@@ -837,7 +770,8 @@ final class OffloadRunner: ObservableObject {
                 let name = (src as NSString).lastPathComponent
                 if isExcluded(filename: name, exclusions: exclusions) { continue }
                 let size = (try? FileManager.default.attributesOfItem(atPath: src)[.size] as? Int64) ?? nil
-                files.append(FileEntry(fullPath: src, relPath: name, size: size ?? 0))
+                let attrs = (try? FileManager.default.attributesOfItem(atPath: src)) ?? [:]
+                files.append(FileEntry(fullPath: src, relPath: name, size: size ?? 0, mtimeMicros: mtimeMicros(attrs)))
             }
         }
         guard !files.isEmpty else {
@@ -869,6 +803,7 @@ final class OffloadRunner: ObservableObject {
             project: meta.project, card: meta.card, template: folderTemplate,
             camera: meta.camera, operatorName: meta.operatorName)
         let sourceRoot = sources.first
+        let identity = SourceIdentity.compute(sources: sources, files: files)
 
         // [2026-09-03] Spatiu insuficient: nu pornim deloc. ContentView
         // arata un alert cu cifrele exacte si un buton "Continuă oricum",
@@ -928,7 +863,7 @@ final class OffloadRunner: ObservableObject {
             )
             return DestinationContext(
                 destRoot: dest, folderName: folderName, verificationModel: verificationModel,
-                generateMHL: generateMHL, meta: meta, sourceRoot: sourceRoot,
+                generateMHL: generateMHL, meta: meta, sourceRoot: sourceRoot, sourceIdentity: identity,
                 cloudUploadQueue: cloudQueue, startedAt: started,
                 onActivity: { line in Task { @MainActor [weak self] in self?.logActivity(line) } },
                 onPermissionError: { path in
@@ -1046,6 +981,7 @@ final class OffloadRunner: ObservableObject {
                                 let outcome = result.destinations[destPath] ?? .failure(
                                     TransferIssueError(message: "Fără rezultat de la motorul de copiere"))
                                 ctx.recordCopyOutcome(entry: entry, sourceHash: result.sourceHash, outcome: outcome, isRetry: isRetry)
+                                if let d = result.durability[destPath] { ctx.noteDurability(d) }
                                 var ok = false
                                 if case .success = outcome { ok = true }
                                 if !ok { ctx.onActivity("Neconfirmat: \(entry.relPath) — \(Self.describe(outcome))") }

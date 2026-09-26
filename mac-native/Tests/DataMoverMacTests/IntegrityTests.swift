@@ -112,30 +112,172 @@ final class FanOutCopierTests: XCTestCase {
 }
 
 final class CheckpointTests: XCTestCase {
+    let identity = SourceIdentity(roots: ["/src"], volumes: ["V"], manifestDigest: "abc", fileCount: 1)
+
+    func load(_ root: String, folder: String = "JOB", model: String = "xxhash64", identity: SourceIdentity? = nil) -> CheckpointStore.LoadResult {
+        CheckpointStore.loadValidated(targetRoot: root, folderName: folder, verificationModel: model, identity: identity ?? self.identity)
+    }
+
     func testCorruptCheckpointIsRejected() {
         let sb = Sandbox()
         let root = sb.dir("dest/JOB")
         FileManager.default.createFile(atPath: CheckpointStore.path(targetRoot: root), contents: Data("{nu e json".utf8))
-        XCTAssertEqual(CheckpointStore.loadValidated(targetRoot: root, folderName: "JOB", verificationModel: "xxhash64"),
-                       .rejected("fișier corupt"))
+        XCTAssertEqual(load(root), .rejected("fișier corupt"))
     }
 
-    func testCheckpointWithOtherModelOrFolderIsRejected() {
+    /// Checkpoint vechi (schema 1, fără identitate) → respins conservator.
+    func testLegacyCheckpointWithoutIdentityIsRejected() {
         let sb = Sandbox()
         let root = sb.dir("dest/JOB")
-        CheckpointStore.save(targetRoot: root, source: "/x", folderName: "JOB", verificationModel: "md5",
-                             files: ["a": "ok"], completed: false, totalFiles: 1)
-        if case .rejected = CheckpointStore.loadValidated(targetRoot: root, folderName: "JOB", verificationModel: "xxhash64") {} else { XCTFail() }
-        if case .rejected = CheckpointStore.loadValidated(targetRoot: root, folderName: "OTHER", verificationModel: "md5") {} else { XCTFail() }
-        XCTAssertEqual(CheckpointStore.loadValidated(targetRoot: root, folderName: "JOB", verificationModel: "md5"), .valid(["a": "ok"]))
+        let legacy = #"{"source":"/src","folder_name":"JOB","verification_model":"xxhash64","completed":false,"files":{"a":"ok"}}"#
+        FileManager.default.createFile(atPath: CheckpointStore.path(targetRoot: root), contents: Data(legacy.utf8))
+        guard case .rejected(let why) = load(root) else { return XCTFail() }
+        XCTAssertTrue(why.contains("format vechi"))
+    }
+
+    func testCheckpointMustMatchModelFolderAndIdentity() {
+        let sb = Sandbox()
+        let root = sb.dir("dest/JOB")
+        XCTAssertNil(CheckpointStore.save(targetRoot: root, folderName: "JOB", verificationModel: "md5", identity: identity,
+                                          files: ["a": "ok"], stamps: ["a": "1:2"], completed: false))
+        if case .rejected = load(root, model: "xxhash64") {} else { XCTFail("model") }
+        if case .rejected = load(root, folder: "OTHER", model: "md5") {} else { XCTFail("folder") }
+        let other = SourceIdentity(roots: ["/src"], volumes: ["V"], manifestDigest: "zzz", fileCount: 1)
+        if case .rejected = load(root, model: "md5", identity: other) {} else { XCTFail("identity") }
+        XCTAssertEqual(load(root, model: "md5"), .valid(.init(files: ["a": "ok"], stamps: ["a": "1:2"])))
         XCTAssertFalse(FileManager.default.fileExists(atPath: CheckpointStore.path(targetRoot: root) + ".tmp"))
+    }
+
+    func testUnknownStateIsRejected() {
+        let sb = Sandbox()
+        let root = sb.dir("dest/JOB")
+        CheckpointStore.save(targetRoot: root, folderName: "JOB", verificationModel: "xxhash64", identity: identity,
+                             files: ["a": "maybe"], stamps: [:], completed: false)
+        guard case .rejected = load(root) else { return XCTFail() }
+    }
+
+    /// Identitatea depinde de conținutul listat (mărime + mtime), de cale și
+    /// de volum — nu doar de nume.
+    func testIdentityDistinguishesSameNamesAndSizes() throws {
+        let sb = Sandbox()
+        let a = sb.file("A/CLIP/x.mov", bytes: 100, seed: 1)
+        let b = sb.file("B/CLIP/x.mov", bytes: 100, seed: 2)
+        let rootA = (sb.root as NSString).appendingPathComponent("A")
+        let rootB = (sb.root as NSString).appendingPathComponent("B")
+        let fa = listAllFiles(root: rootA), fb = listAllFiles(root: rootB)
+        XCTAssertNotEqual(SourceIdentity.compute(sources: [rootA], files: fa), SourceIdentity.compute(sources: [rootB], files: fb))
+        // Aceeași cale, conținut înlocuit (mtime diferit) → identitate diferită.
+        let before = SourceIdentity.compute(sources: [rootA], files: fa)
+        try FileManager.default.removeItem(atPath: a)
+        FileManager.default.createFile(atPath: a, contents: try Data(contentsOf: URL(fileURLWithPath: b)))
+        try FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(100)], ofItemAtPath: a)
+        XCTAssertNotEqual(before, SourceIdentity.compute(sources: [rootA], files: listAllFiles(root: rootA)))
+        // Aceeași sursă, neatinsă → identitate identică (reluarea legitimă merge).
+        let again = SourceIdentity.compute(sources: [rootA], files: listAllFiles(root: rootA))
+        XCTAssertEqual(again, SourceIdentity.compute(sources: [rootA], files: listAllFiles(root: rootA)))
+    }
+}
+
+final class DurabilityTests: XCTestCase {
+    func prims(full: Int32, fsync: Int32) -> FlushPrimitives { FlushPrimitives(fullFsync: { _ in full }, fsync: { _ in fsync }) }
+
+    func testFullFsyncAccepted() throws {
+        XCTAssertEqual(try physicalFlush(fd: 0, using: prims(full: 0, fsync: EIO)), .full)
+    }
+
+    func testFallbackOnlyWhenUnsupportedAndSucceeds() throws {
+        XCTAssertEqual(try physicalFlush(fd: 0, using: prims(full: ENOTSUP, fsync: 0)), .fsyncFallback)
+        XCTAssertEqual(try physicalFlush(fd: 0, using: prims(full: EINVAL, fsync: 0)), .fsyncFallback)
+    }
+
+    func testFallbackFailurePreservesErrno() {
+        XCTAssertThrowsError(try physicalFlush(fd: 0, using: prims(full: ENOTSUP, fsync: EIO))) { e in
+            XCTAssertEqual((e as NSError).domain, NSPOSIXErrorDomain)
+            XCTAssertEqual((e as NSError).code, Int(EIO))
+        }
+    }
+
+    /// O eroare reală a F_FULLFSYNC (nu „nesuportat”) NU cade pe fsync.
+    func testRealFullFsyncErrorIsNotMaskedByFallback() {
+        XCTAssertThrowsError(try physicalFlush(fd: 0, using: prims(full: EIO, fsync: 0))) { e in
+            XCTAssertEqual((e as NSError).code, Int(EIO))
+        }
+    }
+
+    func testDirectoryFlushPolicy() throws {
+        let sb = Sandbox()
+        XCTAssertEqual(try flushDirectory(sb.root, using: prims(full: ENOTSUP, fsync: ENOTSUP)), .unsupported)
+        XCTAssertEqual(try flushDirectory(sb.root, using: prims(full: ENOTSUP, fsync: 0)), .fsyncFallback)
+        XCTAssertThrowsError(try flushDirectory(sb.root, using: prims(full: EIO, fsync: 0)))
+        XCTAssertEqual(try flushDirectory(sb.root), .full, "APFS acceptă F_FULLFSYNC pe foldere")
+    }
+
+    /// Flush eșuat în copiere → fișier neconfirmat, fără nume final.
+    func testCopyWithFailingFlushIsNotConfirmed() throws {
+        let sb = Sandbox()
+        let src = sb.file("src/a.bin", bytes: 10_000)
+        let dst = (sb.dir("d") as NSString).appendingPathComponent("a.bin")
+        let io = FanOutIO(write: FanOutIO.system.write, flush: prims(full: ENOTSUP, fsync: EIO))
+        let r = try FanOutCopier(sourcePath: src, destinationPaths: [dst], chunkSize: 4096, model: .xxhash64,
+                                 cancel: CancelToken(), pause: PauseToken(), expectedSize: 10_000, io: io).run { _ in }
+        guard case .failure(let e) = r.destinations[dst] else { return XCTFail() }
+        XCTAssertEqual((e as NSError).code, Int(EIO))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: dst))
+        XCTAssertTrue(partialFiles(under: sb.root).isEmpty)
+    }
+
+    func testReadBackReportsRefusedNoCache() throws {
+        let sb = Sandbox()
+        let f = sb.file("a.bin", bytes: 5000)
+        let refused = try readBackHash(path: f, model: .xxhash64, chunkSize: 1024, cancel: CancelToken(), setNoCache: { _ in EINVAL })
+        XCTAssertFalse(refused.cacheBypassRequested)
+        let accepted = try readBackHash(path: f, model: .xxhash64, chunkSize: 1024, cancel: CancelToken())
+        XCTAssertTrue(accepted.cacheBypassRequested)
+        XCTAssertEqual(refused.hash, accepted.hash)
+    }
+}
+
+final class FanOutFailureTests: XCTestCase {
+    /// O destinație care eșuează la a 3-a bucată, pe un fișier de ~64 de
+    /// bucăți cu coadă de adâncime 2: cititorul nu se blochează, cealaltă
+    /// destinație se confirmă, nu rămân parțiale. Limită de timp strictă.
+    func testFailingWriterDoesNotDeadlockOthers() throws {
+        let sb = Sandbox()
+        let src = sb.file("src/big.bin", bytes: 64 * 4096)
+        let good = (sb.dir("good") as NSString).appendingPathComponent("big.bin")
+        let bad = (sb.dir("bad") as NSString).appendingPathComponent("big.bin")
+        let counter = NSLock(); var calls = 0
+        let io = FanOutIO(write: { h, d, dst in
+            if dst == bad {
+                counter.lock(); calls += 1; let n = calls; counter.unlock()
+                if n == 3 { throw posixError(ENOSPC, "scriere simulată") }
+            }
+            try h.write(contentsOf: d)
+        }, flush: .system)
+        let done = expectation(description: "fan-out terminat")
+        var result: FanOutResult?
+        DispatchQueue.global().async {
+            result = try? FanOutCopier(sourcePath: src, destinationPaths: [good, bad], chunkSize: 4096, ringDepth: 2,
+                                       model: .xxhash64, cancel: CancelToken(), pause: PauseToken(),
+                                       expectedSize: 64 * 4096, io: io).run { _ in }
+            done.fulfill()
+        }
+        wait(for: [done], timeout: 10)
+        guard let r = result else { return XCTFail("fără rezultat") }
+        guard case .success = r.destinations[good] else { return XCTFail("destinația bună") }
+        guard case .failure(let e) = r.destinations[bad] else { return XCTFail("destinația defectă") }
+        XCTAssertEqual((e as NSError).code, Int(ENOSPC))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: bad))
+        XCTAssertTrue(partialFiles(under: sb.root).isEmpty)
     }
 }
 
 final class DestinationContextTests: XCTestCase {
     func makeContext(_ sb: Sandbox, dest: String) -> DestinationContext {
         DestinationContext(destRoot: dest, folderName: "JOB", verificationModel: .xxhash64, generateMHL: false,
-                           meta: ProductionMeta(), sourceRoot: nil, cloudUploadQueue: nil, startedAt: Date(),
+                           meta: ProductionMeta(), sourceRoot: nil,
+                           sourceIdentity: SourceIdentity(roots: [], volumes: [], manifestDigest: "", fileCount: 0),
+                           cloudUploadQueue: nil, startedAt: Date(),
                            onActivity: { _ in }, onPermissionError: { _ in })
     }
 
