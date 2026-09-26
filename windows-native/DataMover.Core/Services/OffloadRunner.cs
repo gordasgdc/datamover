@@ -53,6 +53,9 @@ public sealed class OffloadRunner : INotifyPropertyChanged
     /// Istoric persistent (si alte efecte in profilul utilizatorului). Verificarile
     /// automate il opresc, ca sa nu scrie in istoricul real.
     public static bool SideEffectsEnabled { get; set; } = true;
+    /// Sursa accesului complet pentru poarta plafonului. Implicit licența aplicației; WinChecks o
+    /// înlocuiește cu un LicenseManager de test (ex. licență revocată).
+    public static Func<bool> FullAccess { get; set; } = () => LicenseManager.Shared.HasFullAccess;
     /// Coliziuni de nume intre surse gasite la ultima pornire (blocante).
     public List<string> LastCollisions { get; private set; } = new();
     public List<Domain.PreflightIssue> LastPreflight { get; private set; } = new();
@@ -343,10 +346,11 @@ public sealed class OffloadRunner : INotifyPropertyChanged
         // transferului, o singura data, inainte de a porni orice copiere -
         // nu un plafon per fisier, ca sa nu poata fi ocolit trimitand
         // multe fisiere mici.
-        if (!LicenseManager.Shared.IsLicensed)
+        // Acces EFECTIV (licență generația 2 nerevocată) — nu `IsLicensed` brut (bug 2.16.x:
+        // revocarea nu ridica plafonul, dar nici nu era aplicată aici).
         {
             long totalBytes = files.Sum(f => f.Size);
-            if (totalBytes > LicenseManager.TrialMaxTransferBytes)
+            if (!LicensePolicy.TransferAllowed(totalBytes, FullAccess(), LicenseManager.TrialMaxTransferBytes))
             {
                 TrialLimitExceededBytes = totalBytes;
                 StatusText = "Transfer blocat — depășește plafonul de 2 GB al probei.";

@@ -1,88 +1,98 @@
+using System.Globalization;
+
 namespace DataMover.Core.Services;
 
-/// Port C# al LicenseManager.swift (DataMover Mac, productID
-/// "gdc-datamover") - proba de 15 zile, apoi activare prin cod generat
-/// manual din Furnizor, acelasi flux WhatsApp ca restul ecosistemului.
-/// DECIZIE DE PRODUS (identica cu Mac): NU exista niciun gating dur
-/// pe Start - `IsUnlocked` e expus doar pentru afisare (bara de proba),
-/// la fel cum Mac nu blocheaza nimic dupa expirare momentan.
+/// Starea de probă/licență DataMover pe Windows — port al mac-native LicenseManager.swift.
+///
+/// Accesul complet are O SINGURĂ sursă: `HasFullAccess` (stare `Licensed`, adică un cod
+/// generația 2 valid local și nerevocat). Plafonul de transfer și orice alt gating îl
+/// folosesc pe acesta, niciodată `IsLicensed` brut. Validarea e offline-first: fără rețea,
+/// un cod generația 2 valid funcționează; revocarea (fail-open) poate doar retrage accesul.
+/// Migrarea (2026-09-27): un cod generația 1 salvat e mutat în `license-legacy-v1.txt`
+/// (nu șters), iar aplicația cere un cod nou; utilizatorul legacy nu primește probă nouă.
 public sealed class LicenseManager
 {
-    public static readonly LicenseManager Shared = new();
-    public const string ProductId = "gdc-datamover";
-    // 7, NU 15 - trebuie sa fie IDENTIC cu LicenseManager.swift (Mac),
-    // acelasi ProductId inseamna acelasi produs/aceleasi coduri de
-    // activare emise. Gresit copiat initial dupa Regula 3 (implicitul
-    // ecosistemului), dar DataMover Mac foloseste explicit 7 zile -
-    // gasit la audit 2026-08-28, dupa observatia lui Cristi despre profil.
+    public static readonly LicenseManager Shared = new(
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "DataMover"),
+        publicKeyBase64: null, machineHash: null, now: () => DateTimeOffset.Now,
+        isRevoked: () => RevocationCheck.IsRevoked(ProductId),
+        log: (evt, fields) => Diagnostics.StructuredLog.Shared.Log(Diagnostics.LogLevel.Info, "license", evt, "Licenta", fields: fields));
+
+    /// Identitatea comercială (catalog, preț, revocare) — neschimbată.
+    public const string ProductId = LicenseRules.CanonicalProductId;
     public const int TrialDurationDays = 7;
-    /// Plafon de marime per transfer in versiunea neactivata (2026-08-30,
-    /// port 1:1 al LicenseManager.swift - Mac). Gating STRICT pe
-    /// `IsLicensed`, nu pe `IsTrialActive` - un plafon legat doar de
-    /// zilele de proba ar fi ocolit exact de abuzul semnalat (dezinstalare
-    /// -> reinstalare -> proba noua); legat de `IsLicensed`, plafonul
-    /// ramane activ indiferent cate ori se reseteaza fereastra de 7 zile.
     public const long TrialMaxTransferBytes = 2L * 1024 * 1024 * 1024; // 2 GB
 
-    public bool IsLicensed { get; private set; }
-    public long LicenseExpiresAt { get; private set; }
-    public bool LicenseMachineLocked { get; private set; }
-    public string? ActivationError { get; private set; }
+    private readonly string _dir;
+    private readonly string? _publicKey;
+    private readonly byte[]? _machineHash;
+    private readonly Func<DateTimeOffset> _now;
+    private readonly Func<bool> _isRevoked;
+    private readonly Action<string, Dictionary<string, string>> _log;
+    private DateTimeOffset _trialStart;
+    private bool _licensedLocally;
 
+    public long LicenseExpiresAt { get; private set; }
+    public string? ActivationError { get; private set; }
     public event Action? Changed;
 
-    private static string TrialStartFilePath => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "DataMover", "trial-start.txt");
-
-    private static string ActivationFilePath => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "DataMover", "license.txt");
-
-    private DateTimeOffset _trialStart;
-
-    private LicenseManager()
+    /// Pentru teste (WinChecks): director, cheie de test, Machine ID, ora și revocarea injectate.
+    public LicenseManager(string directory, string? publicKeyBase64, byte[]? machineHash, Func<DateTimeOffset> now,
+                          Func<bool> isRevoked, Action<string, Dictionary<string, string>> log)
     {
+        _dir = directory; _publicKey = publicKeyBase64; _machineHash = machineHash; _now = now; _isRevoked = isRevoked; _log = log;
         EnsureTrialStarted();
         LoadSavedLicense();
     }
 
+    private string TrialStartFilePath => Path.Combine(_dir, "trial-start.txt");
+    private string ActivationFilePath => Path.Combine(_dir, "license.txt");
+    private string LegacyBackupPath => Path.Combine(_dir, "license-legacy-v1.txt");
+    /// Marcaj persistent: a existat o licență generația 1 (conține doar forma mascată).
+    private string LegacyMarkerPath => Path.Combine(_dir, "license-legacy-detected.txt");
+
+    public LicenseState State => LicensePolicy.Evaluate(_licensedLocally, _licensedLocally && _isRevoked(), LegacyDetected, TrialDaysRemainingRaw);
+    public bool HasFullAccess => LicensePolicy.HasFullAccess(State);
+    /// Compatibilitate: înseamnă acum acces EFECTIV (licență generația 2 nerevocată).
+    public bool IsLicensed => HasFullAccess;
+    public bool NeedsReactivation => State == LicenseState.LegacyNeedsReactivation;
+    public bool LegacyDetected => File.Exists(LegacyMarkerPath);
+    public string? LegacyCodeMasked => LegacyDetected ? SafeRead(LegacyMarkerPath) : null;
+
     private void EnsureTrialStarted()
     {
-        var path = TrialStartFilePath;
-        if (File.Exists(path) && long.TryParse(File.ReadAllText(path).Trim(), out var unixSeconds))
+        if (File.Exists(TrialStartFilePath) && long.TryParse(SafeRead(TrialStartFilePath), out var unix))
         {
-            _trialStart = DateTimeOffset.FromUnixTimeSeconds(unixSeconds);
+            _trialStart = DateTimeOffset.FromUnixTimeSeconds(unix);
             return;
         }
-        _trialStart = DateTimeOffset.Now;
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        File.WriteAllText(path, _trialStart.ToUnixTimeSeconds().ToString());
+        _trialStart = _now();
+        Directory.CreateDirectory(_dir);
+        File.WriteAllText(TrialStartFilePath, _trialStart.ToUnixTimeSeconds().ToString());
     }
 
-    public string? SavedLicenseCode
+    /// Codul generația 2 salvat (afișat mascat în UI).
+    public string? SavedLicenseCode => File.Exists(ActivationFilePath) ? SafeRead(ActivationFilePath) : null;
+
+    private int TrialDaysRemainingRaw
     {
         get
         {
-            var path = ActivationFilePath;
-            return File.Exists(path) ? File.ReadAllText(path).Trim() : null;
-        }
-    }
-
-    public int TrialDaysRemaining
-    {
-        get
-        {
-            var elapsed = DateTimeOffset.Now - _trialStart;
-            var remaining = TimeSpan.FromDays(TrialDurationDays) - elapsed;
+            var remaining = TimeSpan.FromDays(TrialDurationDays) - (_now() - _trialStart);
             return Math.Max(0, (int)Math.Ceiling(remaining.TotalDays));
         }
     }
-
-    public bool IsTrialActive => TrialDaysRemaining > 0;
-    public bool IsUnlocked => (IsLicensed && !RevocationCheck.IsRevoked(ProductId)) || IsTrialActive;
+    public int TrialDaysRemaining => LegacyDetected ? 0 : TrialDaysRemainingRaw;
+    /// Un utilizator care a avut o licență generația 1 nu intră în probă.
+    public bool IsTrialActive => State == LicenseState.Trial;
+    /// Doar pentru afișare.
+    public bool IsUnlocked => HasFullAccess || IsTrialActive;
 
     public Task RefreshRevocationAsync() => RevocationCheck.RefreshAsync(new[] { ProductId });
+
+    private LicenseRules.Payload Validate(string code) =>
+        LicenseCore.Validate(code, LicenseRules.SigningProductId, LicenseRules.CanonicalProductId, requireMachineLock: true,
+            publicKeyBase64: _publicKey, machineHash: _machineHash, nowUnix: _now().ToUnixTimeSeconds());
 
     public bool Activate(string code)
     {
@@ -90,16 +100,21 @@ public sealed class LicenseManager
         var trimmed = code.Trim();
         try
         {
-            var payload = LicenseCore.Validate(trimmed, ProductId);
-            SaveLicense(trimmed);
-            ApplyLicense(payload.ExpiresAt, payload.MachineLocked);
+            var payload = Validate(trimmed);
+            Directory.CreateDirectory(_dir);
+            File.WriteAllText(ActivationFilePath, trimmed);
+            _licensedLocally = true;
+            LicenseExpiresAt = payload.ExpiresAt;
+            _log("license.activated", new() { ["generation"] = "2", ["expires"] = payload.ExpiresAt == 0 ? "never" : payload.ExpiresAt.ToString() });
             Changed?.Invoke();
             _ = RevocationCheck.RefreshAsync(new[] { ProductId });
             return true;
         }
-        catch (LicenseCore.ValidationError error)
+        catch (LicenseRules.ValidationError error)
         {
-            ActivationError = MessageFor(error.Kind);
+            if (error.Kind == LicenseRules.ValidationErrorKind.LegacyLicense) MarkLegacy(trimmed);
+            ActivationError = LicenseText.T(LicenseText.ErrorKey(error.Kind), LicenseText.Lang(CultureInfo.CurrentUICulture));
+            _log("license.activationRejected", new() { ["reason"] = LicenseRules.Reason(error.Kind) });
             Changed?.Invoke();
             return false;
         }
@@ -107,48 +122,48 @@ public sealed class LicenseManager
 
     public void Deactivate()
     {
-        IsLicensed = false;
+        _licensedLocally = false;
         LicenseExpiresAt = 0;
-        LicenseMachineLocked = false;
-        var path = ActivationFilePath;
-        if (File.Exists(path)) File.Delete(path);
+        if (File.Exists(ActivationFilePath)) File.Delete(ActivationFilePath);
         Changed?.Invoke();
     }
 
     private void LoadSavedLicense()
     {
-        var path = ActivationFilePath;
-        if (!File.Exists(path)) return;
-        var code = File.ReadAllText(path).Trim();
+        if (!File.Exists(ActivationFilePath)) return;
+        var code = SafeRead(ActivationFilePath) ?? "";
         try
         {
-            var payload = LicenseCore.Validate(code, ProductId);
-            ApplyLicense(payload.ExpiresAt, payload.MachineLocked);
+            var payload = Validate(code);
+            _licensedLocally = true;
+            LicenseExpiresAt = payload.ExpiresAt;
         }
-        catch (LicenseCore.ValidationError) { /* cod salvat invalid/expirat - ramanem nelicentiati */ }
+        catch (LicenseRules.ValidationError e) when (e.Kind == LicenseRules.ValidationErrorKind.LegacyLicense)
+        {
+            MigrateLegacyFile(code);
+        }
+        catch (LicenseRules.ValidationError) { /* cod generația 2 expirat / alt calculator: fără acces; fișierul rămâne */ }
     }
 
-    private void ApplyLicense(long expiresAt, bool machineLocked)
+    /// Mută codul generația 1 într-o copie (nu îl șterge) și păstrează doar forma mascată.
+    private void MigrateLegacyFile(string code)
     {
-        IsLicensed = true;
-        LicenseExpiresAt = expiresAt;
-        LicenseMachineLocked = machineLocked;
+        MarkLegacy(code);
+        try
+        {
+            if (File.Exists(LegacyBackupPath)) File.Delete(LegacyBackupPath);
+            File.Move(ActivationFilePath, LegacyBackupPath);
+            // Profilul utilizatorului (%LOCALAPPDATA%) are deja acces restrâns la utilizatorul curent.
+            File.SetAttributes(LegacyBackupPath, FileAttributes.Hidden);
+        }
+        catch { _log("license.legacyBackupFailed", new()); }
+        _log("license.legacyDetected", new() { ["action"] = "backup" });
     }
 
-    private static void SaveLicense(string code)
+    private void MarkLegacy(string code)
     {
-        var path = ActivationFilePath;
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        File.WriteAllText(path, code);
+        try { Directory.CreateDirectory(_dir); File.WriteAllText(LegacyMarkerPath, LicenseRules.Mask(code)); } catch { }
     }
 
-    private static string MessageFor(LicenseCore.ValidationErrorKind kind) => kind switch
-    {
-        LicenseCore.ValidationErrorKind.MalformedCode => "Cod invalid — verifică să nu lipsească vreun caracter.",
-        LicenseCore.ValidationErrorKind.BadSignature => "Semnătura codului nu se potrivește.",
-        LicenseCore.ValidationErrorKind.WrongProduct => "Codul e valid, dar pentru alt produs GDC.",
-        LicenseCore.ValidationErrorKind.WrongMachine => "Codul e blocat pe alt calculator.",
-        LicenseCore.ValidationErrorKind.Expired => "Codul a expirat.",
-        _ => "Cod invalid.",
-    };
+    private static string? SafeRead(string path) { try { return File.ReadAllText(path).Trim(); } catch { return null; } }
 }

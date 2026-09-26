@@ -68,21 +68,15 @@ public partial class ProfileWindow : FluentWindow
     private void LoadLicenseStatus()
     {
         var lic = LicenseManager.Shared;
-        if (lic.IsLicensed)
+        LicenseStatusText.Text = lic.State switch
         {
-            var expiry = lic.LicenseExpiresAt == 0
-                ? "pe viață"
-                : $"până la {DateTimeOffset.FromUnixTimeSeconds(lic.LicenseExpiresAt):yyyy-MM-dd}";
-            LicenseStatusText.Text = $"Licențiat ({expiry}).";
-        }
-        else if (lic.IsTrialActive)
-        {
-            LicenseStatusText.Text = $"Probă gratuită — {lic.TrialDaysRemaining} zile rămase.";
-        }
-        else
-        {
-            LicenseStatusText.Text = "Proba a expirat. Activează un cod de licență mai jos.";
-        }
+            LicenseState.Licensed => $"Licențiat ({(lic.LicenseExpiresAt == 0 ? "pe viață" : $"până la {DateTimeOffset.FromUnixTimeSeconds(lic.LicenseExpiresAt):yyyy-MM-dd}")}).",
+            LicenseState.LegacyNeedsReactivation =>
+                $"Reactivare necesară: sistemul de licențiere a fost actualizat și codul anterior ({lic.LegacyCodeMasked}) nu mai e valabil. Cere un cod nou pentru acest calculator și introdu-l mai jos.",
+            LicenseState.Revoked => "Licența a fost revocată pentru acest calculator. Transferurile sunt limitate la 2 GB.",
+            LicenseState.Trial => $"Probă gratuită — {lic.TrialDaysRemaining} zile rămase.",
+            _ => "Proba a expirat. Activează un cod de licență mai jos.",
+        };
     }
 
     private void OnCopyMachineIdClicked(object sender, RoutedEventArgs e) =>
@@ -111,7 +105,9 @@ public partial class ProfileWindow : FluentWindow
 
     private void OnRequestCodeClicked(object sender, RoutedEventArgs e)
     {
-        var text = $"Salut! Vreau o licență DataMover. Machine ID: {MachineIdBox.Text}";
+        var text = LicenseManager.Shared.NeedsReactivation
+            ? $"Salut! Am nevoie de codul nou DataMover. Machine ID: {MachineIdBox.Text}"
+            : $"Salut! Vreau o licență DataMover. Machine ID: {MachineIdBox.Text}";
         var url = $"https://wa.me/34643109970?text={Uri.EscapeDataString(text)}";
         Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
     }

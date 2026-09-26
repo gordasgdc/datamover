@@ -14,56 +14,30 @@ namespace DataMover.Core.Services;
 [SupportedOSPlatform("windows")]
 public static class LicenseCore
 {
-    public readonly record struct Payload(long ExpiresAt, bool MachineLocked);
+    public const string PublicKeyBase64 = "I1h23MNMRbOhc0ObKJrfa3oFHKA9w+SzbNrroAIy8hs=";
 
-    public enum ValidationErrorKind { MalformedCode, BadSignature, WrongProduct, WrongMachine, Expired }
+    public const int PayloadSize = LicenseRules.PayloadSize;
 
-    public sealed class ValidationError(ValidationErrorKind kind, long expiredAt = 0) : Exception
-    {
-        public ValidationErrorKind Kind { get; } = kind;
-        public long ExpiredAt { get; } = expiredAt;
-    }
-
-    /// Identica cu LicenseCore.swift/GDCVaultWin - cheia publica a
-    /// ecosistemului GDC, nu una specifica DataMover.
-    private const string PublicKeyBase64 = "I1h23MNMRbOhc0ObKJrfa3oFHKA9w+SzbNrroAIy8hs=";
-
-    public const int PayloadSize = 22;
-
-    public static Payload Validate(string serial, string expectedProductId)
+    /// Decodează, verifică semnătura Ed25519 și aplică regulile comune (LicenseRules).
+    /// Parametrii opționali există pentru teste (cheie de test, Machine ID, ora); în aplicație
+    /// se folosesc cheia comună GDC, MachineID-ul real și ora curentă.
+    public static LicenseRules.Payload Validate(string serial, string expectedProductId, string? legacyProductId = null,
+                                                bool requireMachineLock = false, string? publicKeyBase64 = null,
+                                                byte[]? machineHash = null, long? nowUnix = null)
     {
         var packed = Base32Decode(serial);
         if (packed is null || packed.Length != PayloadSize + 64)
-            throw new ValidationError(ValidationErrorKind.MalformedCode);
-
+            throw new LicenseRules.ValidationError(LicenseRules.ValidationErrorKind.MalformedCode);
         var payloadBytes = packed[..PayloadSize];
         var signature = packed[PayloadSize..];
-
-        var publicKeyBytes = Convert.FromBase64String(PublicKeyBase64);
-        var publicKey = new Ed25519PublicKeyParameters(publicKeyBytes, 0);
+        var publicKey = new Ed25519PublicKeyParameters(Convert.FromBase64String(publicKeyBase64 ?? PublicKeyBase64), 0);
         var verifier = new Ed25519Signer();
         verifier.Init(forSigning: false, publicKey);
         verifier.BlockUpdate(payloadBytes, 0, payloadBytes.Length);
         if (!verifier.VerifySignature(signature))
-            throw new ValidationError(ValidationErrorKind.BadSignature);
-
-        var storedProductHash = payloadBytes[..4];
-        var expectedProductHash = ProductHash(expectedProductId);
-        if (!storedProductHash.AsSpan().SequenceEqual(expectedProductHash))
-            throw new ValidationError(ValidationErrorKind.WrongProduct);
-
-        long expiresAt = 0;
-        for (var i = 4; i < 12; i++) expiresAt = (expiresAt << 8) | payloadBytes[i];
-
-        var storedMachineHash = payloadBytes[16..22];
-        var isMachineLocked = storedMachineHash.Any(b => b != 0);
-        if (isMachineLocked && !storedMachineHash.AsSpan().SequenceEqual(MachineID.HashBytes))
-            throw new ValidationError(ValidationErrorKind.WrongMachine);
-
-        if (expiresAt != 0 && expiresAt < DateTimeOffset.UtcNow.ToUnixTimeSeconds())
-            throw new ValidationError(ValidationErrorKind.Expired, expiresAt);
-
-        return new Payload(expiresAt, isMachineLocked);
+            throw new LicenseRules.ValidationError(LicenseRules.ValidationErrorKind.BadSignature);
+        return LicenseRules.ValidatePayload(payloadBytes, expectedProductId, legacyProductId, requireMachineLock,
+            machineHash ?? MachineID.HashBytes, nowUnix ?? DateTimeOffset.UtcNow.ToUnixTimeSeconds());
     }
 
     public static byte[] ProductHash(string productId) =>

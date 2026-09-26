@@ -243,6 +243,15 @@ enum L {
         "license.error.wrongProduct": [.ro: "Acest cod e pentru alt produs.", .en: "This code is for a different product.", .es: "Este código es para otro producto."],
         "license.error.wrongMachine": [.ro: "Acest cod e activat pentru alt calculator.", .en: "This code is activated for a different computer.", .es: "Este código está activado para otro ordenador."],
         "license.error.expired": [.ro: "Codul serial a expirat.", .en: "The serial code has expired.", .es: "El código de serie ha caducado."],
+        "license.error.legacy": [.ro: "Acest cod este din sistemul vechi de licențiere și nu mai activează DataMover. Cere un cod nou pentru acest calculator.", .en: "This code is from the previous licensing system and no longer activates DataMover. Ask for a new code for this computer.", .es: "Este código es del sistema de licencias anterior y ya no activa DataMover. Pide un código nuevo para este ordenador."],
+        "license.error.notMachineLocked": [.ro: "Codul nou trebuie emis pentru acest calculator (ID calculator).", .en: "The new code must be issued for this computer (computer ID).", .es: "El código nuevo debe emitirse para este ordenador (ID del ordenador)."],
+        "migration.title": [.ro: "Licența trebuie reactivată", .en: "Your license needs reactivation", .es: "Hay que reactivar la licencia"],
+        "migration.body": [.ro: "Sistemul de licențiere DataMover a fost actualizat. Codul anterior nu mai este valabil în această versiune: pentru acest calculator este necesar un cod nou. Trimite-ne ID-ul calculatorului și introdu aici codul primit.", .en: "DataMover's licensing system has been updated. Your previous code is no longer valid in this version: this computer needs a new code. Send us the computer ID and enter the code you receive here.", .es: "El sistema de licencias de DataMover se ha actualizado. El código anterior ya no es válido en esta versión: este ordenador necesita un código nuevo. Envíanos el ID del ordenador e introduce aquí el código que recibas."],
+        "migration.contact": [.ro: "Cere codul nou pe WhatsApp", .en: "Ask for the new code on WhatsApp", .es: "Pide el código nuevo por WhatsApp"],
+        "migration.oldCode": [.ro: "Cod anterior", .en: "Previous code", .es: "Código anterior"],
+        "migration.bar": [.ro: "Licența trebuie reactivată — până atunci, transferurile sunt limitate la 2 GB.", .en: "Your license needs reactivation — until then, transfers are limited to 2 GB.", .es: "Hay que reactivar la licencia; hasta entonces, las transferencias están limitadas a 2 GB."],
+        "migration.reactivate": [.ro: "Reactivează", .en: "Reactivate", .es: "Reactivar"],
+        "profile.legacyStatus": [.ro: "Reactivare necesară (cod din sistemul vechi)", .en: "Reactivation needed (code from the previous system)", .es: "Reactivación necesaria (código del sistema anterior)"],
 
         // MARK: - App menu / About
         "menu.about": [.ro: "Despre DataMover", .en: "About DataMover", .es: "Acerca de DataMover"],

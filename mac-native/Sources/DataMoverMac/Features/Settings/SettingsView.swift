@@ -303,6 +303,8 @@ private struct AccountSettingsTab: View {
                 LabeledContent(L.t("settings.licenseStatus")) {
                     if license.isLicensed {
                         DMStatusBadge(status: .verified, text: L.t("profile.licensedStatus"))
+                    } else if license.needsReactivation {
+                        DMStatusBadge(status: .warning, text: L.t("profile.legacyStatus"))
                     } else if license.isTrialActive {
                         DMStatusBadge(status: .warning, text: String(format: L.t("trial.daysLeft"), license.trialDaysRemaining))
                     } else {

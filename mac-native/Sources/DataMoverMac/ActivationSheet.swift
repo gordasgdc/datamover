@@ -15,7 +15,7 @@ struct ActivationSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
-                Text(L.t("activation.title")).font(.title2).bold()
+                Text(L.t(license.needsReactivation ? "migration.title" : "activation.title")).font(.title2).bold()
                 Spacer()
                 Picker("", selection: $langStore.lang) {
                     ForEach(AppLanguage.allCases) { l in
@@ -26,6 +26,13 @@ struct ActivationSheet: View {
                 .frame(width: 110)
             }
 
+            if license.needsReactivation {
+                // Migrarea la licențele generația 2: explicație scurtă + codul vechi mascat (suport).
+                Text(L.t("migration.body")).font(.system(size: 12)).fixedSize(horizontal: false, vertical: true)
+                if let old = license.legacyCodeMasked {
+                    Text("\(L.t("migration.oldCode")): \(old)").font(.system(size: 11, design: .monospaced)).foregroundStyle(.secondary)
+                }
+            }
             VStack(alignment: .leading, spacing: 4) {
                 Text(L.t("activation.machineID"))
                     .font(.system(size: 11))
@@ -49,38 +56,48 @@ struct ActivationSheet: View {
                 Text(error).foregroundStyle(.red).font(.system(size: 12))
             }
 
-            // Pret dinamic (2026-08-30) - vezi PricingChecker. Fail-open la
-            // pretul hardcodat daca pricing.json nu e accesibil.
-            if let promo = pricing.activePromo {
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 6) {
-                        Text("🔥 \(promo.label)").font(.system(size: 12, weight: .bold)).foregroundStyle(.orange)
-                        if promo.showCountdown {
-                            Label(promo.countdownText, systemImage: "timer")
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundStyle(.orange)
-                                .id(countdownTick) // fortam refresh vizual la tick
+            if license.needsReactivation {
+                Button {
+                    NSWorkspace.shared.open(WhatsAppLink.url(text: "Buna, am nevoie de codul nou DataMover. ID calculator: \(MachineID.display)"))
+                } label: {
+                    Label(L.t("migration.contact"), systemImage: "message.fill").font(.system(size: 12))
+                }
+                .buttonStyle(.bordered)
+                .tint(.green)
+            } else {
+                // Pret dinamic (2026-08-30) - vezi PricingChecker. Fail-open la
+                // pretul hardcodat daca pricing.json nu e accesibil.
+                if let promo = pricing.activePromo {
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(spacing: 6) {
+                            Text("🔥 \(promo.label)").font(.system(size: 12, weight: .bold)).foregroundStyle(.orange)
+                            if promo.showCountdown {
+                                Label(promo.countdownText, systemImage: "timer")
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundStyle(.orange)
+                                    .id(countdownTick) // fortam refresh vizual la tick
+                            }
                         }
+                        Text(String(format: L.t("activation.donationPromo"), formattedPrice(promo.price), formattedPrice(pricing.basePrice)))
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
                     }
-                    Text(String(format: L.t("activation.donationPromo"), formattedPrice(promo.price), formattedPrice(pricing.basePrice)))
+                } else {
+                    Text(String(format: L.t("activation.donation"), formattedPrice(pricing.effectivePrice)))
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                 }
-            } else {
-                Text(String(format: L.t("activation.donation"), formattedPrice(pricing.effectivePrice)))
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-            }
 
-            Button {
-                let priceText = formattedPrice(pricing.effectivePrice)
-                NSWorkspace.shared.open(WhatsAppLink.url(text: "Buna, vreau sa donez \(priceText) pentru licenta DataMover"))
-            } label: {
-                Label(L.t("activation.whatsapp"), systemImage: "message.fill")
-                    .font(.system(size: 12))
+                Button {
+                    let priceText = formattedPrice(pricing.effectivePrice)
+                    NSWorkspace.shared.open(WhatsAppLink.url(text: "Buna, vreau sa donez \(priceText) pentru licenta DataMover"))
+                } label: {
+                    Label(L.t("activation.whatsapp"), systemImage: "message.fill")
+                        .font(.system(size: 12))
+                }
+                .buttonStyle(.bordered)
+                .tint(.green)
             }
-            .buttonStyle(.bordered)
-            .tint(.green)
 
             HStack {
                 Button(L.t("activation.cancel")) { isPresented = false }

@@ -210,8 +210,23 @@ public partial class MainWindow : FluentWindow
         Loaded += async (_, _) =>
         {
             _ = LicenseManager.Shared.RefreshRevocationAsync();
+            ShowLicenseMigrationIfNeeded();
             await CheckForUpdatesAsync(this, respectDismissal: true);
         };
+    }
+
+    /// Migrarea licențelor (2026-09-27): o licență generația 1 cere, o dată la pornire, un cod nou.
+    private static bool _migrationShown;
+    private void ShowLicenseMigrationIfNeeded()
+    {
+        var lic = LicenseManager.Shared;
+        if (!lic.NeedsReactivation || _migrationShown) return;
+        _migrationShown = true;
+        var lang = LicenseText.Lang(System.Globalization.CultureInfo.CurrentUICulture);
+        var answer = MessageBox.Show(
+            $"{LicenseText.T("migration.body", lang)}\n\n{LicenseText.T("migration.machine", lang)}: {MachineID.Display}\n\n{LicenseText.T("migration.open", lang)}",
+            LicenseText.T("migration.title", lang), MessageBoxButton.YesNo, MessageBoxImage.Warning);
+        if (answer == MessageBoxResult.Yes) new ProfileWindow { Owner = this }.ShowDialog();
     }
 
     // ---------------- Versiune, Update Checker, Profil (2026-08-28) ----------------
@@ -234,12 +249,16 @@ public partial class MainWindow : FluentWindow
                 MessageBox.Show("Ai deja ultima versiune instalată.", "DataMover", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
-        if (respectDismissal && !UpdateChecker.Shared.Mandatory && UpdateChecker.Shared.WasDismissed(version)) return;
+        var mandatory = UpdateChecker.Shared.Mandatory;
+        if (!UpdatePolicy.ShouldPrompt(version, mandatory, UpdateChecker.Shared.DismissedVersion, automatic: respectDismissal)) return;
 
         var changes = string.IsNullOrWhiteSpace(UpdateChecker.Shared.Changes) ? "" : $"\n\n{UpdateChecker.Shared.Changes}";
         var result = MessageBox.Show(
-            $"Este disponibilă versiunea {version}.{changes}\n\nVrei să actualizezi acum?",
-            "Actualizare disponibilă", MessageBoxButton.YesNo, MessageBoxImage.Information);
+            mandatory
+                ? $"Este disponibilă versiunea {version}, necesară pentru a continua să folosești DataMover.{changes}\n\nVrei să actualizezi acum? Instalarea pornește doar după confirmarea ta."
+                : $"Este disponibilă versiunea {version}.{changes}\n\nVrei să actualizezi acum?",
+            mandatory ? "Actualizare necesară" : "Actualizare disponibilă", MessageBoxButton.YesNo,
+            mandatory ? MessageBoxImage.Warning : MessageBoxImage.Information);
 
         if (result == MessageBoxResult.Yes)
         {
@@ -253,10 +272,11 @@ public partial class MainWindow : FluentWindow
             }
             await SelfUpdater.DownloadAndInstallAsync(version, url);
         }
-        else
+        else if (UpdatePolicy.ShouldRememberDismissal(mandatory))
         {
             UpdateChecker.Shared.Dismiss();
         }
+        // Obligatorie + „Nu”: nu se memorează; fereastra reapare la următoarea pornire.
     }
 
     private async void OnCheckUpdatesClicked(object sender, RoutedEventArgs e) =>

@@ -141,7 +141,9 @@ struct ContentView: View {
     var body: some View {
         ZStack(alignment: .topLeading) {
             VStack(spacing: 0) {
-                if license.isTrialActive && !license.isLicensed {
+                if license.needsReactivation {
+                    reactivationBar
+                } else if license.isTrialActive && !license.isLicensed {
                     trialBar
                 }
                 headerBar
@@ -174,6 +176,12 @@ struct ContentView: View {
             }
             .background(Color(nsColor: .windowBackgroundColor))
             .onAppear {
+                // Migrarea licențelor: o licență generația 1 deschide o dată, la pornire, reactivarea.
+                if license.needsReactivation && !LicenseMigrationPrompt.shownThisLaunch {
+                    LicenseMigrationPrompt.shownThisLaunch = true
+                    showActivation = true
+                }
+                UpdateChecker.checkSilentlyAtLaunch()
                 volumes = VolumeInfo.detectAll()
                 knownVolumePaths = Set(volumes.map(\.path))
                 #if DEBUG
@@ -364,6 +372,20 @@ struct ContentView: View {
     #endif
 
     // MARK: - Header (proba gratuita)
+
+    private var reactivationBar: some View {
+        HStack {
+            Label(L.t("migration.bar"), systemImage: "exclamationmark.triangle.fill")
+                .foregroundStyle(DM.warning)
+            Spacer()
+            Button(L.t("migration.reactivate")) { showActivation = true }
+                .buttonStyle(.plain)
+                .fontWeight(.semibold)
+        }
+        .font(.system(size: 12))
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+    }
 
     private var trialBar: some View {
         HStack {
@@ -1207,3 +1229,6 @@ struct ContentView: View {
         return String(format: L.t("footer.summary"), sourcePaths.count, destinationPaths.count)
     }
 }
+
+/// O singură afișare automată a reactivării per pornire a aplicației.
+enum LicenseMigrationPrompt { static var shownThisLaunch = false }

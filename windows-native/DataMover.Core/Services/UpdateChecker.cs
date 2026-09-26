@@ -78,6 +78,7 @@ public sealed class UpdateChecker : INotifyPropertyChanged
     }
 
     public bool WasDismissed(string version) => ReadDismissedVersion() == version;
+    public string? DismissedVersion => ReadDismissedVersion();
 
     public void Dismiss()
     {

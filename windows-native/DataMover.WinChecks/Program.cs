@@ -1,3 +1,7 @@
+using Org.BouncyCastle.Crypto.Generators;
+using Org.BouncyCastle.Crypto.Parameters;
+using Org.BouncyCastle.Crypto.Signers;
+using Org.BouncyCastle.Security;
 using System.Diagnostics;
 using System.Security.Cryptography;
 using DataMover.Core.Diagnostics;
@@ -165,6 +169,60 @@ finally
         try { Directory.Delete(root, true); } catch { GC.Collect(); GC.WaitForPendingFinalizers(); Thread.Sleep(500); }
     }
     if (Directory.Exists(root)) Console.WriteLine($"ATENTIE: folderul temporar {root} nu s-a putut sterge");
+}
+// Licențe generația 2, cap-coadă pe Windows real (cheie Ed25519 de TEST, niciodată cheia reală).
+{
+    var gen = new Ed25519KeyPairGenerator(); gen.Init(new Ed25519KeyGenerationParameters(new SecureRandom()));
+    var kp = gen.GenerateKeyPair();
+    var priv = (Ed25519PrivateKeyParameters)kp.Private;
+    var pubB64 = Convert.ToBase64String(((Ed25519PublicKeyParameters)kp.Public).GetEncoded());
+    var me = new byte[] { 1, 2, 3, 4, 5, 6 };
+    string Serial(string product, long expires, byte[] machine)
+    {
+        var p = new List<byte>(LicenseRules.ProductHash(product));
+        for (int i = 7; i >= 0; i--) p.Add((byte)((expires >> (8 * i)) & 0xFF));
+        p.AddRange(new byte[] { 7, 7, 7, 7 }); p.AddRange(machine);
+        var signer = new Ed25519Signer(); signer.Init(true, priv); signer.BlockUpdate(p.ToArray(), 0, p.Count);
+        return LicenseCore.Base32Encode(p.Concat(signer.GenerateSignature()).ToArray());
+    }
+    var lic = new List<string>();
+    LicenseManager Mgr(string dir, bool revoked = false) => new(dir, pubB64, me, () => DateTimeOffset.UtcNow, () => revoked,
+        (e, f) => lic.Add(e + " " + string.Join(",", f.Select(kv => kv.Key + "=" + kv.Value))));
+    long nowU = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+    var legacy = Serial(LicenseRules.CanonicalProductId, 0, me);
+    var good = Serial(LicenseRules.SigningProductId, nowU + 86400 * 30, me);
+
+    var d1 = Dir("LIC1");
+    File.WriteAllText(Path.Combine(d1, "license.txt"), legacy);
+    var m1 = Mgr(d1);
+    Check("licenta: cod legacy salvat -> reactivare necesara, fara proba noua, cod pastrat in copie",
+        m1.State == LicenseState.LegacyNeedsReactivation && !m1.IsTrialActive && !m1.HasFullAccess
+        && !File.Exists(Path.Combine(d1, "license.txt")) && File.ReadAllText(Path.Combine(d1, "license-legacy-v1.txt")) == legacy);
+    Check("licenta: cod legacy reintrodus -> refuzat de doua ori", !m1.Activate(legacy) && !m1.Activate(legacy) && !m1.HasFullAccess);
+    Check("licenta: generatia 2 pe acest calculator -> acceptata, valida si dupa repornire (offline)",
+        m1.Activate(good) && m1.HasFullAccess && Mgr(d1).HasFullAccess);
+    var m2 = Mgr(Dir("LIC2"));
+    Check("licenta: instalare noua pastreaza proba", m2.State == LicenseState.Trial && m2.IsTrialActive);
+    Check("licenta: alt calculator / expirata / fara calculator -> refuzate",
+        !m2.Activate(Serial(LicenseRules.SigningProductId, 0, new byte[] { 9, 9, 9, 9, 9, 9 }))
+        && !m2.Activate(Serial(LicenseRules.SigningProductId, nowU - 10, me))
+        && !m2.Activate(Serial(LicenseRules.SigningProductId, 0, new byte[6])) && !m2.HasFullAccess);
+    var logged = string.Join("\n", lic) + File.ReadAllText(StructuredLog.Shared.FilePath);
+    Check("licenta: serialul nu apare in jurnale", lic.Count > 0 && !logged.Contains(legacy) && !logged.Contains(good) && !logged.Contains(good[..20]));
+
+    // Revocată: codul e valid local, dar accesul efectiv e retras -> plafonul de 2 GB rămâne.
+    var mr = Mgr(Dir("LIC3"), revoked: true);
+    Check("licenta: revocata -> stare Revoked, fara acces complet", mr.Activate(good) && mr.State == LicenseState.Revoked && !mr.HasFullAccess);
+    var bigDir = Dir("CAPSRC");
+    using (var fs = File.Create(Path.Combine(bigDir, "huge.mov"))) fs.SetLength(LicenseManager.TrialMaxTransferBytes + 1);
+    var capDst = Dir("CAPDST");
+    var prev = OffloadRunner.FullAccess;
+    OffloadRunner.FullAccess = () => mr.HasFullAccess;
+    var rc = Run(new() { bigDir }, new() { capDst });
+    OffloadRunner.FullAccess = prev;
+    Check("licenta: Windows revocat nu porneste un transfer peste plafon",
+        rc.TrialLimitExceededBytes > LicenseManager.TrialMaxTransferBytes && !Directory.EnumerateFiles(capDst, "*", SearchOption.AllDirectories).Any());
+    File.Delete(Path.Combine(bigDir, "huge.mov"));
 }
 // Rapoarte PDF randate pe Windows real (QuestPDF/Skia), cele 6 scenarii x RO/EN/ES.
 {

@@ -16,6 +16,7 @@
     <Compile Include="../DataMover.Core/Services/CheckpointPolicy.cs" />
     <Compile Include="../DataMover.Core/Services/PathSafety.cs" />
     <Compile Include="../DataMover.Core/Services/ByteSize.cs" />
+    <Compile Include="../DataMover.Core/Services/LicenseRules.cs" />
     <Compile Include="../DataMover.Core/Services/DeliveryReport.cs" />
     <Compile Include="../DataMover.Core/Services/DeliveryReportText.g.cs" />
     <Compile Include="../DataMover.Core/Diagnostics/*.cs" />

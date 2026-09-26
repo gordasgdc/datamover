@@ -30,18 +30,27 @@ enum LicenseCore {
         case wrongProduct
         case wrongMachine
         case expired(Int64)
+        /// Semnătură validă, dar pentru ID-ul criptografic vechi (generația 1) — licență
+        /// emisă înainte de migrare; trebuie reemisă, nu e „cod corupt”.
+        case legacyLicense
+        /// Generația 2 cere cod legat de un calculator; un cod „orice calculator” e refuzat.
+        case notMachineLocked
     }
 
     /// Base64 of the Ed25519 PUBLIC key from gdc-license-system's
     /// keygen.py (`public_key.txt`). Safe to embed: with asymmetric
     /// crypto, only the never-distributed private key can forge a
     /// signature this validates.
-    private static let publicKeyBase64 = "I1h23MNMRbOhc0ObKJrfa3oFHKA9w+SzbNrroAIy8hs="
+    static let publicKeyBase64 = "I1h23MNMRbOhc0ObKJrfa3oFHKA9w+SzbNrroAIy8hs="
 
     private static let payloadSize = 22
 
     /// Validates a serial the user typed/pasted against `expectedProductID`.
-    static func validate(serial: String, expectedProductID: String) -> Result<Payload, ValidationError> {
+    static func validate(serial: String, expectedProductID: String, legacyProductID: String? = nil,
+                         requireMachineLock: Bool = false,
+                         publicKeyBase64: String = publicKeyBase64,
+                         machineHash: [UInt8] = MachineID.hashBytes,
+                         now: Date = Date()) -> Result<Payload, ValidationError> {
         guard let packed = base32Decode(serial), packed.count == payloadSize + 64 else {
             return .failure(.malformedCode)
         }
@@ -60,6 +69,9 @@ enum LicenseCore {
         let storedProductHash = bytes[0..<4]
         let expectedProductHash = productHash(for: expectedProductID)
         guard Array(storedProductHash) == expectedProductHash else {
+            if let legacyProductID, Array(storedProductHash) == productHash(for: legacyProductID) {
+                return .failure(.legacyLicense)
+            }
             return .failure(.wrongProduct)
         }
 
@@ -68,19 +80,20 @@ enum LicenseCore {
 
         let storedMachineHash = Array(bytes[16..<22])
         let isMachineLocked = storedMachineHash.contains { $0 != 0 }
+        if requireMachineLock && !isMachineLocked { return .failure(.notMachineLocked) }
         if isMachineLocked {
-            guard storedMachineHash == MachineID.hashBytes else {
+            guard storedMachineHash == machineHash else {
                 return .failure(.wrongMachine)
             }
         }
 
-        if expiresAt != 0 && expiresAt < Int64(Date().timeIntervalSince1970) {
+        if expiresAt != 0 && expiresAt < Int64(now.timeIntervalSince1970) {
             return .failure(.expired(expiresAt))
         }
         return .success(Payload(expiresAt: expiresAt, machineLocked: isMachineLocked))
     }
 
-    private static func productHash(for productID: String) -> [UInt8] {
+    static func productHash(for productID: String) -> [UInt8] {
         Array(SHA512.hash(data: Data(productID.utf8)).prefix(4))
     }
 
@@ -105,7 +118,7 @@ enum LicenseCore {
         return output
     }
 
-    private static func base32Decode(_ string: String) -> Data? {
+    static func base32Decode(_ string: String) -> Data? {
         let cleaned = string.uppercased()
             .replacingOccurrences(of: "-", with: "")
             .replacingOccurrences(of: " ", with: "")

@@ -302,6 +302,40 @@ finally { Directory.Delete(root, true); }
     Check("raport: HTML complet RO/EN/ES, versiune in subsol, fara chei brute sau miniaturi", allOk);
     Check("raport: fiecare cheie are RO/EN/ES", DeliveryReportText.Strings.Values.All(v => v.Length == 3 && v.All(x => x.Length > 0)));
 }
+// Licențe generația 2 (reguli pure; semnătura e verificată separat, în WinChecks).
+{
+    byte[] Payload(string product, long expires, byte[] machine)
+    {
+        var p = new List<byte>(LicenseRules.ProductHash(product));
+        for (int i = 7; i >= 0; i--) p.Add((byte)((expires >> (8 * i)) & 0xFF));
+        p.AddRange(new byte[] { 7, 7, 7, 7 }); p.AddRange(machine); return p.ToArray();
+    }
+    var me = new byte[] { 1, 2, 3, 4, 5, 6 }; var other = new byte[] { 9, 9, 9, 9, 9, 9 }; var none = new byte[6]; long now = 1_790_000_000;
+    LicenseRules.ValidationErrorKind? Kind(byte[] payload)
+    {
+        try { LicenseRules.ValidatePayload(payload, LicenseRules.SigningProductId, LicenseRules.CanonicalProductId, true, me, now); return null; }
+        catch (LicenseRules.ValidationError e) { return e.Kind; }
+    }
+    Check("licenta: cod legacy recunoscut explicit (nu 'corupt')", Kind(Payload(LicenseRules.CanonicalProductId, 0, me)) == LicenseRules.ValidationErrorKind.LegacyLicense);
+    Check("licenta: generatia 2, acest calculator -> acceptat", Kind(Payload(LicenseRules.SigningProductId, now + 86400, me)) == null);
+    Check("licenta: generatia 2, alt calculator -> refuzat", Kind(Payload(LicenseRules.SigningProductId, 0, other)) == LicenseRules.ValidationErrorKind.WrongMachine);
+    Check("licenta: generatia 2 expirata -> refuzata", Kind(Payload(LicenseRules.SigningProductId, now - 1, me)) == LicenseRules.ValidationErrorKind.Expired);
+    Check("licenta: generatia 2 fara calculator -> refuzata", Kind(Payload(LicenseRules.SigningProductId, 0, none)) == LicenseRules.ValidationErrorKind.NotMachineLocked);
+    Check("licenta: alt produs GDC -> WrongProduct", Kind(Payload("cursorpro", 0, me)) == LicenseRules.ValidationErrorKind.WrongProduct);
+    var cap = 2L * 1024 * 1024 * 1024;
+    Check("licenta: revocata -> fara acces, plafon aplicat", LicensePolicy.Evaluate(true, true, false, 0) == LicenseState.Revoked
+        && !LicensePolicy.HasFullAccess(LicenseState.Revoked) && !LicensePolicy.TransferAllowed(cap + 1, false, cap));
+    Check("licenta: revocarea nu transforma legacy/invalid in licenta", LicensePolicy.Evaluate(false, true, true, 5) == LicenseState.LegacyNeedsReactivation
+        && LicensePolicy.Evaluate(false, false, false, 0) == LicenseState.Expired);
+    Check("licenta: legacy nu primeste proba noua", LicensePolicy.Evaluate(false, false, true, 7) == LicenseState.LegacyNeedsReactivation);
+    Check("licenta: instalare noua pastreaza proba", LicensePolicy.Evaluate(false, false, false, 7) == LicenseState.Trial);
+    Check("licenta: acces complet ridica plafonul", LicensePolicy.TransferAllowed(cap * 10, true, cap));
+    Check("licenta: mascare fara cod integral", LicenseRules.Mask("ABCDE-FGHIJ-KLMNO-PQRST") == "ABCDE…QRST");
+    Check("licenta: texte RO/EN/ES complete", LicenseText.Complete);
+    Check("update: obligatorie nu se amana permanent", UpdatePolicy.ShouldPrompt("2.17.0", true, "2.17.0", true)
+        && !UpdatePolicy.ShouldPrompt("2.17.0", false, "2.17.0", true) && UpdatePolicy.ShouldPrompt("2.17.0", false, "2.17.0", false)
+        && !UpdatePolicy.ShouldRememberDismissal(true) && !UpdatePolicy.ShouldPrompt(null, true, null, true));
+}
 // Identitatea buildului in jurnal: commitul real, nu "dev".
 {
     Check("build: commit din InformationalVersion", DataMover.Core.Diagnostics.BuildIdentity.FromInformationalVersion("2.16.1+E33723095B3B3ECC") == "e337230");

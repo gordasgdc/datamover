@@ -26,6 +26,35 @@ enum UpdateChecker {
         }
     }
 
+    private static let dismissedVersionKey = "datamover_dismissed_update_version"
+    private static var launchCheckDone = false
+
+    /// Verificare discretă la pornire (o dată per lansare), din aceeași sursă oficială
+    /// (ultimul release GitHub). Arată fereastra DOAR dacă există o versiune nouă
+    /// neamânată; „ești la zi” și erorile de rețea merg numai în jurnal.
+    static func checkSilentlyAtLaunch() {
+        guard !launchCheckDone else { return }
+        launchCheckDone = true
+        Task {
+            let result = await fetchLatestTag()
+            await MainActor.run {
+                switch result {
+                case .newVersion(let version, _):
+                    let dismissed = UserDefaults.standard.string(forKey: dismissedVersionKey)
+                    if UpdatePolicy.shouldPrompt(available: version, mandatory: false, dismissedVersion: dismissed, automatic: true) {
+                        presentResult(result)
+                    } else {
+                        StructuredLog.shared.log(.info, "update", "update.deferred", "Versiune nouă amânată de utilizator", fields: ["version": version])
+                    }
+                case .upToDate:
+                    StructuredLog.shared.log(.info, "update", "update.upToDate", "La zi", fields: ["version": currentVersion])
+                case .error:
+                    StructuredLog.shared.log(.warning, "update", "update.checkFailed", "Verificarea actualizărilor nu a reușit")
+                }
+            }
+        }
+    }
+
     private enum Result {
         case upToDate
         /// Versiunea gasita + URL-ul de descarcare direct al `.pkg`-ului,
@@ -106,7 +135,11 @@ enum UpdateChecker {
             alert.informativeText = String(format: L.t("update.available.body"), version, currentVersion)
             alert.addButton(withTitle: L.t("update.download"))
             alert.addButton(withTitle: L.t("update.later"))
-            guard alert.runModal() == .alertFirstButtonReturn else { return }
+            guard alert.runModal() == .alertFirstButtonReturn else {
+                // „Mai târziu”: aceeași versiune nu mai apare automat (verificarea manuală o arată oricum).
+                UserDefaults.standard.set(version, forKey: dismissedVersionKey)
+                return
+            }
 
             if let pkgURL {
                 Task { await SelfUpdater.downloadAndInstall(pkgURL: pkgURL, version: version) }
