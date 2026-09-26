@@ -76,3 +76,26 @@ Type: filesandordirs; Name: "{userappdata}\DataMover"
 ; nu atinga datele altor produse GDC.
 Type: filesandordirs; Name: "{localappdata}\GDC\DataMover"
 Type: dirifempty; Name: "{localappdata}\GDC"
+
+[Code]
+// Dupa dezinstalare, Windows poate lasa goale folderele de resurse (ex. "es")
+// cat timp un alt proces (antivirus, indexare) tine scurt un fisier din ele.
+// RemoveDir sterge DOAR foldere goale, deci nu poate atinge alte fisiere;
+// se reincearca cateva secunde.
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var
+  App: String;
+  I: Integer;
+begin
+  if CurUninstallStep = usPostUninstall then
+  begin
+    App := ExpandConstant('{app}');
+    for I := 1 to 10 do
+    begin
+      RemoveDir(App + '\es');
+      RemoveDir(App);
+      if not DirExists(App) then Break;
+      Sleep(500);
+    end;
+  end;
+end;

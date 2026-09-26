@@ -1,5 +1,13 @@
 # Changelog — DataMover
 
+## v2.16.3 (2026-09-26) — Ghid de utilizare actualizat
+
+- Ghidul de utilizare (română, engleză, spaniolă) a fost rescris pentru
+  interfața actuală: pregătirea offloadului, verificările dinainte de pornire,
+  transferul și verificarea, rezultatul, rapoartele, reluarea, setările,
+  diagnosticul, instalarea și actualizarea pe macOS și Windows.
+- Windows: dezinstalarea nu mai lasă foldere goale în Program Files.
+
 ## v2.16.2 (2026-09-26) — Rapoarte de livrare
 
 - Rapoartele PDF și HTML au fost refăcute ca documente de livrare: verdict
