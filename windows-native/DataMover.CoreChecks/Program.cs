@@ -95,28 +95,58 @@ try
         Check("identitate: aceeasi cale, continut inlocuit -> diferita", !idA.SameAs(idA2));
 
         var target = Directory.CreateDirectory(Path.Combine(root, "dest", "JOB")).FullName;
-        Check("checkpoint salvat fara eroare, fara .tmp ramas",
-            CheckpointStore.Save(target, "JOB", "xxhash64", idA2, new() { ["CLIP/x.mov"] = "ok" }, new() { ["CLIP/x.mov"] = "100:1" }, false) == null
+        var h = new string('a', 16); // xxhash64 bine format
+        var proofs = new Dictionary<string, FileProof> { ["CLIP/x.mov"] = new FileProof(h, h, "checksum") };
+        Check("checkpoint schema 3 salvat fara eroare, fara .tmp ramas",
+            CheckpointStore.Save(target, "JOB", "xxhash64", idA2, new() { ["CLIP/x.mov"] = "ok" }, new() { ["CLIP/x.mov"] = "100:1" }, proofs, false) == null
             && !File.Exists(CheckpointStore.PathFor(target) + ".tmp"));
         Check("checkpoint valid pentru aceeasi identitate", CheckpointStore.LoadValidated(target, "JOB", "xxhash64", idA2).Kind == CheckpointLoadKind.Valid);
         Check("checkpoint respins pentru alta sursa", CheckpointStore.LoadValidated(target, "JOB", "xxhash64", idB).Kind == CheckpointLoadKind.Rejected);
-        Check("checkpoint respins pentru alt model", CheckpointStore.LoadValidated(target, "JOB", "md5", idA2).Kind == CheckpointLoadKind.Rejected);
+        Check("checkpoint respins pentru algoritm schimbat", CheckpointStore.LoadValidated(target, "JOB", "md5", idA2).Kind == CheckpointLoadKind.Rejected);
         Check("checkpoint respins pentru alt folder", CheckpointStore.LoadValidated(target, "ALT", "xxhash64", idA2).Kind == CheckpointLoadKind.Rejected);
+        CheckpointStore.Save(target, "JOB", "xxhash64", idA2, new() { ["CLIP/x.mov"] = "ok" }, new() { ["CLIP/x.mov"] = "100:1" }, new(), false);
+        Check("checkpoint respins: checksum absent", CheckpointStore.LoadValidated(target, "JOB", "xxhash64", idA2).Reason?.Contains("absent") == true);
+        CheckpointStore.Save(target, "JOB", "xxhash64", idA2, new() { ["CLIP/x.mov"] = "ok" }, new() { ["CLIP/x.mov"] = "100:1" },
+            new() { ["CLIP/x.mov"] = new FileProof("XYZ", "XYZ", "checksum") }, false);
+        Check("checkpoint respins: checksum corupt", CheckpointStore.LoadValidated(target, "JOB", "xxhash64", idA2).Reason?.Contains("corupt") == true);
         File.WriteAllText(CheckpointStore.PathFor(target), "{nu e json");
         Check("checkpoint corupt respins", CheckpointStore.LoadValidated(target, "JOB", "xxhash64", idA2).Reason == "fișier corupt");
-        File.WriteAllText(CheckpointStore.PathFor(target), "{\"folder_name\":\"JOB\",\"verification_model\":\"xxhash64\",\"files\":{\"CLIP/x.mov\":\"ok\"}}");
-        Check("checkpoint vechi (fara identitate) respins", CheckpointStore.LoadValidated(target, "JOB", "xxhash64", idA2).Kind == CheckpointLoadKind.Rejected);
+        File.WriteAllText(CheckpointStore.PathFor(target), "{\"schema\":2,\"folder_name\":\"JOB\",\"verification_model\":\"xxhash64\",\"files\":{\"CLIP/x.mov\":\"ok\"},\"file_stamps\":{}}");
+        Check("checkpoint schema 2 (fara dovada de continut) respins", CheckpointStore.LoadValidated(target, "JOB", "xxhash64", idA2).Reason?.Contains("format vechi") == true);
 
-        var entry = FileScanner.ListAllFiles(rootA, Array.Empty<string>())[0];
-        var destFile = Path.Combine(target, "CLIP", "x.mov");
-        Check("CanSkip fals: destinatie absenta", !CheckpointStore.CanSkip("ok", entry.Stamp, entry, destFile));
-        Directory.CreateDirectory(Path.GetDirectoryName(destFile)!);
-        File.WriteAllBytes(destFile, new byte[99]);
-        Check("CanSkip fals: marime diferita", !CheckpointStore.CanSkip("ok", entry.Stamp, entry, destFile));
-        File.WriteAllBytes(destFile, new byte[100]);
-        Check("CanSkip fals: amprenta sursei diferita", !CheckpointStore.CanSkip("ok", "100:1", entry, destFile));
-        Check("CanSkip fals: stare fail", !CheckpointStore.CanSkip("fail", entry.Stamp, entry, destFile));
-        Check("CanSkip adevarat doar cu toate conditiile", CheckpointStore.CanSkip("ok", entry.Stamp, entry, destFile));
+        // --- Byte-safe: aceeasi metadata, alti octeti ---------------------------
+        var card = Directory.CreateDirectory(Path.Combine(root, "C")).FullName;
+        var clip = MakeFile(card, "c.mov", 50_000, 3);
+        var dstDir = Directory.CreateDirectory(Path.Combine(root, "Cdst")).FullName;
+        var copy = Path.Combine(dstDir, "c.mov"); File.Copy(clip, copy);
+        var mt = File.GetLastWriteTimeUtc(clip);
+        var original = FileHashing.HashOfFile(clip, VerificationModel.XxHash64, 4096);
+        var idBefore = SourceIdentity.Compute(new[] { card }, FileScanner.ListAllFiles(card, Array.Empty<string>()), _ => "VOL-1");
+        var e0 = FileScanner.ListAllFiles(card, Array.Empty<string>())[0];
+        var proofC = new FileProof(original, original, "checksum");
+        Check("revalidare: sursa si destinatia neschimbate -> acceptat DOAR dupa recitire",
+            RevalidationPolicy.Revalidate(clip, copy, CheckpointStore.ExpectedSourceHash("ok", e0.Stamp, proofC, e0, copy),
+                VerificationModel.XxHash64, 4096, new CancelToken()).Reason == null);
+        var bytes = File.ReadAllBytes(clip); for (int i = 0; i < bytes.Length; i++) bytes[i] ^= 0x5A;
+        File.WriteAllBytes(clip, bytes); File.SetLastWriteTimeUtc(clip, mt);
+        var idAfter = SourceIdentity.Compute(new[] { card }, FileScanner.ListAllFiles(card, Array.Empty<string>()), _ => "VOL-1");
+        var e1 = FileScanner.ListAllFiles(card, Array.Empty<string>())[0];
+        Check("metadata identica (cale, volum injectat, marime, mtime) -> identitate identica", idBefore.SameAs(idAfter) && e1.Stamp == e0.Stamp);
+        var exp1 = CheckpointStore.ExpectedSourceHash("ok", e1.Stamp, proofC, e1, copy);
+        Check("metadata coerenta NU acorda verdictul: sursa cu alti octeti -> recopiere",
+            RevalidationPolicy.Revalidate(clip, copy, exp1, VerificationModel.XxHash64, 4096, new CancelToken()).Reason?.Contains("sursa diferă") == true);
+        File.WriteAllBytes(clip, File.ReadAllBytes(copy)); File.SetLastWriteTimeUtc(clip, mt); // sursa inapoi la original
+        var tampered = File.ReadAllBytes(copy); tampered[100] ^= 0xFF; File.WriteAllBytes(copy, tampered);
+        Check("destinatie modificata (aceeasi marime) -> recopiere",
+            RevalidationPolicy.Revalidate(clip, copy, original, VerificationModel.XxHash64, 4096, new CancelToken()).Reason?.Contains("destinația diferă") == true);
+        var z = MakeFile(card, "z.wav", 0); var zc = Path.Combine(dstDir, "z.wav"); File.WriteAllBytes(zc, Array.Empty<byte>());
+        var zh = FileHashing.HashOfFile(z, VerificationModel.XxHash64, 4096);
+        Check("fisier de 0 octeti: acceptat prin recitire (hash gol al algoritmului)",
+            RevalidationPolicy.Revalidate(z, zc, zh, VerificationModel.XxHash64, 4096, new CancelToken()).Reason == null);
+        Check("doar-marime: niciodata acceptat la reluare",
+            RevalidationPolicy.Revalidate(clip, clip, null, VerificationModel.SizeOnly, 4096, new CancelToken()).Reason != null);
+        Check("ExpectedSourceHash null daca destinatia lipseste", CheckpointStore.ExpectedSourceHash("ok", e0.Stamp, proofC, e0, copy + ".nu") == null);
+        Check("ExpectedSourceHash null daca stare fail", CheckpointStore.ExpectedSourceHash("fail", e0.Stamp, proofC, e0, copy) == null);
     }
 }
 finally { Directory.Delete(root, true); }

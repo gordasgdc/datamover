@@ -63,24 +63,24 @@ Rapoartele (PDF/HTML) poartă algoritmul **și** nivelul. Un fișier existent
 deja la destinație, cu aceeași mărime, e recitit și comparat cu sursa
 înainte de a fi considerat „deja existent”.
 
-## Reluare și checkpoint (schema 2, ambele platforme)
+## Reluare și checkpoint (schema 3, ambele platforme)
 
-- Checkpoint-ul conține **identitatea sursei**: căile canonice, volumul
-  (UUID pe macOS, serial pe Windows), SHA-256 peste lista sortată
-  „cale relativă · mărime · data modificării”, numărul de fișiere; plus
-  amprenta „mărime:mtime” a fiecărui fișier confirmat.
-- E acceptat doar dacă schema, identitatea, folderul și modelul de
-  verificare coincid și toate stările sunt cunoscute. Checkpoint-urile
-  vechi (fără identitate), corupte sau străine sunt respinse, cu motivul în
-  jurnal; fișierele existente se reverifică prin citire.
-- Un fișier marcat „ok” e sărit doar dacă amprenta sursei e aceeași și
-  destinația există cu mărimea sursei.
-- **Limită declarată**: două surse cu aceleași căi, mărimi și date de
-  modificare identice, dar conținut diferit, pe volume fără identificator
-  unic (unele carduri exFAT nu expun UUID), nu pot fi deosebite fără
-  recitirea sursei. Pentru certitudine completă: dezactivează reluarea
-  automată (Setări → Verificare); atunci toate fișierele se recopiază și se
-  verifică.
+- Checkpoint-ul conține identitatea sursei (căi canonice, volum, SHA-256
+  peste „cale · mărime · mtime”, nr. fișiere), amprenta „mărime:mtime” și
+  **dovada per fișier confirmat**: checksum-ul sursei și al destinației,
+  cu verdictul `checksum` (sau `size` în modul „doar octeți”).
+- Metadata poate doar **respinge** rapid: schemă veche (1–2), fișier
+  corupt, alt folder, alt algoritm, altă identitate, stări necunoscute,
+  checksum absent sau malformat → checkpoint ignorat, motiv în jurnal.
+- Metadata **nu acordă niciodată** verdictul. La reluare, un fișier prezent
+  la destinație cu mărimea sursei e recitit: sursa curentă trebuie să dea
+  checksum-ul salvat (dacă există dovadă validă), iar destinația recitită
+  trebuie să dea același checksum. Orice diferență → recopiere prin
+  `.dmpart`, cu motivul consemnat.
+- Modul „doar octeți” nu are dovadă de conținut: la reluare totul se
+  recopiază.
+- Costul: reluarea citește sursa și destinația fișierelor deja copiate (nu
+  le rescrie). E prețul verdictului byte-safe.
 
 ## Verdicte
 
@@ -115,6 +115,6 @@ exclusiv în directoare temporare, cu date sintetice.
   simulate doar prin erori injectate (writer care eșuează, flush care
   eșuează), nu pe hardware.
 - Windows: logica de checkpoint e verificată la nivel de politică
-  (`CheckpointStore`, `CanSkip`), nu printr-un transfer complet
+  (`CheckpointStore`, `RevalidationPolicy`), nu printr-un transfer complet
   (`OffloadRunner` depinde de WPF/QuestPDF). Interfața Windows nu are
   panourile noi și nu a fost verificată vizual.

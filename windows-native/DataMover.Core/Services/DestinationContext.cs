@@ -42,6 +42,8 @@ public sealed class DestinationContext
     private readonly Dictionary<string, string> _filesStatus = new();
     /// Amprenta sursei (marime:mtime) pentru fiecare fisier confirmat.
     private readonly Dictionary<string, string> _fileStamps = new();
+    /// Dovada per fisier (checksum sursa/destinatie) — schema 3.
+    private readonly Dictionary<string, FileProof> _fileProofs = new();
     private bool _checkpointErrorLogged;
     private int _filesSinceCheckpoint;
     private DateTime _lastCheckpointTime = DateTime.MinValue;
@@ -100,37 +102,45 @@ public sealed class DestinationContext
             {
                 foreach (var kv in loaded.Files) _filesStatus[kv.Key] = kv.Value;
                 foreach (var kv in loaded.Stamps) _fileStamps[kv.Key] = kv.Value;
+                foreach (var kv in loaded.Proofs) _fileProofs[kv.Key] = kv.Value;
                 _alreadyDone = loaded.Files.Where(kv => kv.Value is "ok" or "sarit").Select(kv => kv.Key).ToHashSet();
             }
         }
     }
 
-    public enum Classification { AlreadyDone, ExistingSameSize, NeedsCopy }
+    /// [2026-09-26, schema 3] Revalidate = fisier prezent cu marimea sursei;
+    /// sursa si destinatia se RECITESC (niciodata doar metadata). NeedsCopy =
+    /// lipsa, alta marime sau mod „doar octeti”.
+    public enum Classification { Revalidate, NeedsCopy }
+
+    /// Checksum-ul asteptat al sursei (din checkpoint), setat de Classify
+    /// cand dovada e coerenta cu metadata; null = doar sursa vs destinatia.
+    public string? ExpectedHashFor(string relPath) => _expected.TryGetValue(relPath, out var h) ? h : null;
+    private readonly Dictionary<string, string> _expected = new();
 
     public Classification Classify(FileEntry entry, bool allowSkipExisting)
     {
+        if (Model == VerificationModel.SizeOnly) return Classification.NeedsCopy;
+        _expected.Remove(entry.RelPath);
         if (_alreadyDone.Contains(entry.RelPath))
         {
             _filesStatus.TryGetValue(entry.RelPath, out var st);
             _fileStamps.TryGetValue(entry.RelPath, out var stamp);
-            if (CheckpointStore.CanSkip(st, stamp, entry, DestPath(entry))) return Classification.AlreadyDone;
+            _fileProofs.TryGetValue(entry.RelPath, out var proof);
+            var expected = CheckpointStore.ExpectedSourceHash(st, stamp, proof, entry, DestPath(entry));
+            if (expected != null) _expected[entry.RelPath] = expected;
+            else OnActivity($"Checkpoint depășit: {entry.RelPath} lipsește, are altă mărime sau sursa diferă — se reverifică.");
             _alreadyDone.Remove(entry.RelPath);
             _filesStatus.Remove(entry.RelPath);
             _fileStamps.Remove(entry.RelPath);
-            OnActivity($"Checkpoint depășit: {entry.RelPath} lipsește, are altă mărime sau sursa diferă — se reverifică.");
+            _fileProofs.Remove(entry.RelPath);
         }
         if (!allowSkipExisting) return Classification.NeedsCopy;
         var path = DestPath(entry);
         if (!File.Exists(path)) return Classification.NeedsCopy;
         long size;
         try { size = new FileInfo(path).Length; } catch { return Classification.NeedsCopy; }
-        return size == entry.Size ? Classification.ExistingSameSize : Classification.NeedsCopy;
-    }
-
-    public void RecordSkippedViaCheckpoint(FileEntry entry)
-    {
-        SkipCount++;
-        MaybeCheckpoint();
+        return size == entry.Size ? Classification.Revalidate : Classification.NeedsCopy;
     }
 
     public void RecordVerifiedExisting(FileEntry entry, string srcHash, string dstHash)
@@ -138,6 +148,7 @@ public sealed class DestinationContext
         SkipCount++;
         _filesStatus[entry.RelPath] = "sarit";
         _fileStamps[entry.RelPath] = entry.Stamp;
+        _fileProofs[entry.RelPath] = new FileProof(srcHash, dstHash, "checksum");
         LogRow(new ReportRow { File = entry.RelPath, SizeBytes = entry.Size, SrcHash = srcHash, DstHash = dstHash, Status = "SARIT", DestPath = DestPath(entry) });
         RecordInMhl(entry, srcHash);
         CloudUploadQueue?.Enqueue(entry.RelPath);
@@ -160,6 +171,7 @@ public sealed class DestinationContext
                 OkCount++;
                 _filesStatus[entry.RelPath] = "ok";
                 _fileStamps[entry.RelPath] = entry.Stamp;
+                _fileProofs[entry.RelPath] = new FileProof(sourceHash, hash, Model == VerificationModel.SizeOnly ? "size" : "checksum");
                 RecordInMhl(entry, sourceHash);
                 CloudUploadQueue?.Enqueue(entry.RelPath);
             }
@@ -218,7 +230,8 @@ public sealed class DestinationContext
         bool dueByTime = (now - _lastCheckpointTime).TotalSeconds >= 5.0;
         if (!(force || dueByCount || dueByTime)) return;
         var stamps = _fileStamps.Where(kv => _filesStatus.ContainsKey(kv.Key)).ToDictionary(kv => kv.Key, kv => kv.Value);
-        var error = CheckpointStore.Save(TargetRoot, FolderName, Model.Key(), SourceIdentity, new Dictionary<string, string>(_filesStatus), stamps, force && !Cancelled);
+        var proofs = _fileProofs.Where(kv => _filesStatus.ContainsKey(kv.Key)).ToDictionary(kv => kv.Key, kv => kv.Value);
+        var error = CheckpointStore.Save(TargetRoot, FolderName, Model.Key(), SourceIdentity, new Dictionary<string, string>(_filesStatus), stamps, proofs, force && !Cancelled);
         if (error != null && !_checkpointErrorLogged)
         {
             _checkpointErrorLogged = true;

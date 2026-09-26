@@ -21,9 +21,11 @@
 - Rezultat neambiguu: verificat / verificat cu avertismente / eșec parțial /
   eșec / anulat. Cardul se ejectează automat doar când fiecare destinație
   are o copie confirmată.
-- Reluarea acceptă checkpoint-ul doar pentru aceeași sursă (căi, volum, lista
-  de fișiere cu mărimi și date); un card diferit montat la aceeași cale nu
-  mai poate fi sărit ca „deja copiat”. Checkpoint-urile vechi se ignoră.
+- Reluarea nu mai sare niciun fișier doar pe baza numelui, mărimii sau datei:
+  sursa și copia se recitesc și trebuie să dea checksum-ul salvat la
+  confirmare. Un card diferit cu aceleași nume și mărimi, sau o copie
+  modificată între timp, sunt detectate și recopiate. Checkpoint-urile vechi
+  se ignoră; în modul „doar octeți” reluarea recopiază tot.
 - Dacă discul nu poate confirma scrierea (flush), fișierul e marcat
   neconfirmat, cu motivul exact.
 - Recitirea opțională e descrisă exact: o a doua citire separată a fiecărei

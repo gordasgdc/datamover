@@ -44,14 +44,16 @@ public sealed record SourceIdentity(
         catch { return "?"; }
     }
 
-    public static SourceIdentity Compute(IReadOnlyList<string> sources, IReadOnlyList<FileEntry> files)
+    public static SourceIdentity Compute(IReadOnlyList<string> sources, IReadOnlyList<FileEntry> files,
+        Func<string, string>? volumeOf = null)
     {
+        volumeOf ??= VolumeOf;
         using var sha = SHA256.Create();
         var sb = new StringBuilder();
         foreach (var f in files.OrderBy(f => f.RelPath, StringComparer.Ordinal).ThenBy(f => f.FullPath, StringComparer.Ordinal))
             sb.Append(f.RelPath).Append('\0').Append(f.Size).Append('\0').Append(f.MtimeMicros).Append('\n');
         var digest = Convert.ToHexString(sha.ComputeHash(Encoding.UTF8.GetBytes(sb.ToString()))).ToLowerInvariant();
-        return new SourceIdentity(sources.Select(Canonical).ToList(), sources.Select(VolumeOf).ToList(), digest, files.Count);
+        return new SourceIdentity(sources.Select(Canonical).ToList(), sources.Select(volumeOf).ToList(), digest, files.Count);
     }
 
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
@@ -61,17 +63,63 @@ public sealed record SourceIdentity(
 
 public enum CheckpointLoadKind { None, Valid, Rejected }
 
+/// Dovada per fisier (schema 3) — identica cu `FileProof` (Mac).
+public sealed record FileProof(
+    [property: JsonPropertyName("source")] string Source,
+    [property: JsonPropertyName("destination")] string Destination,
+    [property: JsonPropertyName("verdict")] string Verdict);
+
 public sealed record CheckpointLoad(CheckpointLoadKind Kind, Dictionary<string, string> Files,
-    Dictionary<string, string> Stamps, string? Reason)
+    Dictionary<string, string> Stamps, Dictionary<string, FileProof> Proofs, string? Reason)
 {
-    public static CheckpointLoad None() => new(CheckpointLoadKind.None, new(), new(), null);
-    public static CheckpointLoad Rejected(string why) => new(CheckpointLoadKind.Rejected, new(), new(), why);
+    public static CheckpointLoad None() => new(CheckpointLoadKind.None, new(), new(), new(), null);
+    public static CheckpointLoad Rejected(string why) => new(CheckpointLoadKind.Rejected, new(), new(), new(), why);
+}
+
+/// Decizia byte-safe la reluare — aceeasi politica ca `RevalidationPolicy`
+/// (Mac): nici metadata, nici checkpoint-ul singure nu acorda „verificat”.
+public static class RevalidationPolicy
+{
+    public static int? HexLength(VerificationModel m) => m switch
+    {
+        VerificationModel.XxHash64 => 16,
+        VerificationModel.Md5 => 32,
+        VerificationModel.Sha1 => 40,
+        VerificationModel.Sha256 => 64,
+        VerificationModel.Sha512 => 128,
+        _ => null,
+    };
+
+    public static bool IsWellFormed(string? hash, VerificationModel m) =>
+        hash != null && HexLength(m) is int n && hash.Length == n && hash.All(c => c is >= '0' and <= '9' or >= 'a' and <= 'f');
+
+    /// null = accepta; altfel motivul recopierii.
+    public static string? Decide(VerificationModel model, string? expected, string? sourceHash, string? destinationHash)
+    {
+        if (model == VerificationModel.SizeOnly) return "mod „doar octeți”: fără dovadă de conținut, se recopiază";
+        if (!IsWellFormed(sourceHash, model)) return "sursa nu a putut fi recitită";
+        if (expected != null && expected != sourceHash) return "sursa diferă de cea din checkpoint (alți octeți)";
+        if (destinationHash != sourceHash) return "destinația diferă de sursă";
+        return null;
+    }
+
+    /// Recitește sursa și destinația (niciodata doar metadata) si decide.
+    public static (string? Reason, string? SourceHash, string? DestinationHash) Revalidate(
+        string sourcePath, string destinationPath, string? expected, VerificationModel model, int chunkSize, CancelToken cancel,
+        string? cachedSourceHash = null)
+    {
+        string? Try(string p) { try { return FileHashing.HashOfFile(p, model, chunkSize, cancel); } catch (OffloadCancelledException) { throw; } catch { return null; } }
+        var src = model == VerificationModel.SizeOnly ? null : cachedSourceHash ?? Try(sourcePath);
+        var dst = model == VerificationModel.SizeOnly ? null : Try(destinationPath);
+        return (Decide(model, expected, src, dst), src, dst);
+    }
 }
 
 public static class CheckpointStore
 {
     public const string Filename = "offload_checkpoint.json";
-    public const int Schema = 2;
+    /// 3: dovada per fisier (checksum sursa + destinatie); 1-2 respinse.
+    public const int Schema = 3;
     private static readonly HashSet<string> AllowedStates = new() { "ok", "sarit", "fail" };
 
     private sealed class CheckpointData
@@ -85,6 +133,7 @@ public static class CheckpointStore
         [JsonPropertyName("total_files")] public int? TotalFiles { get; set; }
         [JsonPropertyName("source_identity")] public SourceIdentity? SourceIdentity { get; set; }
         [JsonPropertyName("file_stamps")] public Dictionary<string, string>? FileStamps { get; set; }
+        [JsonPropertyName("file_proofs")] public Dictionary<string, FileProof>? FileProofs { get; set; }
     }
 
     public static string PathFor(string targetRoot) => Path.Combine(targetRoot, Filename);
@@ -99,13 +148,32 @@ public static class CheckpointStore
         try { d = JsonSerializer.Deserialize<CheckpointData>(File.ReadAllText(path)); }
         catch { return CheckpointLoad.Rejected("fișier corupt"); }
         if (d == null) return CheckpointLoad.Rejected("fișier corupt");
-        if (d.Schema != Schema || d.SourceIdentity == null || d.FileStamps == null)
-            return CheckpointLoad.Rejected("format vechi, fără identitatea sursei");
+        if (d.Schema != Schema || d.SourceIdentity == null || d.FileStamps == null || d.FileProofs == null)
+            return CheckpointLoad.Rejected("format vechi, fără dovada de conținut");
         if (d.VerificationModel != verificationModel) return CheckpointLoad.Rejected($"alt model de verificare: {d.VerificationModel}");
         if (d.FolderName != folderName) return CheckpointLoad.Rejected($"alt folder: {d.FolderName}");
         if (!identity.SameAs(d.SourceIdentity)) return CheckpointLoad.Rejected("altă sursă (cale, volum sau conținut listat diferit)");
         if (d.Files.Values.Any(v => !AllowedStates.Contains(v))) return CheckpointLoad.Rejected("stare necunoscută în fișier");
-        return new CheckpointLoad(CheckpointLoadKind.Valid, d.Files, d.FileStamps, null);
+        var model = VerificationModelFromKey(verificationModel);
+        if (model == null) return CheckpointLoad.Rejected("model necunoscut");
+        foreach (var kv in d.Files.Where(kv => kv.Value is "ok" or "sarit"))
+        {
+            if (!d.FileProofs.TryGetValue(kv.Key, out var p) || p == null) return CheckpointLoad.Rejected($"checksum absent pentru {kv.Key}");
+            if (model == VerificationModel.SizeOnly)
+            {
+                if (p.Verdict != "size") return CheckpointLoad.Rejected($"verdict incoerent pentru {kv.Key}");
+            }
+            else if (p.Verdict != "checksum" || !RevalidationPolicy.IsWellFormed(p.Source, model.Value) || p.Destination != p.Source)
+                return CheckpointLoad.Rejected($"checksum corupt pentru {kv.Key}");
+        }
+        return new CheckpointLoad(CheckpointLoadKind.Valid, d.Files, d.FileStamps, d.FileProofs, null);
+    }
+
+    private static VerificationModel? VerificationModelFromKey(string key)
+    {
+        foreach (VerificationModel m in Enum.GetValues(typeof(VerificationModel)))
+            if (m.Key() == key) return m;
+        return null;
     }
 
     /// Scriere atomica: temp + Flush(true) + inlocuire intr-un singur pas
@@ -113,7 +181,7 @@ public static class CheckpointStore
     /// „sterge, apoi muta”. Intoarce eroarea (politica: checkpoint-ul e o
     /// optimizare, nu dovada — eroarea se consemneaza, nu schimba verdictul).
     public static Exception? Save(string targetRoot, string folderName, string verificationModel, SourceIdentity identity,
-        Dictionary<string, string> files, Dictionary<string, string> stamps, bool completed)
+        Dictionary<string, string> files, Dictionary<string, string> stamps, Dictionary<string, FileProof> proofs, bool completed)
     {
         var path = PathFor(targetRoot);
         var tmp = path + ".tmp";
@@ -123,7 +191,7 @@ public static class CheckpointStore
             {
                 Schema = Schema, Source = identity.Roots.FirstOrDefault(), FolderName = folderName,
                 VerificationModel = verificationModel, Completed = completed, Files = files,
-                TotalFiles = files.Count, SourceIdentity = identity, FileStamps = stamps,
+                TotalFiles = files.Count, SourceIdentity = identity, FileStamps = stamps, FileProofs = proofs,
             };
             var bytes = JsonSerializer.SerializeToUtf8Bytes(payload);
             using (var fs = new FileStream(tmp, FileMode.Create, FileAccess.Write, FileShare.None))
@@ -141,15 +209,15 @@ public static class CheckpointStore
         }
     }
 
-    /// Un fisier marcat „ok/sarit” poate fi sarit DOAR daca: amprenta sursei
-    /// (marime:mtime) e cea de la confirmare si destinatia exista cu marimea
-    /// sursei. Identitatea globala a sursei a fost deja validata la incarcare.
-    public static bool CanSkip(string? status, string? savedStamp, FileEntry entry, string destPath)
+    /// Metadata poate doar RESPINGE dovada (stare, amprenta sursei, fisier
+    /// lipsa/alta marime). Cand e coerenta, intoarce checksum-ul asteptat al
+    /// sursei — care tot trebuie reprodus prin recitire (RevalidationPolicy).
+    public static string? ExpectedSourceHash(string? status, string? savedStamp, FileProof? proof, FileEntry entry, string destPath)
     {
-        if (status is not ("ok" or "sarit")) return false;
-        if (savedStamp != entry.Stamp) return false;
-        try { return File.Exists(destPath) && new FileInfo(destPath).Length == entry.Size; }
-        catch { return false; }
+        if (status is not ("ok" or "sarit") || proof == null || proof.Verdict != "checksum") return null;
+        if (savedStamp != entry.Stamp) return null;
+        try { return File.Exists(destPath) && new FileInfo(destPath).Length == entry.Size ? proof.Source : null; }
+        catch { return null; }
     }
 }
 

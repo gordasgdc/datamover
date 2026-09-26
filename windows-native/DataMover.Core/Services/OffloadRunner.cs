@@ -424,11 +424,7 @@ public sealed class OffloadRunner : INotifyPropertyChanged
                         }
                         switch (ctx.Classify(entry, resume))
                         {
-                            case DestinationContext.Classification.AlreadyDone:
-                                ctx.RecordSkippedViaCheckpoint(entry);
-                                Advance(entry.Size);
-                                break;
-                            case DestinationContext.Classification.ExistingSameSize:
+                            case DestinationContext.Classification.Revalidate:
                                 toVerify.Add(ctx);
                                 break;
                             case DestinationContext.Classification.NeedsCopy:
@@ -447,16 +443,21 @@ public sealed class OffloadRunner : INotifyPropertyChanged
                         foreach (var ctx in toVerify)
                         {
                             ctx.OnActivity($"Verificare fisier existent: {entry.RelPath}…");
-                            verifiedSourceHash ??= TryHash(entry.FullPath, model, chunkBytes, token);
-                            var dstHash = TryHash(ctx.DestPath(entry), model, chunkBytes, token) ?? "";
-                            if (verifiedSourceHash != null && verifiedSourceHash == dstHash)
+                            // [2026-09-26] Byte-safe: sursa si destinatia recitite;
+                            // checksum-ul din checkpoint (daca exista) trebuie reprodus.
+                            var (reason, srcHash, dstHash) = RevalidationPolicy.Revalidate(
+                                entry.FullPath, ctx.DestPath(entry), ctx.ExpectedHashFor(entry.RelPath), model, chunkBytes, token,
+                                cachedSourceHash: verifiedSourceHash);
+                            verifiedSourceHash ??= srcHash;
+                            if (reason == null)
                             {
-                                ctx.RecordVerifiedExisting(entry, verifiedSourceHash, dstHash);
+                                ctx.RecordVerifiedExisting(entry, srcHash!, dstHash!);
                                 Advance(entry.Size);
                             }
                             else
                             {
-                                toCopy.Add(ctx); // marimea coincidea dar continutul nu - recopiem normal
+                                ctx.OnActivity($"Se recopiază {entry.RelPath}: {reason}.");
+                                toCopy.Add(ctx);
                             }
                         }
                         if (token.IsCancelled) { cancelledFlag = true; return; }
