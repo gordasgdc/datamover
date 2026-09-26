@@ -70,6 +70,7 @@ step swift-test "swift test" bash -c "cd mac-native && swift test"
 
 echo "== Localizare (RO/EN/ES) și design"
 step l10n "localizare: chei complete, specificatori identici" python3 scripts/check-l10n.py
+step report-text "rapoarte: texte RO/EN/ES identice Mac = Windows" python3 scripts/gen-report-strings.py --check
 step design-audit "design audit (fără datorie nouă față de baseline)" scripts/design-audit.sh
 
 if [ $QUICK -eq 0 ]; then
@@ -102,6 +103,8 @@ if [ "${VM:-0}" -eq 1 ]; then
         step winchecks "NTFS real: 2 copii, reluare, coliziuni, unitate lipsă, junction, Unicode, cale lungă, export" \
             prlctl exec "$VMNAME" --current-user cmd /c "Z:\\Documents\\dm-winchecks-preflight\\DataMover.WinChecks.exe"
         [ -f "$WC/winchecks-result.txt" ] && tail -1 "$WC/winchecks-result.txt" | sed 's/^/      /'
+        # Mostrele PDF randate pe Windows (rapoarte de livrare) se păstrează doar la cerere, în afara repo-ului.
+        [ -n "${DM_REPORT_SAMPLES:-}" ] && [ -d "$WC/report-samples" ] && mkdir -p "$DM_REPORT_SAMPLES" && cp "$WC/report-samples/"*.pdf "$DM_REPORT_SAMPLES/"
         rm -rf "$WC"
     else
         warn "VM '$VMNAME' nu rulează — verificările Windows reale nu s-au făcut"

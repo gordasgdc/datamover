@@ -333,6 +333,8 @@ final class DestinationContext: @unchecked Sendable {
         let path = (targetRoot as NSString).appendingPathComponent("offload_report_\(timestamp).csv")
         FileManager.default.createFile(atPath: path, contents: nil)
         guard let handle = FileHandle(forWritingAtPath: path) else { return }
+        // BOM UTF-8, ca pe Windows: Excel deschide astfel diacriticele corect; coloanele rămân aceleași.
+        handle.write(Data([0xEF, 0xBB, 0xBF]))
         handle.write("fisier,marime_bytes,verificare_sursa,verificare_destinatie,status,eroare\n".data(using: .utf8) ?? Data())
         csvHandle = handle
         csvPath = path
@@ -357,6 +359,41 @@ final class DestinationContext: @unchecked Sendable {
         return field
     }
 
+    /// Numărul total de copii din transfer (setat de OffloadRunner), afișat în raport.
+    var copyCount = 1
+
+    /// Modelul raportului de livrare — aceleași date pentru PDF și HTML.
+    func deliveryReport(finishedAt: Date, mhlPath: String?) -> DeliveryReport {
+        var r = DeliveryReport()
+        r.lang = ReportLang(rawValue: L.current.rawValue) ?? .ro
+        let info = Bundle.main.infoDictionary
+        let short = info?["CFBundleShortVersionString"] as? String ?? "?"
+        let build = info?["CFBundleVersion"] as? String
+        r.appVersion = build.map { "\(short) (\($0))" } ?? short
+        r.folderName = folderName; r.destination = targetRoot
+        r.sourceName = sourceRoot.map { ($0 as NSString).lastPathComponent } ?? ""
+        r.project = meta.project; r.card = meta.card; r.client = meta.client
+        r.operatorName = meta.operatorName; r.camera = meta.camera; r.notes = meta.notes
+        r.startedAt = startedAt; r.finishedAt = finishedAt
+        r.verification = verificationDescription; r.copyCount = copyCount
+        r.okCount = okCount; r.skipCount = skipCount; r.failCount = failCount; r.recoveredCount = recoveredCount
+        r.bytesConfirmed = bytesConfirmed; r.cancelled = cancelled
+        r.mhlFile = mhlPath.map { ($0 as NSString).lastPathComponent }
+        r.csvFile = csvPath.map { ($0 as NSString).lastPathComponent }
+        r.jobID = jobID; r.rows = pdfSampleRows
+        r.mediaLine = { row in
+            guard let m = MediaInspector.probe(path: row.destPath) else { return nil }
+            var parts: [String] = []
+            if let x = m.resolutionText { parts.append(x) }
+            if let fps = m.frameRate { parts.append(String(format: "%.2f fps", fps)) }
+            if let c = m.videoCodec { parts.append(c) }
+            if let tc = m.timecode { parts.append("TC \(tc)") }
+            if let ch = m.audioChannels { parts.append("\(ch)ch audio") }
+            return parts.isEmpty ? nil : parts.joined(separator: " · ")
+        }
+        return r
+    }
+
     /// Finalizează: așteaptă upload-urile Cloud, scrie checkpoint-ul final,
     /// închide MHL-ul, generează CSV/PDF/HTML — identic cu vechiul
     /// `writeReports` + coada finală din `DestinationJob.run()`.
@@ -379,28 +416,15 @@ final class DestinationContext: @unchecked Sendable {
         let timestamp = formatter.string(from: Date())
         let pdfPath = (targetRoot as NSString).appendingPathComponent("offload_report_\(timestamp).pdf")
         let finishedAt = Date()
-        let totalRows = okCount + skipCount + failCount
-        let truncatedNote = pdfSampleRows.count < totalRows
-            ? "Lista completa (\(totalRows) fisiere) e in CSV-ul alaturat - PDF-ul arata toate problemele plus un esantion."
-            : nil
-
         let htmlPath = (targetRoot as NSString).appendingPathComponent("offload_report_\(timestamp).html")
-        let htmlOK = HTMLReport.write(
-            path: htmlPath, destination: destRoot, folderName: folderName, rows: pdfSampleRows,
-            meta: meta, startedAt: startedAt, finishedAt: finishedAt,
-            okCount: okCount, skipCount: skipCount, failCount: failCount,
-            recoveredCount: recoveredCount, cancelled: cancelled,
-            verificationLabel: verificationDescription, mhlPath: mhlPath,
-            truncatedNote: truncatedNote)
+        let report = deliveryReport(finishedAt: finishedAt, mhlPath: mhlPath)
+        let htmlOK = (try? report.html(logoDataURI: HTMLReport.logoDataURI(meta.logoPath))
+            .write(toFile: htmlPath, atomically: true, encoding: .utf8)) != nil
         if !htmlOK { onActivity("Nu s-a putut genera raportul HTML.") }
 
-        let pdfResult = writePDFReport(
-            path: pdfPath, destination: destRoot, folderName: folderName, rows: pdfSampleRows,
-            startedAt: startedAt, finishedAt: finishedAt, okCount: okCount, skipCount: skipCount,
-            failCount: failCount, cancelled: cancelled, verificationLabel: verificationDescription,
-            meta: meta, recoveredCount: recoveredCount, mhlPath: mhlPath,
-            truncatedNote: truncatedNote
-        )
+        let logo = meta.logoPath.isEmpty ? nil
+            : NSImage(contentsOfFile: meta.logoPath)?.cgImage(forProposedRect: nil, context: nil, hints: nil)
+        let pdfResult = report.writePDF(to: pdfPath, logo: logo)
         let savedPDF: String? = pdfResult.ok ? pdfPath : nil
         if !pdfResult.ok {
             let reason = pdfResult.error ?? "motiv necunoscut"

@@ -5,155 +5,143 @@ using QuestPDF.Infrastructure;
 
 namespace DataMover.Core.Services;
 
-/// <summary>
-/// Raport PDF per destinatie - port C# al pdf_report.py (Mac/Python
-/// foloseau deja reportlab; QuestPDF e echivalentul .NET, licenta
-/// Community, gratuita pentru acest proiect). Lipsea complet in clientul
-/// WPF nou - semnalat de Cristi dupa primul test real pe Windows
-/// (2026-08-28): "nu-mi creeaza acel fisier PDF". `rows` e ESANTIONUL
-/// plafonat (DestinationJob._sampleRows, PdfSampleLimit) - lista completa
-/// ramane in CSV (Regula 21), PDF-ul nu tine in RAM fiecare fisier al
-/// unui transfer urias.
-/// </summary>
+/// Raportul de livrare PDF (QuestPDF, A4). Același model și aceleași texte ca
+/// raportul HTML și ca varianta macOS (DeliveryReport); randarea diferă doar
+/// tehnic. Tabelul își repetă antetul pe fiecare pagină, iar un rând nu se rupe
+/// între pagini.
 public static class PdfReport
 {
-    private static readonly Dictionary<string, string> StatusColors = new()
+    const string Ink = "#1A1D22", Dim = "#5B6470", Rule = "#D5D9DE", Band = "#F6F7F8", Amber = "#B8691F";
+
+    static string KindColor(string k) => k switch { "ok" => "#1F7A45", "warn" => "#9A6200", "fail" => "#B42318", _ => Dim };
+    static string VerdictColor(DestinationOutcome o) => o switch
     {
-        ["OK"] = "#1a7a34",
-        ["SARIT"] = "#7a6a1a",
-        ["NEPOTRIVIRE"] = "#b8860b",
-        ["EROARE"] = "#b02a2a",
+        DestinationOutcome.Verified => "#1F7A45", DestinationOutcome.VerifiedWithWarnings => "#9A6200",
+        DestinationOutcome.Failed => "#B42318", _ => Dim,
     };
 
-    public static string Generate(
-        string targetRoot, string destination, string folderName,
-        IReadOnlyList<ReportRow> rows, DateTime startedAt, DateTime finishedAt,
-        int okCount, int skipCount, int failCount, bool cancelled,
-        string verificationLabel, string? truncatedNote,
-        ProductionMeta? meta = null, int recoveredCount = 0, string? mhlPath = null)
+    public static void Write(DeliveryReport r, string path)
     {
-        meta ??= new ProductionMeta();
         QuestPDF.Settings.License = LicenseType.Community;
+        var vc = VerdictColor(r.Outcome);
+        byte[]? logo = null;
+        try { if (!string.IsNullOrWhiteSpace(r.LogoPath) && File.Exists(r.LogoPath)) logo = File.ReadAllBytes(r.LogoPath); }
+        catch { /* raportul e mai important decât logo-ul */ }
 
-        var timestamp = finishedAt.ToString("yyyy-MM-dd_HH-mm-ss");
-        var path = Path.Combine(targetRoot, $"offload_report_{timestamp}.pdf");
-        var total = okCount + skipCount + failCount;
-        var statusText = cancelled ? "ANULAT DE UTILIZATOR" : "FINALIZAT";
-        var duration = $"{(finishedAt - startedAt).TotalSeconds:0.0} secunde";
-
-        Document.Create(container =>
+        Document.Create(doc =>
         {
-            container.Page(page =>
+            doc.Page(page =>
             {
                 page.Size(PageSizes.A4);
-                page.Margin(18, Unit.Millimetre);
-                page.DefaultTextStyle(x => x.FontSize(9));
+                page.Margin(15, Unit.Millimetre);
+                page.DefaultTextStyle(x => x.FontSize(8.5f).FontColor(Ink));
 
-                page.Header().Row(headerRow =>
+                page.Header().PaddingBottom(8).BorderBottom(1.2f).BorderColor(Ink).PaddingBottom(6).Row(h =>
                 {
-                    headerRow.RelativeItem().Column(col =>
-                    {
-                        col.Item().Text("Raport offload – DataMover").FontSize(18).Bold();
-                        col.Item().PaddingTop(4).Text($"Destinatie: {destination}");
-                        col.Item().Text($"Folder creat: {folderName}");
-                        // [2026-09-03] Campurile de productie completate de
-                        // user (Client, Camera, Operator…) - cele goale nu
-                        // se deseneaza deloc, vezi ProductionMeta.HeaderFields.
-                        var brandingFields = meta.HeaderFields();
-                        if (brandingFields.Count > 0)
-                            col.Item().Text(string.Join("   |   ", brandingFields.Select(f => $"{f.Label}: {f.Value}")));
-                        col.Item().Text($"Model de verificare: {verificationLabel}");
-                        col.Item().Text($"Inceput: {startedAt:yyyy-MM-dd HH:mm:ss}");
-                        col.Item().Text($"Finalizat: {finishedAt:yyyy-MM-dd HH:mm:ss}");
-                        col.Item().Text($"Durata: {duration}");
-                        col.Item().Text($"Status sesiune: {statusText}");
-                        if (!string.IsNullOrEmpty(mhlPath))
-                            col.Item().Text($"MHL: {Path.GetFileName(mhlPath)}");
-                        var summary = $"Total fisiere: {total}   OK: {okCount}   Sarite: {skipCount}   Probleme: {failCount}";
-                        if (recoveredCount > 0) summary += $"   Recuperate la reincercare: {recoveredCount}";
-                        col.Item().PaddingTop(6).Text(summary).Bold();
-                        if (!string.IsNullOrEmpty(meta.Notes))
-                            col.Item().PaddingTop(2).Text($"Note: {meta.Notes}").Italic().FontSize(8);
-                        if (!string.IsNullOrEmpty(truncatedNote))
-                            col.Item().Text(truncatedNote).Italic().FontSize(8);
-                    });
-
-                    // Logo-ul productiei, in dreapta sus. Un raport care
-                    // ajunge la client trebuie sa arate ca vine de la o
-                    // firma, nu dintr-un utilitar generic. Orice problema la
-                    // citirea imaginii e ignorata - raportul se genereaza
-                    // oricum, fara logo.
-                    if (!string.IsNullOrWhiteSpace(meta.LogoPath) && File.Exists(meta.LogoPath))
-                    {
-                        try
-                        {
-                            var bytes = File.ReadAllBytes(meta.LogoPath);
-                            headerRow.ConstantItem(110).AlignRight().AlignTop().Height(45).Image(bytes).FitArea();
-                        }
-                        catch { /* raportul e mai important decat logo-ul */ }
-                    }
+                    h.ConstantItem(20).Height(20).Svg(DeliveryReportText.MarkSvg.Replace("#B8691F", Amber));
+                    h.ConstantItem(6);
+                    h.RelativeItem().AlignMiddle().Text("DataMover").FontSize(10).SemiBold();
+                    if (logo != null) h.ConstantItem(110).Height(26).AlignRight().Image(logo).FitArea();
+                    else h.RelativeItem().AlignRight().AlignMiddle().Text(r.T("doc").ToUpperInvariant()).FontSize(7.5f).SemiBold().FontColor(Dim);
                 });
 
-                // [M4, 2026-09-06] Randuri "DIT" - thumbnail real (Shell COM,
-                // vezi ThumbnailExtractor) + metadate video (rezolutie/fps/
-                // codec/canale audio, vezi MediaInspector) + status Pass/Fail
-                // colorat, in loc de tabelul text simplu de pana acum.
-                // Extragerea ruleaza DOAR aici (la generarea raportului, pe
-                // esantionul deja plafonat), niciodata in timpul copierii -
-                // motorul de transfer (FanOutCopier) ramane complet neatins.
-                page.Content().PaddingTop(10).Column(col =>
+                page.Content().Column(col =>
                 {
-                    foreach (var row in rows)
-                    {
-                        var color = StatusColors.GetValueOrDefault(row.Status, "#333333");
-                        var media = MediaInspector.Probe(row.DestPath);
-                        var thumbBytes = ThumbnailExtractor.ThumbnailJpegBytes(row.DestPath, 120, 68);
+                    col.Item().PaddingTop(4).Text($"{r.T("doc")} — {r.FolderName}").FontSize(17).SemiBold();
+                    col.Item().PaddingTop(2).Text($"{r.T("destination")}: {r.Destination}").FontFamily(Fonts.Consolas).FontSize(8).FontColor(Dim);
 
-                        col.Item().PaddingBottom(6).BorderBottom(0.5f).BorderColor("#cccccc").Row(r =>
+                    // Verdict: bordură + simbol + cuvânt — lizibil și alb-negru.
+                    col.Item().PaddingTop(12).Border(r.Outcome == DestinationOutcome.Failed ? 2.4f : 1.4f).BorderColor(vc)
+                        .BorderLeft(6).BorderColor(vc).Padding(10).Row(v =>
                         {
-                            r.ConstantItem(60).Height(34).Background("#e0e0e0").Element(e =>
+                            v.ConstantItem(44).AlignMiddle().AlignCenter().Text(r.VerdictSymbol).FontSize(26).Bold().FontColor(vc);
+                            v.RelativeItem().Column(c =>
                             {
-                                if (thumbBytes != null) e.Image(thumbBytes).FitArea();
-                            });
-                            r.RelativeItem().PaddingLeft(8).Column(c =>
-                            {
-                                c.Item().Row(rr =>
-                                {
-                                    rr.RelativeItem().Text(row.File).FontSize(9).Bold();
-                                    rr.AutoItem().Text(row.Status).FontColor(color).FontSize(8).Bold();
-                                });
-                                var metaParts = new List<string> { FormatBytes(row.SizeBytes) };
-                                if (media != null)
-                                {
-                                    if (media.ResolutionText != null) metaParts.Add(media.ResolutionText);
-                                    if (media.FrameRate != null) metaParts.Add($"{media.FrameRate:0.00} fps");
-                                    if (media.VideoCodec != null) metaParts.Add(media.VideoCodec);
-                                    if (media.AudioChannels != null) metaParts.Add($"{media.AudioChannels}ch audio");
-                                }
-                                c.Item().Text(string.Join("  ·  ", metaParts)).FontSize(8).FontColor("#666666");
-                                if (!string.IsNullOrEmpty(row.Error))
-                                    c.Item().Text(Truncate(row.Error, 90)).FontSize(8).FontColor("#b02a2a");
+                                c.Item().Text(r.VerdictTitle).FontSize(15).SemiBold().FontColor(vc);
+                                c.Item().PaddingTop(2).Text(r.VerdictHelp).FontSize(9);
                             });
                         });
-                    }
+
+                    col.Item().PaddingTop(12).Border(0.6f).BorderColor(Rule).Row(s =>
+                    {
+                        var fields = r.SummaryFields;
+                        for (int i = 0; i < fields.Count; i++)
+                        {
+                            var cell = s.RelativeItem();
+                            if (i > 0) cell = cell.BorderLeft(0.6f).BorderColor(Rule);
+                            var f = fields[i];
+                            cell.Padding(7).Column(c =>
+                            {
+                                c.Item().Text(f.Label.ToUpperInvariant()).FontSize(6.5f).SemiBold().FontColor(Dim);
+                                c.Item().PaddingTop(3).Text(f.Value).FontSize(9.5f).SemiBold();
+                            });
+                        }
+                    });
+
+                    col.Item().PaddingTop(12).Table(t =>
+                    {
+                        t.ColumnsDefinition(c => { c.ConstantColumn(150); c.RelativeColumn(); });
+                        foreach (var (l, v) in r.DetailFields)
+                        {
+                            t.Cell().PaddingBottom(2).Text(l).FontColor(Dim);
+                            t.Cell().PaddingBottom(2).Text(v);
+                        }
+                    });
+
+                    if (r.Notes.Length > 0)
+                        col.Item().PaddingTop(8).BorderLeft(2.5f).BorderColor(Amber).PaddingLeft(10).Text($"{r.T("f.notes")}: {r.Notes}");
+
+                    col.Item().PaddingTop(12).Text($"{r.T("files")} ({r.TotalFiles})").FontSize(11).SemiBold();
+                    if (r.IsTruncated)
+                        col.Item().PaddingTop(2).Text(r.F("files.sample", r.Rows.Count, r.TotalFiles)).FontSize(8).FontColor(Dim);
+
+                    col.Item().PaddingTop(4).Table(t =>
+                    {
+                        t.ColumnsDefinition(c =>
+                        {
+                            c.ConstantColumn(22); c.RelativeColumn(4); c.ConstantColumn(54); c.ConstantColumn(142); c.RelativeColumn(2);
+                        });
+                        t.Header(hd =>
+                        {
+                            foreach (var label in new[] { "#", r.T("col.file"), r.T("col.size"), r.T("col.checksum"), r.T("col.status") })
+                                hd.Cell().Background(Band).BorderBottom(0.9f).BorderColor(Ink).Padding(4)
+                                    .Text(label.ToUpperInvariant()).FontSize(7).SemiBold().FontColor(Dim);
+                        });
+                        for (int i = 0; i < r.Rows.Count; i++)
+                        {
+                            var row = r.Rows[i]; var st = r.StatusText(row.Status);
+                            IContainer Cell() => t.Cell().BorderBottom(0.6f).BorderColor(Rule).Padding(4);
+                            Cell().AlignRight().Text((i + 1).ToString()).FontColor(Dim).FontSize(7.5f);
+                            Cell().Column(c =>
+                            {
+                                c.Item().Text(row.File).FontFamily(Fonts.Consolas).FontSize(7.5f);
+                                var m = r.MediaLine?.Invoke(row);
+                                if (!string.IsNullOrEmpty(m)) c.Item().Text(m).FontSize(7).FontColor(Dim);
+                                if (row.Error.Length > 0) c.Item().Text(row.Error).FontSize(7).FontColor("#B42318");
+                            });
+                            Cell().AlignRight().Text(r.Bytes(row.SizeBytes)).FontSize(7.5f);
+                            Cell().Text(r.ChecksumText(row)).FontFamily(Fonts.Consolas).FontSize(7);
+                            Cell().Text($"{DeliveryReport.SymbolForKind(st.Kind)} {st.Text}").FontSize(7.5f).SemiBold().FontColor(KindColor(st.Kind));
+                        }
+                    });
                 });
 
-                page.Footer().AlignCenter().Text(t =>
+                page.Footer().PaddingTop(6).BorderTop(0.6f).BorderColor(Rule).PaddingTop(4).Row(f =>
                 {
-                    t.CurrentPageNumber();
-                    t.Span(" / ");
-                    t.TotalPages();
+                    f.RelativeItem().Column(c =>
+                    {
+                        c.Item().Text(r.FooterLine).FontSize(7).FontColor(Dim);
+                        c.Item().Text(r.T("footer.basis")).FontSize(7).FontColor(Dim);
+                    });
+                    f.ConstantItem(90).AlignRight().Text(t =>
+                    {
+                        t.DefaultTextStyle(x => x.FontSize(7.5f).SemiBold().FontColor(Dim));
+                        var parts = r.T("footer.page").Split("%d");
+                        t.Span(parts[0]); t.CurrentPageNumber(); t.Span(parts.Length > 1 ? parts[1] : " / "); t.TotalPages();
+                        if (parts.Length > 2) t.Span(parts[2]);
+                    });
                 });
             });
         }).GeneratePdf(path);
-
-        return path;
-    }
-
-    private static string Truncate(string s, int max) => s.Length <= max ? s : s[..max];
-
-    private static string FormatBytes(long bytes)
-    {
-        return ByteSize.Format(bytes, "0.0");
     }
 }

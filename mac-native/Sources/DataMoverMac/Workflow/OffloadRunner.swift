@@ -455,6 +455,7 @@ final class OffloadRunner: ObservableObject {
             let depthText = L.t(VerificationDepth.for(verificationModel, readBack: readBackVerification).labelKey)
             for ctx in contexts {
                 ctx.jobID = job
+                ctx.copyCount = contexts.count
                 ctx.verificationDescription = "\(verificationModel.label) — \(depthText)"
                 ctx.prepare(resume: resume)
             }

@@ -90,6 +90,13 @@ final class RunnerIntegrationTests: XCTestCase {
             XCTAssertTrue(FileManager.default.fileExists(atPath: job + "/CLIP/EMPTY.wav"))
             XCTAssertTrue(partialFiles(under: d).isEmpty)
         }
+        // CSV: BOM UTF-8 (ca pe Windows) + același antet; PDF și HTML scrise, cu verdictul motorului.
+        let csv = try Data(contentsOf: URL(fileURLWithPath: runner.lastResults[0].csvPath!))
+        XCTAssertEqual(Array(csv.prefix(3)), [0xEF, 0xBB, 0xBF])
+        XCTAssertTrue(String(decoding: csv.dropFirst(3), as: UTF8.self).hasPrefix("fisier,marime_bytes,verificare_sursa,verificare_destinatie,status,eroare\n"))
+        let html = try String(contentsOfFile: runner.lastResults[0].htmlPath!, encoding: .utf8)
+        XCTAssertTrue(html.contains("v-verified"))
+        XCTAssertNotNil(runner.lastResults[0].pdfPath)
         // MHL conține exact fișierele confirmate.
         let mhl = try String(contentsOfFile: runner.lastResults[0].mhlPath!, encoding: .utf8)
         XCTAssertTrue(mhl.contains("A001.mov") && mhl.contains("index.xml"))

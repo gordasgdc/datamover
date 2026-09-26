@@ -282,6 +282,26 @@ finally { Directory.Delete(root, true); }
         && ByteSize.Format(1_500_000_000, culture: inv) == "1.5 GB");
     Check("marime: separator zecimal ro-RO", ByteSize.Format(23_248_896, culture: new System.Globalization.CultureInfo("ro-RO")) == "23,2 MB");
 }
+// Rapoarte de livrare: verdict = motorul, fara chei brute, fara miniaturi; mostre HTML optionale.
+{
+    var dir = Environment.GetEnvironmentVariable("DM_REPORT_SAMPLES");
+    if (dir != null) Directory.CreateDirectory(dir);
+    bool allOk = true, verdicts = true;
+    foreach (var lang in new[] { "ro", "en", "es" })
+        foreach (var (name, r) in ReportScenarios.All(lang))
+        {
+            var html = r.Html();
+            foreach (var raw in new[] { ">verdict.", ">help.", ">f.", ">col.", ">st.", ">footer." }) if (html.Contains(raw)) allOk = false;
+            if (!html.Contains(r.VerdictTitle) || !html.Contains("2.16.2 (40)") || html.Contains("data:image/jpeg")) allOk = false;
+            if (dir != null) File.WriteAllText(Path.Combine(dir, $"{name}-{lang}.html"), html, new System.Text.UTF8Encoding(false));
+            var expected = name switch { "2-avertisment" => DestinationOutcome.VerifiedWithWarnings, "3-esec-partial" => DestinationOutcome.Failed,
+                "6-anulat" => DestinationOutcome.Cancelled, _ => DestinationOutcome.Verified };
+            if (r.Outcome != expected) verdicts = false;
+        }
+    Check("raport: verdictul urmeaza motorul (verificat/avertisment/esec/anulat)", verdicts);
+    Check("raport: HTML complet RO/EN/ES, versiune in subsol, fara chei brute sau miniaturi", allOk);
+    Check("raport: fiecare cheie are RO/EN/ES", DeliveryReportText.Strings.Values.All(v => v.Length == 3 && v.All(x => x.Length > 0)));
+}
 // Identitatea buildului in jurnal: commitul real, nu "dev".
 {
     Check("build: commit din InformationalVersion", DataMover.Core.Diagnostics.BuildIdentity.FromInformationalVersion("2.16.1+E33723095B3B3ECC") == "e337230");

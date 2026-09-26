@@ -590,7 +590,7 @@ public sealed class OffloadRunner : INotifyPropertyChanged
             }
 
             if (cancelledFlag) foreach (var ctx in Contexts) ctx.MarkCancelled();
-            foreach (var ctx in Contexts) results.Add(ctx.Finalize(files.Count));
+            foreach (var ctx in Contexts) { ctx.CopyCount = Contexts.Count; ctx.JobId = JobId; results.Add(ctx.Finalize(files.Count)); }
 
             Finish(results, folderName, sources, destinations, ejectSourceWhenDone);
         });

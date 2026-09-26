@@ -1,5 +1,16 @@
 # Changelog — DataMover
 
+## v2.16.2 (2026-09-26) — Rapoarte de livrare
+
+- Rapoartele PDF și HTML au fost refăcute ca documente de livrare: verdict
+  clar pentru fiecare destinație (verificat / cu avertismente / neconfirmat /
+  anulat), rezumat, trasabilitate, paginare și versiunea aplicației în subsol.
+- Rapoartele sunt în română, engleză sau spaniolă și conțin aceleași
+  informații pe macOS și pe Windows.
+- Nu mai includ miniaturi din fișierele media.
+- CSV-ul de pe macOS începe acum cu marcajul UTF-8, ca pe Windows, ca
+  diacriticele să se vadă corect în Excel. Coloanele rămân aceleași.
+
 ## v2.16.1 (2026-09-26) — Corecții Windows
 
 - Dezinstalarea șterge acum și jurnalele și exporturile de diagnostic

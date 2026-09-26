@@ -12,5 +12,6 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../DataMover.Core/DataMover.Core.csproj" />
+    <Compile Include="../DataMover.CoreChecks/ReportScenarios.cs" Link="ReportScenarios.cs" />
   </ItemGroup>
 </Project>

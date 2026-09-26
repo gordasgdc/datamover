@@ -166,6 +166,19 @@ finally
     }
     if (Directory.Exists(root)) Console.WriteLine($"ATENTIE: folderul temporar {root} nu s-a putut sterge");
 }
+// Rapoarte PDF randate pe Windows real (QuestPDF/Skia), cele 6 scenarii x RO/EN/ES.
+{
+    var outDir = Path.Combine(AppContext.BaseDirectory, "report-samples");
+    Directory.CreateDirectory(outDir);
+    int made = 0; bool ok = true;
+    foreach (var lang in new[] { "ro", "en", "es" })
+        foreach (var (name, r) in ReportScenarios.All(lang))
+        {
+            try { var p = Path.Combine(outDir, $"{name}-{lang}.pdf"); PdfReport.Write(r, p); if (new FileInfo(p).Length > 1000) made++; else ok = false; }
+            catch (Exception ex) { ok = false; Console.WriteLine($"PDF {name}-{lang}: {ex.Message}"); }
+        }
+    Check($"raport PDF: {made}/18 mostre generate pe Windows", ok && made == 18);
+}
 lines.Add(failures == 0 ? "TOATE VERIFICARILE WINDOWS AU TRECUT" : $"{failures} ESECURI");
 Console.WriteLine(lines[^1]);
 File.WriteAllLines(Path.Combine(AppContext.BaseDirectory, "winchecks-result.txt"), lines);

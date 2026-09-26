@@ -185,6 +185,7 @@ public sealed class DestinationContext
             {
                 if (isRetry) { FailCount--; RecoveredCount++; OnActivity($"Recuperat la reîncercare: {entry.RelPath}"); }
                 OkCount++;
+                BytesConfirmed += entry.Size;
                 _filesStatus[entry.RelPath] = "ok";
                 _fileStamps[entry.RelPath] = entry.Stamp;
                 _fileProofs[entry.RelPath] = new FileProof(sourceHash, hash, Model == VerificationModel.SizeOnly ? "size" : "checksum");
@@ -294,6 +295,40 @@ public sealed class DestinationContext
             ? "\"" + field.Replace("\"", "\"\"") + "\""
             : field;
 
+    /// Numărul total de copii din transfer și ID-ul jobului (setate de OffloadRunner), pentru raport.
+    public int CopyCount { get; set; } = 1;
+    public string JobId { get; set; } = "";
+    public long BytesConfirmed { get; private set; }
+
+    /// Modelul raportului de livrare — aceleași date pentru PDF și HTML (și ca pe macOS).
+    public DeliveryReport BuildReport(int totalFilesForThisDest) => new()
+    {
+        Lang = DeliveryReport.LangFromCulture(System.Globalization.CultureInfo.CurrentUICulture),
+        AppVersion = AppVersion, GeneratedAt = DateTimeOffset.Now,
+        FolderName = FolderName, Destination = TargetRoot,
+        SourceName = SourceRoot != null ? Path.GetFileName(SourceRoot.TrimEnd('\\', '/')) : "",
+        Project = Meta.Project, Card = Meta.Card, Client = Meta.Client, OperatorName = Meta.OperatorName,
+        Camera = Meta.Camera, Notes = Meta.Notes, LogoPath = Meta.LogoPath,
+        StartedAt = new DateTimeOffset(_startedAt), FinishedAt = DateTimeOffset.Now,
+        Verification = Model.Label(), CopyCount = CopyCount,
+        OkCount = OkCount, SkipCount = SkipCount, FailCount = FailCount, RecoveredCount = RecoveredCount,
+        BytesConfirmed = BytesConfirmed, Cancelled = Cancelled,
+        MhlFile = _mhlPath != null ? Path.GetFileName(_mhlPath) : null,
+        CsvFile = _csvPath != null ? Path.GetFileName(_csvPath) : null,
+        JobId = JobId, Rows = _sampleRows,
+        MediaLine = row =>
+        {
+            var m = MediaInspector.Probe(row.DestPath);
+            if (m == null) return null;
+            var parts = new List<string>();
+            if (m.ResolutionText != null) parts.Add(m.ResolutionText);
+            if (m.FrameRate != null) parts.Add($"{m.FrameRate:0.00} fps");
+            if (m.VideoCodec != null) parts.Add(m.VideoCodec);
+            if (m.AudioChannels != null) parts.Add($"{m.AudioChannels}ch audio");
+            return parts.Count == 0 ? null : string.Join(" · ", parts);
+        },
+    };
+
     public DestinationResult Finalize(int totalFilesForThisDest)
     {
         if (CloudUploadQueue != null)
@@ -309,19 +344,14 @@ public sealed class DestinationContext
         try { _csvWriter?.Flush(); _csvWriter?.Dispose(); } catch { /* ignora */ }
         _csvWriter = null;
 
+        var report = BuildReport(totalFilesForThisDest);
+        var stamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
         string? htmlPath = null;
         try
         {
-            string? truncatedNote = totalFilesForThisDest > _sampleRows.Count
-                ? $"Lista completă ({totalFilesForThisDest} fișiere) e în CSV-ul alăturat — raportul arată toate problemele plus un eșantion."
-                : null;
-            var path = Path.Combine(TargetRoot, $"offload_report_{DateTime.Now:yyyy-MM-dd_HH-mm-ss}.html");
-            if (HtmlReport.Write(path, DestRoot, FolderName, _sampleRows, Meta, _startedAt, DateTime.Now,
-                    OkCount, SkipCount, FailCount, RecoveredCount, Cancelled, Model.Label(),
-                    _mhlPath, truncatedNote, AppVersion))
-                htmlPath = path;
-            else
-                OnActivity("Nu s-a putut genera raportul HTML.");
+            var path = Path.Combine(TargetRoot, $"offload_report_{stamp}.html");
+            File.WriteAllText(path, report.Html(DeliveryReport.LogoDataUri(Meta.LogoPath)), new UTF8Encoding(false));
+            htmlPath = path;
         }
         catch (Exception ex)
         {
@@ -331,13 +361,9 @@ public sealed class DestinationContext
         string? pdfPath = null;
         try
         {
-            string? truncatedNote = totalFilesForThisDest > _sampleRows.Count
-                ? $"Esantion plafonat: {_sampleRows.Count} din {totalFilesForThisDest} fisiere afisate mai jos (toate erorile/nepotrivirile sunt incluse). Lista completa e in CSV-ul de langa acest raport."
-                : null;
-            pdfPath = PdfReport.Generate(
-                TargetRoot, DestRoot, FolderName, _sampleRows, _startedAt, DateTime.Now,
-                OkCount, SkipCount, FailCount, Cancelled, Model.Label(), truncatedNote,
-                Meta, RecoveredCount, _mhlPath);
+            var path = Path.Combine(TargetRoot, $"offload_report_{stamp}.pdf");
+            PdfReport.Write(report, path);
+            pdfPath = path;
         }
         catch (Exception ex)
         {
