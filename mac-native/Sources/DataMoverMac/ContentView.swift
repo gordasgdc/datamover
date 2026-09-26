@@ -101,7 +101,12 @@ struct ContentView: View {
     @State private var showHistory = false
     @State private var projectName: String = ""
     @State private var cardName: String = ""
-    @State private var diskIconSize: CGFloat = 150
+    /// Clasificarea mediului per cale (MediaProbe) — tipul de obiect afișat.
+    @State private var mediaByPath: [String: MediaClass] = [:]
+    /// Octeții de copiat, per sursă (măsurați la scanare, nu estimați).
+    @State private var bytesBySource: [String: Int64] = [:]
+    @State private var showQueue = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ObservedObject private var langStore = LanguageStore.shared
 
     // drag manual disc -> SOURCES sau DESTINATIONS
@@ -137,26 +142,30 @@ struct ContentView: View {
                 if license.isTrialActive && !license.isLicensed {
                     trialBar
                 }
-                metaBar
+                headerBar
                 Divider()
 
-                HStack(spacing: 0) {
-                    sourcesColumn
-                        .frame(width: 230)
-                    Divider()
-                    disksColumn
-                        .frame(maxWidth: .infinity)
-                    Divider()
-                    GeometryReader { geo in
-                        destinationsColumn
-                            .onAppear { destFrame = geo.frame(in: .named("root")) }
-                            .onChange(of: geo.size) { _, _ in
-                                destFrame = geo.frame(in: .named("root"))
+                GeometryReader { geo in
+                    HStack(spacing: 0) {
+                        VStack(spacing: 0) {
+                            stageTitle
+                            mainStage
+                            if !runner.isRunning && !showResult {
+                                Divider()
+                                deviceShelf
                             }
+                        }
+                        Divider()
+                        incidentColumn
+                            .frame(width: geo.size.width < DM.Layout.incidentsCompactBelow
+                                   ? DM.Layout.incidentsWidthCompact : DM.Layout.incidentsWidth)
                     }
-                    .frame(width: 230)
                 }
                 .frame(maxHeight: .infinity)
+                .onPreferenceChange(RouteZoneKey.self) { frames in
+                    sourcesFrame = frames.sources
+                    destFrame = frames.destinations
+                }
 
                 Divider()
                 footer
@@ -174,6 +183,9 @@ struct ContentView: View {
                 if !runner.isRunning { refreshPreparation(scanSources: false) }
             }
             .onChange(of: sourcePaths) { _, _ in refreshPreparation() }
+            .task(id: (volumes.map(\.path) + sourcePaths + destinationPaths).joined(separator: "|")) {
+                await classifyNewPaths()
+            }
             .onChange(of: destinationPaths) { _, _ in refreshPreparation() }
             .onChange(of: job.exclusionsText) { _, _ in refreshPreparation() }
             .sheet(isPresented: $showActivation) {
@@ -359,134 +371,82 @@ struct ContentView: View {
         .background(Color(nsColor: .underPageBackgroundColor))
     }
 
-    /// Numele folderului de destinatie (<data>_Proiect_Card), la fel ca in
-    /// aplicatia Windows — implicit "Proiect"/"Card" daca lasi gol.
-    private var metaBar: some View {
-        HStack(spacing: 16) {
-            HStack(spacing: 6) {
-                Text(L.t("meta.project")).font(.system(size: 11)).foregroundStyle(.secondary)
+    // MARK: - Header: job, coadă, acțiunea principală
+
+    /// Proiectul și cardul dau numele folderului; Start stă aici, lângă ce
+    /// pornește. Start e dezactivat DOAR de un blocaj real (preflight).
+    private var headerBar: some View {
+        HStack(spacing: DM.Space.l) {
+            HStack(spacing: DM.Space.s) {
                 TextField(L.t("meta.project"), text: $projectName)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(width: 160)
-            }
-            HStack(spacing: 6) {
-                Text(L.t("meta.card")).font(.system(size: 11)).foregroundStyle(.secondary)
+                    .textFieldStyle(.roundedBorder).frame(width: DM.Layout.routeNodeWidth)
+                    .accessibilityLabel(L.t("meta.project"))
+                Image(systemName: "chevron.right").foregroundStyle(DM.textTertiary).accessibilityHidden(true)
                 TextField(L.t("meta.card"), text: $cardName)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(width: 120)
+                    .textFieldStyle(.roundedBorder).frame(width: DM.Layout.routeNodeBlock + DM.Space.xl)
+                    .accessibilityLabel(L.t("meta.card"))
             }
-            Spacer()
-            // Versiune vizibila in UI — "Directiva Permanenta Suprema"
-            // (2026-08-25, CLAUDE.md): orice aplicatie GDC trebuie sa-si
-            // arate versiunea, fara exceptie.
-            Text("v\(appVersion)")
-                .font(.system(size: 10))
-                .foregroundStyle(.tertiary)
+            .disabled(runner.isRunning)
+            Text(previewFolderName).font(DM.Font.mono).foregroundStyle(DM.textSecondary)
+                .lineLimit(1).truncationMode(.middle).textSelection(.enabled)
+                .help(L.t("prep.folder"))
+            Spacer(minLength: DM.Space.s)
+            Button { showQueue.toggle() } label: {
+                Label(cardQueue.isEmpty ? L.t("queue.titleShort") : String(format: L.t("queue.titleCount"), cardQueue.count),
+                      systemImage: "square.stack.3d.down.right")
+            }
+            .popover(isPresented: $showQueue, arrowEdge: .bottom) {
+                cardQueueSection.padding(DM.Space.m).frame(width: DM.Layout.routeDestinationColumn)
+            }
+            if runner.isRunning {
+                Button(runner.isPaused ? L.t("footer.resume") : L.t("footer.pause")) { runner.togglePause() }
+                Button(L.t("footer.cancel"), role: .destructive) { runner.cancel() }
+                    .keyboardShortcut(".", modifiers: .command)
+            } else if showResult {
+                Button(L.t("result.newTransfer")) { showResult = false }
+            }
             Button {
-                GuidePDF.open()
+                attemptStart()
             } label: {
-                Image(systemName: "questionmark.circle")
+                Label(runner.isRunning ? L.t("footer.copying") : L.t("action.startOffload"), systemImage: "play.fill")
+                    .padding(.horizontal, DM.Space.xs)
             }
-            .buttonStyle(.plain)
-            .foregroundStyle(.secondary)
-            .help(L.t("menu.help"))
+            .buttonStyle(.borderedProminent)
+            .tint(DM.accent)
+            .controlSize(.large)
+            .keyboardShortcut(.return, modifiers: .command)
+            .disabled(runner.isRunning || sourcePaths.isEmpty || destinationPaths.isEmpty
+                      || IncidentBuilder.blocksStart(prepareIncidents))
+            .help(IncidentBuilder.blocksStart(prepareIncidents) ? L.t("action.startBlocked") : L.t("action.startHelp"))
+            .confirmationDialog(L.t("duplicate.title"), isPresented: $showDuplicateDialog, titleVisibility: .visible) {
+                Button(L.t("duplicate.resume")) {
+                    startTransfer(resume: true, folderNameOverride: duplicateFolderName)
+                }
+                Button(L.t("duplicate.newFolder")) {
+                    // Baza e numele "de azi" (nu cel vechi gasit), ca un folder
+                    // chiar nou sa nu mosteneasca data transferului anterior.
+                    let todayName = runner.folderName(project: projectName, card: cardName,
+                                                      template: folderTemplate, camera: cameraName,
+                                                      operatorName: operatorName)
+                    let freeName = runner.freeFolderName(base: todayName, destinations: destinationPaths)
+                    startTransfer(resume: job.resumeEnabled, folderNameOverride: freeName)
+                }
+                Button(L.t("duplicate.overwrite"), role: .destructive) {
+                    runner.clearExistingFolders(destinations: destinationPaths, folderName: duplicateFolderName)
+                    startTransfer(resume: false, folderNameOverride: duplicateFolderName)
+                }
+                Button(L.t("duplicate.cancel"), role: .cancel) {}
+            } message: {
+                Text(L.t("duplicate.message"))
+            }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
+        .labelStyle(.titleAndIcon)
+        .padding(.horizontal, DM.Space.l)
+        .padding(.vertical, DM.Space.m)
     }
 
     private var appVersion: String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
-    }
-
-    // MARK: - Coloana SOURCES
-
-    private var sourcesColumn: some View {
-        VStack(spacing: 10) {
-            Text(L.t("sources.title"))
-                .font(.system(size: 11, weight: .bold))
-                .foregroundStyle(.secondary)
-                .padding(.top, 14)
-
-            RoundedRectangle(cornerRadius: 8)
-                .strokeBorder(style: StrokeStyle(lineWidth: 2, dash: [5, 3]))
-                .foregroundStyle((isDropTargetedSources || isHoveringSource) ? .green : .secondary.opacity(0.4))
-                .background(
-                    // strokeBorder deseneaza DOAR conturul — fara un fundal
-                    // "plin" (chiar si transparent), doar linia subtire e
-                    // hit-testabila, nu tot interiorul cutiei. RoundedRectangle
-                    // umplut cu .clear rezolva asta, fara sa schimbe vizual nimic.
-                    RoundedRectangle(cornerRadius: 8).fill(Color.clear)
-                )
-                .contentShape(Rectangle())
-                .frame(height: 90)
-                .overlay(
-                    Text(L.t("sources.dropHint"))
-                        .multilineTextAlignment(.center)
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                        .allowsHitTesting(false)
-                )
-                .padding(.horizontal, 10)
-                .background(
-                    // Urmarim cutia asta (nu toata coloana) in coordonate
-                    // "root", la fel ca destFrame pt. Destinatii — vezi
-                    // nota de arhitectura de la `sourcesFrame`.
-                    GeometryReader { geo in
-                        Color.clear
-                            .onAppear { sourcesFrame = geo.frame(in: .named("root")) }
-                            .onChange(of: geo.size) { _, _ in
-                                sourcesFrame = geo.frame(in: .named("root"))
-                            }
-                    }
-                )
-                .onDrop(of: [.fileURL, .volume], isTargeted: $isDropTargetedSources) { providers in
-                    handleSourceDrop(providers)
-                }
-
-            List {
-                ForEach(sourcePaths, id: \.self) { path in
-                    HStack {
-                        Image(nsImage: NSWorkspace.shared.icon(forFile: path))
-                            .resizable()
-                            .frame(width: 18, height: 18)
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text((path as NSString).lastPathComponent)
-                                .lineLimit(1)
-                            // [2026-09-03] Tipul de card recunoscut
-                            // (RED/ARRI/Sony…) + numarul de clipuri —
-                            // confirmarea vizuala ca s-a selectat cardul
-                            // intreg, nu un subfolder din el.
-                            if let info = cardInfoBySource[path] {
-                                Text(info.summary)
-                                    .font(.system(size: 9))
-                                    .foregroundStyle(info.warnings.isEmpty ? Color.green : Color.orange)
-                            }
-                        }
-                        Spacer()
-                        Button {
-                            sourcePaths.removeAll { $0 == path }
-                            cardInfoBySource[path] = nil
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .foregroundStyle(.secondary)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    .font(.system(size: 11))
-                }
-            }
-            .listStyle(.plain)
-            .overlay {
-                if sourcePaths.isEmpty {
-                    Text(L.t("sources.empty"))
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            cardQueueSection
-        }
     }
 
     /// [2026-09-03] Coada de carduri — descarcarea mai multor carduri, unul
@@ -604,6 +564,10 @@ struct ContentView: View {
                 newlyDetectedVolume = first
             }
         }
+        // Un disc scos: clasificarea lui se uită (alt disc montat pe aceeași
+        // cale nu trebuie să-i moștenească tipul).
+        let gone = Set(volumes.map(\.path)).subtracting(detected.map(\.path))
+        for p in gone { MediaProbe.forget(p); mediaByPath[p] = nil }
         volumes = detected
         knownVolumePaths = Set(detected.map(\.path))
     }
@@ -697,103 +661,242 @@ struct ContentView: View {
         return isDir.boolValue
     }
 
-    // MARK: - Coloana centrala: Disks
+    // MARK: - Etapa curentă: titlu, traseu, raft, incidente
+    //
+    // Un singur traseu (sursă → verificare → copii) pentru Prepare, Transfer
+    // și Result; se schimbă doar ce spune fiecare capăt. Vezi RouteView.
 
-    private var gridColumns: [GridItem] {
-        [GridItem(.adaptive(minimum: diskIconSize, maximum: diskIconSize + 20), spacing: 14)]
+    private var stage: RouteStage {
+        if runner.isRunning { return .transfer }
+        return showResult && runner.lastOutcome != nil ? .result : .prepare
     }
 
-    /// Coloana centrala: grila de discuri cat timp nu se copiaza, panoul de
-    /// monitorizare in timpul transferului.
-    ///
-    /// Comutarea e pe `runner.isRunning`, singura stare care spune asta —
-    /// nu pe un flag propriu, care s-ar putea desincroniza de motor.
-    private var disksColumn: some View {
-        ZStack {
-            if runner.isRunning {
-                TransferMonitorView(runner: runner)
-                    .transition(.opacity)
-            } else if showResult, let outcome = runner.lastOutcome {
-                ResultPanel(outcome: outcome, results: runner.lastResults,
-                            folderName: runner.lastFolderName, depth: runner.lastVerificationDepth,
-                            totalBytes: runner.bytesDone, elapsedSeconds: runner.elapsedSeconds,
-                            onDismiss: { showResult = false })
-                    .transition(.opacity)
-            } else {
-                VStack(spacing: 0) {
-                    PrepPanel(sources: sourcePaths, cardInfo: cardInfoBySource,
-                              destinations: destinationPaths, capacities: capacities,
-                              sourceBytes: sourceBytes, folderName: previewFolderName,
-                              depth: job.depth, issues: preflightIssues, notes: $job.shootNotes)
-                        .padding([.horizontal, .top], DM.Space.l)
-                    diskGridColumn
-                }
-                .transition(.opacity)
-            }
+    private var stageKey: String {
+        switch stage { case .prepare: return "prepare"; case .transfer: return "transfer"; case .result: return "result" }
+    }
+
+    private var stageTitle: some View {
+        HStack(alignment: .firstTextBaseline, spacing: DM.Space.m) {
+            Text(L.t("screen.\(stageKey)")).font(DM.Font.screenTitle).lineLimit(1).minimumScaleFactor(0.8)
+            Text(stageSubtitle).font(DM.Font.label).foregroundStyle(DM.textSecondary).lineLimit(1).truncationMode(.tail)
+            Spacer(minLength: 0)
         }
-        .animation(.easeInOut(duration: 0.2), value: runner.isRunning)
-        .animation(.easeInOut(duration: 0.2), value: showResult)
+        .padding(.horizontal, DM.Space.xl).padding(.top, DM.Space.l)
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isHeader)
     }
 
-    /// Numele folderului care se va crea — aceeași logică ca la Start
-    /// (folder existent reluat, altfel numele de azi).
-    private var previewFolderName: String {
-        runner.findExistingFolderName(destinations: destinationPaths, project: projectName, card: cardName,
-                                      template: folderTemplate, camera: cameraName, operatorName: operatorName)
-            ?? runner.folderName(project: projectName, card: cardName, template: folderTemplate,
-                                 camera: cameraName, operatorName: operatorName)
+    private var stageSubtitle: String {
+        switch stage {
+        case .prepare: return L.t("screen.prepare.sub")
+        case .transfer: return runner.isPaused ? L.t("footer.paused") : L.t(runner.phase.labelKey)
+        case .result: return runner.lastOutcome.map { L.t("outcomeHelp.\($0.rawValue)") } ?? ""
+        }
     }
 
-    /// Recalculează preflight, capacități și mărimea sursei (în fundal).
-    private func refreshPreparation(scanSources: Bool = true) {
-        preflightIssues = Preflight.check(sources: sourcePaths, destinations: destinationPaths)
-        var caps: [String: VolumeCapacity] = [:]
-        for d in destinationPaths { caps[d] = VolumeCapacity.of(d) }
-        capacities = caps
-        let sources = sourcePaths
-        let exclusions = job.exclusions
-        guard !sources.isEmpty else { sourceBytes = nil; return }
-        guard scanSources else { return }
-        Task.detached(priority: .utility) {
-            var total: Int64 = 0
-            for src in sources {
-                var isDir: ObjCBool = false
-                guard FileManager.default.fileExists(atPath: src, isDirectory: &isDir) else { continue }
-                if isDir.boolValue {
-                    total += listAllFiles(root: src, exclusions: exclusions).reduce(0) { $0 + $1.size }
+    private var mainStage: some View {
+        RouteView(stage: stage, sources: sourceEndpoints, destinations: destinationEndpoints, node: routeNode,
+                  animateFlow: RouteMotion.animatesFlow(isRunning: runner.isRunning, isPaused: runner.isPaused, reduceMotion: reduceMotion),
+                  dropHighlight: (isHoveringSource, isHoveringDest),
+                  onRemove: stage == .prepare ? { removeEndpoint($0) } : nil,
+                  onDropSources: { handleSourceDrop($0) },
+                  onDropDestinations: { handleDestinationFinderDrop($0) })
+    }
+
+    private func removeEndpoint(_ path: String) {
+        if sourcePaths.contains(path) {
+            sourcePaths.removeAll { $0 == path }
+            cardInfoBySource[path] = nil
+        } else {
+            destinationPaths.removeAll { $0 == path }
+        }
+    }
+
+    private func displayName(_ path: String) -> String {
+        FileManager.default.displayName(atPath: path)
+    }
+
+    private var sourceEndpoints: [RouteEndpoint] {
+        sourcePaths.enumerated().map { i, path in
+            var e = RouteEndpoint(path: path, name: displayName(path), media: mediaByPath[path], role: .source(i + 1))
+            let info = cardInfoBySource[path]
+            e.warning = !(info?.warnings.isEmpty ?? true)
+            e.detail = info?.summary ?? ""
+            switch stage {
+            case .prepare:
+                if let b = bytesBySource[path] {
+                    e.figure = formatBytes(b); e.figureCaption = L.t("fig.toCopy")
                 } else {
-                    total += ((try? FileManager.default.attributesOfItem(atPath: src)[.size] as? Int64) ?? nil) ?? 0
+                    e.figureCaption = L.t("fig.measuring")
                 }
+                if let cap = capacities[path] { e.secondary = String(format: L.t("fig.ofVolume"), formatBytes(cap.total)) }
+            case .transfer:
+                let read = runner.bytesDone / Int64(max(runner.destinationCount, 1))
+                e.activity = .reading
+                e.figure = formatBytes(read); e.figureCaption = L.t("fig.read")
+                e.progress = Double(runner.progressPercent) / 100
+                e.secondary = runner.currentFile
+            case .result:
+                e.activity = .done
+                e.figure = formatBytes(runner.bytesDone / Int64(max(runner.destinationCount, 1))); e.figureCaption = L.t("fig.read")
+                e.secondary = String(format: L.t("fig.duration"), duration(runner.elapsedSeconds))
             }
-            let measured = total
-            await MainActor.run { if sources == sourcePaths { sourceBytes = measured } }
+            return e
         }
     }
 
-    private var diskGridColumn: some View {
-        VStack(spacing: 10) {
-            HStack {
-                Text(L.t("disks.title"))
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Image(systemName: "photo")
-                    .font(.system(size: 9))
-                    .foregroundStyle(.secondary)
-                Slider(value: $diskIconSize, in: 100...220)
-                    .frame(width: 90)
-                Image(systemName: "photo")
-                    .font(.system(size: 14))
-                    .foregroundStyle(.secondary)
+    private var destinationEndpoints: [RouteEndpoint] {
+        destinationPaths.enumerated().map { i, path in
+            var e = RouteEndpoint(path: path, name: displayName(path), media: mediaByPath[path], role: .destination(i + 1))
+            switch stage {
+            case .prepare:
+                guard let cap = capacities[path] else { e.figureCaption = L.t("fig.unknownSpace"); return e }
+                let incoming = sourceBytes ?? 0
+                let after = cap.free - incoming
+                e.capacity = (cap.total, cap.total - cap.free, incoming)
+                e.figure = formatBytes(abs(after))
+                e.figureCaption = L.t(after >= 0 ? "fig.freeAfter" : "fig.missing")
+                e.warning = after < 0
+                e.secondary = String(format: L.t("fig.usedOf"), formatBytes(cap.total - cap.free), formatBytes(cap.total))
+            case .transfer:
+                let st = runner.destinationStates.first { $0.destRoot == path }
+                let expected = max(runner.totalBytes / Int64(max(runner.destinationCount, 1)), 1)
+                let written = st?.bytesWritten ?? 0
+                e.online = st?.available ?? true
+                e.warning = (st?.filesFailed ?? 0) > 0
+                e.activity = .writing
+                e.progress = min(1, Double(written) / Double(expected))
+                e.figure = "\(Int((e.progress ?? 0) * 100))%"
+                e.figureCaption = L.t("fig.written")
+                e.secondary = String(format: L.t("monitor.confirmed"), st?.filesConfirmed ?? 0, formatBytes(written))
+            case .result:
+                guard let r = runner.lastResults.first(where: { $0.destRoot == path }) else { return e }
+                e.outcome = r.outcome
+                e.activity = .done
+                e.figure = "\(r.okCount + r.skipCount)"
+                e.figureCaption = L.t("fig.confirmed")
+                var parts: [String] = []
+                if r.failCount > 0 { parts.append(String(format: L.t("monitor.failedFiles"), r.failCount)) }
+                if r.recoveredCount > 0 { parts.append("\(r.recoveredCount) \(L.t("result.recovered"))") }
+                e.secondary = parts.joined(separator: " · ")
+                var reports: [(label: String, path: String)] = []
+                if let f = r.targetFolder { reports.append((L.t("result.openFolder"), f)) }
+                if let x = r.pdfPath { reports.append(("PDF", x)) }
+                if let x = r.htmlPath { reports.append(("HTML", x)) }
+                if let x = r.csvPath { reports.append(("CSV", x)) }
+                if let x = r.mhlPath { reports.append(("MHL", x)) }
+                e.reports = reports
             }
-            .padding(.top, 14)
-            .padding(.horizontal, 14)
+            return e
+        }
+    }
 
-            ScrollView {
-                LazyVGrid(columns: gridColumns, spacing: 14) {
+    private var routeNode: RouteNodeModel {
+        var n = RouteNodeModel(stage: stage, method: "\(job.verificationModel.label) · \(L.t(job.depth.labelKey))")
+        switch stage {
+        case .prepare:
+            n.phaseText = L.t("node.prepare")
+        case .transfer:
+            n.method = "\(job.verificationModel.label) · \(L.t(runner.lastVerificationDepth.labelKey))"
+            n.phaseText = runner.isPaused ? L.t("footer.pause") : L.t(runner.phase.labelKey)
+            n.percent = runner.progressPercent
+            n.status = .active
+            if runner.writeBytesPerSecond > 0 {
+                n.rateText = String(format: L.t("node.rates"), formatBytes(Int64(runner.readBytesPerSecond)),
+                                    formatBytes(Int64(runner.writeBytesPerSecond)))
+            }
+            n.etaText = runner.etaSeconds.map { String(format: L.t("node.eta"), duration($0)) }
+        case .result:
+            n.method = "\(job.verificationModel.label) · \(L.t(runner.lastVerificationDepth.labelKey))"
+            if let o = runner.lastOutcome {
+                n.verdict = o
+                n.status = DMStatus(o)
+                n.phaseText = L.t(o.labelKey)
+            }
+        }
+        return n
+    }
+
+    // MARK: Incidente
+
+    private var prepareIncidents: [Incident] {
+        var input = IncidentBuilder.PrepareInput()
+        input.issues = preflightIssues
+        input.cardWarnings = sourcePaths.flatMap { p in (cardInfoBySource[p]?.warnings ?? []).map { (p, $0) } }
+        if let bytes = sourceBytes {
+            input.spaceShort = destinationPaths.compactMap { d in
+                guard let cap = capacities[d], bytes > cap.free else { return nil }
+                return (d, bytes - cap.free)
+            }
+        }
+        input.depth = job.depth
+        input.unknownDevices = (sourcePaths + destinationPaths).filter { mediaByPath[$0]?.confidence == .fallback }
+        if !destinationPaths.isEmpty,
+           let existing = runner.findExistingFolderName(destinations: destinationPaths, project: projectName, card: cardName,
+                                                        template: folderTemplate, camera: cameraName, operatorName: operatorName) {
+            input.resumingFolder = existing
+        }
+        return IncidentBuilder.prepare(input)
+    }
+
+    private var preparePassed: [String] {
+        guard !sourcePaths.isEmpty, !destinationPaths.isEmpty else { return [] }
+        var list: [String] = []
+        let overlap: Set<PreflightIssue.Code> = [.sameAsSource, .destinationInsideSource, .sourceInsideDestination,
+                                                 .duplicateDestination, .nestedDestinations]
+        if !preflightIssues.contains(where: { overlap.contains($0.code) }) { list.append(L.t("prep.check.noOverlap")) }
+        if let bytes = sourceBytes, destinationPaths.allSatisfy({ d in capacities[d].map { bytes <= $0.free } ?? false }) {
+            list.append(L.t("prep.check.spaceOk"))
+        }
+        if job.depth != .sizeOnly { list.append(L.t("prep.check.checksum")) }
+        return list
+    }
+
+    @ViewBuilder private var incidentColumn: some View {
+        switch stage {
+        case .prepare:
+            let list = prepareIncidents
+            let blocking = list.filter { $0.blocksStart }.count
+            let warnings = list.filter { $0.severity == .warning }.count
+            if sourcePaths.isEmpty || destinationPaths.isEmpty {
+                IncidentPanel(headline: L.t("incidents.incomplete"), headlineStatus: .neutral, incidents: list, passed: [])
+            } else if blocking > 0 {
+                IncidentPanel(headline: String(format: L.t("incidents.blocked"), blocking), headlineStatus: .failure,
+                              incidents: list, passed: preparePassed)
+            } else if warnings > 0 {
+                IncidentPanel(headline: String(format: L.t("incidents.readyWarnings"), warnings), headlineStatus: .warning,
+                              incidents: list, passed: preparePassed, footnote: L.t("incidents.warningsDontBlock"))
+            } else {
+                IncidentPanel(headline: L.t("prep.state.ready"), headlineStatus: .verified, incidents: list, passed: preparePassed)
+            }
+        case .transfer:
+            let list = IncidentBuilder.transfer(runner.destinationStates)
+            IncidentPanel(headline: list.isEmpty ? L.t("incidents.none") : String(format: L.t("incidents.count"), list.count),
+                          headlineStatus: list.isEmpty ? .active : .failure, incidents: list,
+                          footnote: L.t("incidents.transferNote"))
+        case .result:
+            let list = IncidentBuilder.result(runner.lastResults)
+            let o = runner.lastOutcome ?? .failure
+            IncidentPanel(headline: L.t(o.labelKey), headlineStatus: DMStatus(o), incidents: list,
+                          footnote: L.t("outcomeHelp.\(o.rawValue)"))
+        }
+    }
+
+    // MARK: Raftul de dispozitive
+
+    private var deviceShelf: some View {
+        VStack(alignment: .leading, spacing: DM.Space.s) {
+            HStack(spacing: DM.Space.m) {
+                DMSectionHeader(title: L.t("shelf.title")).fixedSize()
+                Text(L.t("shelf.hint")).font(DM.Font.detail).foregroundStyle(DM.textTertiary).lineLimit(1)
+                Spacer(minLength: 0)
+            }
+            ScrollView(.horizontal) {
+                HStack(spacing: DM.Space.l) {
                     ForEach(volumes) { volume in
-                        DiskTileView(volume: volume, size: diskIconSize)
-                            .contentShape(Rectangle())
+                        let used = sourcePaths.contains(volume.path) || destinationPaths.contains(volume.path)
+                        DeviceShelfItem(name: volume.name, media: mediaByPath[volume.path], freeBytes: volume.freeBytes)
+                            .opacity(used ? 0.45 : 1)
                             .gesture(
                                 DragGesture(minimumDistance: 4, coordinateSpace: .named("root"))
                                     .onChanged { value in
@@ -809,70 +912,67 @@ struct ContentView: View {
                                         draggingDiskPath = nil
                                     }
                             )
+                            .contextMenu {
+                                Button(L.t("shelf.useAsSource")) { addSource(volume.path) }
+                                Button(L.t("shelf.useAsDestination")) { addDestination(volume.path) }
+                            }
+                            .accessibilityAction(named: L.t("shelf.useAsSource")) { addSource(volume.path) }
+                            .accessibilityAction(named: L.t("shelf.useAsDestination")) { addDestination(volume.path) }
                     }
                 }
-                .padding(14)
+                .padding(.vertical, DM.Space.xs)
             }
+        }
+        .padding(.horizontal, DM.Space.xl)
+        .padding(.vertical, DM.Space.m)
+        .background(DM.surfaceSunken.opacity(DM.Opacity.shelf))
+    }
+
+    /// Clasifică orice cale nouă (volume montate, surse, destinații).
+    private func classifyNewPaths() async {
+        let paths = Set(volumes.map(\.path) + sourcePaths + destinationPaths)
+        for p in paths where mediaByPath[p] == nil {
+            let c = await MediaProbe.classify(path: p)
+            mediaByPath[p] = c
         }
     }
 
-    // MARK: - Coloana DESTINATIONS
+    /// Numele folderului care se va crea — aceeași logică ca la Start
+    /// (folder existent reluat, altfel numele de azi).
+    private var previewFolderName: String {
+        runner.findExistingFolderName(destinations: destinationPaths, project: projectName, card: cardName,
+                                      template: folderTemplate, camera: cameraName, operatorName: operatorName)
+            ?? runner.folderName(project: projectName, card: cardName, template: folderTemplate,
+                                 camera: cameraName, operatorName: operatorName)
+    }
 
-    private var destinationsColumn: some View {
-        VStack(spacing: 10) {
-            Text(L.t("dest.title"))
-                .font(.system(size: 11, weight: .bold))
-                .foregroundStyle(.secondary)
-                .padding(.top, 14)
-
-            ZStack {
-                if destinationPaths.isEmpty {
-                    Text(L.t("dest.dropHint"))
-                        .multilineTextAlignment(.center)
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
+    /// Recalculează preflight, capacități și mărimea sursei (în fundal).
+    private func refreshPreparation(scanSources: Bool = true) {
+        preflightIssues = Preflight.check(sources: sourcePaths, destinations: destinationPaths)
+        var caps: [String: VolumeCapacity] = [:]
+        for d in destinationPaths + sourcePaths { caps[d] = VolumeCapacity.of(d) }
+        capacities = caps
+        let sources = sourcePaths
+        let exclusions = job.exclusions
+        guard !sources.isEmpty else { sourceBytes = nil; bytesBySource = [:]; return }
+        guard scanSources else { return }
+        Task.detached(priority: .utility) {
+            var per: [String: Int64] = [:]
+            for src in sources {
+                var isDir: ObjCBool = false
+                guard FileManager.default.fileExists(atPath: src, isDirectory: &isDir) else { continue }
+                if isDir.boolValue {
+                    per[src] = listAllFiles(root: src, exclusions: exclusions).reduce(0) { $0 + $1.size }
+                } else {
+                    per[src] = ((try? FileManager.default.attributesOfItem(atPath: src)[.size] as? Int64) ?? nil) ?? 0
                 }
-                List {
-                    ForEach(destinationPaths, id: \.self) { path in
-                        HStack {
-                            Image(systemName: "externaldrive").foregroundStyle(DM.textSecondary)
-                            VStack(alignment: .leading, spacing: DM.Space.xxs) {
-                                Text((path as NSString).lastPathComponent)
-                                    .font(DM.Font.label.weight(.semibold))
-                                    .lineLimit(1)
-                                if let cap = capacities[path] {
-                                    Text(String(format: L.t("prep.freeShort"), formatBytes(cap.free)))
-                                        .font(DM.Font.detail).foregroundStyle(DM.textSecondary)
-                                    DMCapacityBar(total: cap.total, free: cap.free, incoming: sourceBytes ?? 0)
-                                }
-                            }
-                            .help(path)
-                            Spacer()
-                            Button {
-                                destinationPaths.removeAll { $0 == path }
-                            } label: {
-                                Image(systemName: "xmark.circle.fill")
-                                    .foregroundStyle(.secondary)
-                            }
-                            .buttonStyle(.plain)
-                            .disabled(runner.isRunning)
-                            .accessibilityLabel(L.t("dest.remove") + " " + (path as NSString).lastPathComponent)
-                        }
-                        .padding(.vertical, DM.Space.xxs)
-                    }
-                }
-                .listStyle(.plain)
-                .opacity(destinationPaths.isEmpty ? 0 : 1)
             }
-            .frame(maxHeight: .infinity)
-            .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill((isHoveringDest || isDropTargetedDestFromFinder) ? Color.green.opacity(0.12) : Color.clear)
-            )
-            .contentShape(Rectangle())
-            .padding(.horizontal, 10)
-            .onDrop(of: [.fileURL, .volume], isTargeted: $isDropTargetedDestFromFinder) { providers in
-                handleDestinationFinderDrop(providers)
+            let measured = per
+            await MainActor.run {
+                if sources == sourcePaths {
+                    bytesBySource = measured
+                    sourceBytes = measured.values.reduce(0, +)
+                }
             }
         }
     }
@@ -942,43 +1042,10 @@ struct ContentView: View {
                     Label(L.t("settings.open"), systemImage: "gearshape")
                 }
                 .help(L.t("settings.open"))
-                if runner.isRunning {
-                    Button(runner.isPaused ? L.t("footer.resume") : L.t("footer.pause")) {
-                        runner.togglePause()
-                    }
-                    Button(L.t("footer.cancel"), role: .destructive) { runner.cancel() }
-                        .keyboardShortcut(".", modifiers: .command)
-                }
-                Button(runner.isRunning ? L.t("footer.copying") : L.t("footer.start")) {
-                    attemptStart()
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(DM.accent)
-                .keyboardShortcut(.return, modifiers: .command)
-                .disabled(runner.isRunning || sourcePaths.isEmpty || destinationPaths.isEmpty
-                          || Preflight.hasBlocking(preflightIssues))
-                .confirmationDialog(L.t("duplicate.title"), isPresented: $showDuplicateDialog, titleVisibility: .visible) {
-                    Button(L.t("duplicate.resume")) {
-                        startTransfer(resume: true, folderNameOverride: duplicateFolderName)
-                    }
-                    Button(L.t("duplicate.newFolder")) {
-                        // Baza e numele "de azi" (nu cel vechi gasit),
-                        // ca un folder chiar nou sa nu mosteneasca data
-                        // veche a transferului anterior.
-                        let todayName = runner.folderName(project: projectName, card: cardName,
-                                                          template: folderTemplate, camera: cameraName,
-                                                          operatorName: operatorName)
-                        let freeName = runner.freeFolderName(base: todayName, destinations: destinationPaths)
-                        startTransfer(resume: job.resumeEnabled, folderNameOverride: freeName)
-                    }
-                    Button(L.t("duplicate.overwrite"), role: .destructive) {
-                        runner.clearExistingFolders(destinations: destinationPaths, folderName: duplicateFolderName)
-                        startTransfer(resume: false, folderNameOverride: duplicateFolderName)
-                    }
-                    Button(L.t("duplicate.cancel"), role: .cancel) {}
-                } message: {
-                    Text(L.t("duplicate.message"))
-                }
+                Text("v\(appVersion)").font(DM.Font.mono).foregroundStyle(DM.textTertiary)
+                Button { GuidePDF.open() } label: { Image(systemName: "questionmark.circle") }
+                    .buttonStyle(.plain).foregroundStyle(DM.textSecondary)
+                    .help(L.t("menu.help")).accessibilityLabel(L.t("menu.help"))
             }
             .labelStyle(.titleAndIcon)
             .controlSize(.regular)
@@ -1103,63 +1170,3 @@ struct ContentView: View {
     }
 }
 
-// MARK: - Pictograma-card pentru un disc
-
-private struct DiskTileView: View {
-    let volume: VolumeInfo
-    var size: CGFloat = 150
-
-    /// Rezultatul sondarii, incarcat asincron. `nil` = inca nesondat sau
-    /// nedeterminabil; atunci nu se afiseaza nicio insigna, in loc de una
-    /// care spune "necunoscut".
-    @State private var probe: VolumeSpeedProbe?
-
-    private var iconSize: CGFloat { size * 0.35 }
-
-    var body: some View {
-        VStack(spacing: 6) {
-            ZStack(alignment: .topTrailing) {
-                // iconita nativa macOS a discului (extern portocaliu/argintiu,
-                // intern etc.) — aceeasi cu cea din Finder, nu un simbol generic.
-                Image(nsImage: volume.icon)
-                    .resizable()
-                    .frame(width: iconSize, height: iconSize)
-                Circle()
-                    .fill(.green)
-                    .frame(width: 10, height: 10)
-                    .offset(x: 2, y: -2)
-            }
-            .padding(.top, 8)
-            Text(volume.name)
-                .font(.system(size: 12, weight: .semibold))
-                .lineLimit(1)
-            Text(formatBytes(volume.freeBytes))
-                .font(.system(size: 10))
-                .foregroundStyle(.secondary)
-
-            if let badge = probe?.badgeText {
-                Text(badge)
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(Color.primary.opacity(0.08), in: Capsule())
-            }
-        }
-        .padding(.vertical, 12)
-        .frame(width: size, height: size + (size * 0.13))
-        .background(Color(nsColor: .controlBackgroundColor))
-        .clipShape(RoundedRectangle(cornerRadius: 10))
-        .task(id: volume.path) {
-            // Sincron din cache daca a mai fost sondat (montare repetata,
-            // redesenare), altfel in fundal — vezi VolumeSpeedProbeService.
-            // `??` nu accepta `await` in dreapta, deci cele doua cazuri se
-            // scriu explicit.
-            if let known = VolumeSpeedProbeService.cached(for: volume.path) {
-                probe = known
-            } else {
-                probe = await VolumeSpeedProbeService.probe(path: volume.path)
-            }
-        }
-    }
-}

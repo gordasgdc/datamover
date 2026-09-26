@@ -1,6 +1,6 @@
 import re, glob, sys
 src = "mac-native/Sources/DataMoverMac/"
-tables = open(src + "Localization.swift").read() + open(src + "LocalizationExtra.swift").read()
+tables = open(src + "Localization.swift").read() + open(src + "LocalizationExtra.swift").read() + open(src + "LocalizationRoute.swift").read()
 entries = re.findall(r'^\s*"([^"]+)":\s*\[(.*?)\],?\s*$', tables, re.M | re.S)
 defined = {k for k, _ in entries}
 bad = []

@@ -28,7 +28,7 @@ enum L {
     }
 
     static func t(_ key: String) -> String {
-        let entry = table[key] ?? extraTable[key]
+        let entry = table[key] ?? extraTable[key] ?? routeTable[key]
         return entry?[current] ?? entry?[.ro] ?? key
     }
 

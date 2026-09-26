@@ -79,6 +79,20 @@ enum DM {
         static let settingsWidth: CGFloat = 560
         /// Linie de 1 pt (separatoare, stepper).
         static let hairline: CGFloat = 1
+        // Traseu
+        static let routeSourceColumn: CGFloat = 270
+        static let routeDestinationColumn: CGFloat = 360
+        static let routeNodeWidth: CGFloat = 190
+        static let routeNodeBlock: CGFloat = 104
+        static let routeConnector: CGFloat = 2.5
+        static let routeMinGap: CGFloat = 36
+        static let incidentsWidth: CGFloat = 300
+        static let incidentsWidthCompact: CGFloat = 264
+        static let incidentsCompactBelow: CGFloat = 1180
+        static let shelfDeviceWidth: CGFloat = 84
+        static let shelfItemWidth: CGFloat = 176
+        static let endpointBarWidth: CGFloat = 220
+        static let slotHeight: CGFloat = 96
     }
 
     // MARK: Opacități semantice
@@ -89,6 +103,8 @@ enum DM {
         static let bannerFill: Double = 0.10
         /// Bordura bannerului de rezultat.
         static let bannerStroke: Double = 0.50
+        /// Fundalul raftului de dispozitive (zona „pe masă”).
+        static let shelf: Double = 0.55
     }
 
     enum IconSize {
@@ -106,6 +122,12 @@ enum DM {
         static let metric = SwiftUI.Font.system(.title2, design: .rounded, weight: .semibold).monospacedDigit()
         static let metricLarge = SwiftUI.Font.system(.title, design: .rounded, weight: .semibold).monospacedDigit()
         static let panelTitle = SwiftUI.Font.system(.headline)
+        /// Cifrele mari (volum, capacitate, viteză) — citibile de la distanță.
+        static let figure = SwiftUI.Font.system(.title, design: .rounded, weight: .semibold).monospacedDigit()
+        static let figureCompact = SwiftUI.Font.system(.title3, design: .rounded, weight: .semibold).monospacedDigit()
+        static let deviceName = SwiftUI.Font.system(.title3, weight: .bold)
+        static let roleChip = SwiftUI.Font.system(.caption2, weight: .heavy)
+        static let screenTitle = SwiftUI.Font.system(.largeTitle, weight: .semibold)
         static let sectionTracking: CGFloat = 0.6
         static let mono = SwiftUI.Font.system(.caption, design: .monospaced)
     }
@@ -270,6 +292,11 @@ struct DMCapacityBar: View {
 }
 
 extension View {
+    /// Profunzime (material E): umbră scurtă, de contact, nu decorativă.
+    func dmElevation() -> some View {
+        shadow(color: .black.opacity(0.18), radius: 8, y: 4)
+    }
+
     /// Bordura de focus/hover consistentă pentru zonele de drop.
     func dmDropHighlight(_ active: Bool) -> some View {
         overlay(RoundedRectangle(cornerRadius: DM.Radius.l)
