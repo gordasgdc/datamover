@@ -8,12 +8,28 @@ struct ResultPanel: View {
     let results: [DestinationResult]
     let folderName: String
     let depth: VerificationDepth
+    var totalBytes: Int64 = 0
+    var elapsedSeconds: Double = 0
     let onDismiss: () -> Void
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: DM.Space.l) {
                 banner
+                DMPanel {
+                    HStack(alignment: .top, spacing: DM.Space.l) {
+                        DMMetric(label: L.t("result.filesConfirmed"), value: "\(results.reduce(0) { $0 + $1.okCount + $1.skipCount })",
+                                 detail: L.t("result.acrossDestinations"))
+                        Divider()
+                        DMMetric(label: L.t("result.notConfirmed"), value: "\(results.reduce(0) { $0 + $1.failCount })")
+                        Divider()
+                        DMMetric(label: L.t("monitor.data"), value: formatBytes(totalBytes))
+                        Divider()
+                        DMMetric(label: L.t("result.duration"), value: duration(elapsedSeconds),
+                                 detail: elapsedSeconds > 0 ? formatBytes(Int64(Double(totalBytes) / elapsedSeconds)) + "/s" : nil)
+                    }
+                    .fixedSize(horizontal: false, vertical: true)
+                }
                 DMSectionHeader(title: L.t("dest.title"))
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: DM.Layout.destinationMinWidth), spacing: DM.Space.m)],
                           alignment: .leading, spacing: DM.Space.m) {

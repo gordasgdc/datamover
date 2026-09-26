@@ -15,6 +15,7 @@ struct DesignGallery: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: DM.Space.l) {
+                Text("Design gallery · DataMover v\(UpdateChecker.currentVersion)").font(DM.Font.title)
                 DMSectionHeader(title: "DMStatusBadge")
                 HStack { ForEach(statuses.indices, id: \.self) { DMStatusBadge(status: statuses[$0].0, text: L.t(statuses[$0].1)) } }
 

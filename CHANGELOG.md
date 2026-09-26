@@ -21,14 +21,24 @@
 - Rezultat neambiguu: verificat / verificat cu avertismente / eșec parțial /
   eșec / anulat. Cardul se ejectează automat doar când fiecare destinație
   are o copie confirmată.
-- Windows: aceleași garanții în motorul de copiere; o destinație eșuată nu
-  mai poate bloca transferul.
+- Reluarea acceptă checkpoint-ul doar pentru aceeași sursă (căi, volum, lista
+  de fișiere cu mărimi și date); un card diferit montat la aceeași cale nu
+  mai poate fi sărit ca „deja copiat”. Checkpoint-urile vechi se ignoră.
+- Dacă discul nu poate confirma scrierea (flush), fișierul e marcat
+  neconfirmat, cu motivul exact.
+- Recitirea opțională e descrisă exact: o a doua citire separată a fiecărei
+  copii, nu o dovadă a mediului fizic.
+- Windows: fișiere parțiale cu confirmare atomică, checkpoint cu identitatea
+  sursei, iar o destinație eșuată nu mai poate bloca transferul (verificat
+  cu teste). Interfața Windows nu are încă ecranele noi.
 
 ### Interfață (Mac)
 - Panou „Ce va porni”: sursa și structura cardului, destinațiile cu spațiu
   liber, folderul rezultat, metoda de verificare, avertismentele.
 - În timpul transferului: faza reală, progres total și per destinație,
-  viteze, timp rămas, fișierul curent.
+  viteze, timp rămas, fișierul curent; pe ferestre late, totul pe lățime.
+- Panoul „Ce va porni” arată verificările (suprapuneri, spațiu, metodă) cu
+  stare clară: gata, gata cu avertismente, blocat.
 - La final: rezultatul fiecărei destinații, cu acces direct la folder,
   PDF, HTML, CSV și MHL.
 - Jurnalul tehnic e ascuns implicit, filtrabil și copiabil.

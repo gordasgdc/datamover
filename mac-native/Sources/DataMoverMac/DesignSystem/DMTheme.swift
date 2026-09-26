@@ -61,7 +61,7 @@ enum DM {
     enum Layout {
         /// Lățimea maximă a conținutului central — dincolo de ea, liniile de
         /// citit devin prea lungi; sub ea, totul se întinde.
-        static let contentMaxWidth: CGFloat = 1240
+        static let contentMaxWidth: CGFloat = 1440
         /// Peste această lățime, panourile trec pe două coloane.
         static let wideBreakpoint: CGFloat = 900
         /// Lățimea minimă a unei carduri de destinație în grilă.

@@ -98,6 +98,10 @@ extension L {
         "monitor.failedFiles": [.ro: "%d neconfirmate", .en: "%d not confirmed", .es: "%d sin confirmar"],
 
         // Rezultat
+        "result.filesConfirmed": [.ro: "Fișiere confirmate", .en: "Files confirmed", .es: "Archivos confirmados"],
+        "result.acrossDestinations": [.ro: "însumat pe destinații", .en: "summed across destinations", .es: "sumados en todos los destinos"],
+        "result.notConfirmed": [.ro: "Neconfirmate", .en: "Not confirmed", .es: "Sin confirmar"],
+        "result.duration": [.ro: "Durată", .en: "Duration", .es: "Duración"],
         "result.newTransfer": [.ro: "Transfer nou", .en: "New transfer", .es: "Nueva transferencia"],
         "result.openFolder": [.ro: "Deschide folderul", .en: "Open folder", .es: "Abrir carpeta"],
         "result.ok": [.ro: "confirmate", .en: "confirmed", .es: "confirmados"],

@@ -58,6 +58,11 @@ private struct GeneralSettingsTab: View {
                 Toggle(L.t("settings.autoStartOnCard"), isOn: $autoStartOnCardInsert)
                 SettingsHelp(key: "settings.autoStartOnCardHelp")
             }
+            Section {
+                LabeledContent(L.t("settings.version")) {
+                    Text("DataMover v\(UpdateChecker.currentVersion)").font(DM.Font.mono).textSelection(.enabled)
+                }
+            }
         }
         .formStyle(.grouped)
     }

@@ -1095,6 +1095,7 @@ final class OffloadRunner: ObservableObject {
     private func finish(results: [DestinationResult], folderName: String, sources: [String],
                         destinations: [String], ejectSource: Bool = false) {
         isRunning = false
+        if let start = startTime { elapsedSeconds = Date().timeIntervalSince(start) }
         lastResults = results
         let outcome = TransferOutcome.evaluate(results.map { $0.outcome })
         lastOutcome = outcome

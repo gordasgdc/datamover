@@ -716,6 +716,7 @@ struct ContentView: View {
             } else if showResult, let outcome = runner.lastOutcome {
                 ResultPanel(outcome: outcome, results: runner.lastResults,
                             folderName: runner.lastFolderName, depth: runner.lastVerificationDepth,
+                            totalBytes: runner.bytesDone, elapsedSeconds: runner.elapsedSeconds,
                             onDismiss: { showResult = false })
                     .transition(.opacity)
             } else {

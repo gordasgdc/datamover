@@ -54,6 +54,8 @@ struct PrepPanel: View {
                         Divider()
                         checksList.frame(minWidth: DM.Layout.wideBreakpoint / 3, maxWidth: .infinity, alignment: .leading)
                     }
+                    // Divider-ul vertical ar întinde panoul pe toată înălțimea.
+                    .fixedSize(horizontal: false, vertical: true)
                     VStack(alignment: .leading, spacing: DM.Space.m) {
                         summary
                         Divider()
