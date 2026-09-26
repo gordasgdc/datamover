@@ -8,6 +8,12 @@ let package = Package(
         .executableTarget(
             name: "DataMoverMac",
             path: "Sources/DataMoverMac"
+        ),
+        // Teste deterministe, doar în directoare temporare (niciun volum real).
+        .testTarget(
+            name: "DataMoverMacTests",
+            dependencies: ["DataMoverMac"],
+            path: "Tests/DataMoverMacTests"
         )
     ]
 )

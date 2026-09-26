@@ -643,6 +643,10 @@ final class OffloadRunner: ObservableObject {
     private var cancelToken = CancelToken()
     private var startTime: Date?
 
+    /// Sunet, notificare de sistem și istoric persistent. Testele îl opresc
+    /// ca să nu scrie în istoricul real al utilizatorului.
+    nonisolated(unsafe) static var sideEffectsEnabled = true
+
     /// Numele folderului de destinatie pentru o pereche proiect/card - pur,
     /// fara efecte laterale, ca ContentView sa poata verifica dinainte
     /// daca exista deja o destinatie cu acest nume (vezi
@@ -1172,15 +1176,15 @@ final class OffloadRunner: ObservableObject {
         // s-a terminat cu bine (indiciu de cablu/card/disc care da rateuri).
         if totalRecovered > 0 { summary += ", \(totalRecovered) \(L.t("footer.recovered"))" }
         statusText = anyCancelled ? L.t("footer.cancelled") : L.t(outcome.labelKey) + " — " + summary + "."
-        NSSound(named: "Glass")?.play()
+        if Self.sideEffectsEnabled { NSSound(named: "Glass")?.play() }
 
         // [2026-09-03] Notificare de sistem: la un transfer de ore, userul
         // nu sta cu ochii pe fereastra — un sunet singur se rateaza usor
         // daca e in alta camera sau are casti pe alt canal. Notificarea
         // ramane in Centrul de notificari pana e citita.
-        SystemNotifier.notify(
+        if Self.sideEffectsEnabled { SystemNotifier.notify(
             title: anyCancelled ? L.t("notify.cancelledTitle") : L.t("notify.doneTitle"),
-            body: "\(folderName) — \(summary)")
+            body: "\(folderName) — \(summary)") }
 
         // [2026-09-03] Ejectare automata a cardului sursa, DOAR daca totul
         // a mers bine. Un card cu erori nu se scoate niciodata automat:
@@ -1193,6 +1197,7 @@ final class OffloadRunner: ObservableObject {
             logActivity("Cardul NU a fost ejectat: \(L.t(outcome.labelKey)).")
         }
 
+        guard Self.sideEffectsEnabled else { return }
         HistoryStore.shared.record(folderName: folderName, sources: sources, destinations: destinations,
                                     okCount: totalOK, skipCount: totalSkip, failCount: totalFail,
                                     outcome: outcome, verification: lastVerificationDepth.rawValue,

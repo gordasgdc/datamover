@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 import UniformTypeIdentifiers
 
 /// [2026-09-03] Un card in coada de descarcare. Fiecare are propriul nume
