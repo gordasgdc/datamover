@@ -41,19 +41,19 @@ Download the latest version from [Releases](https://github.com/gordasgdc/datamov
 
 | Platform | File | Description |
 |----------|------|-------------|
-| Mac | `DataMover-Mac.zip` | Native `DataMover.app` (SwiftUI) + PDF guides (RO/EN/ES) |
-| Windows | `DataMover-Windows.zip` | `DataMover.exe` + PDF guides (RO/EN/ES) |
+| Mac | `DataMover-<version>.dmg` (and `DataMover.dmg`, stable name) | Developer ID signed, Apple-notarized disk image: contains the `DataMover-<version>.pkg` installer and the PDF guide |
+| Windows | `DataMover-WPF-Windows.zip` | Windows app (WPF) + PDF guides |
 
 ## Quick install
 
 ### Mac
-1. Download `DataMover-Mac.zip` and extract it
-2. Double-click `Instaleaza_DataMover.command` (included in the archive) — automatically moves `DataMover.app` into `/Applications` (with confirmation) if it isn't there yet, clears the usual Gatekeeper warning, and opens the app. Alternative (no automatic move to Applications): right-click `DataMover.app` → `Open` → confirm (the app is ad-hoc signed, without a paid Apple Developer account)
+1. Download `DataMover-<version>.dmg` and open it
+2. Double-click `DataMover-<version>.pkg` — the installer puts the app straight into `/Applications` (no Gatekeeper warning: the package is notarized)
 
 ### Windows
-1. Download `DataMover-Windows.zip` and extract the contents
+1. Download `DataMover-WPF-Windows.zip` and extract the contents
 2. Run `DataMover.exe`
-3. If SmartScreen warns you, click "More info" → "Run anyway"
+3. If SmartScreen warns, click "More info" → "Run anyway" (the Windows build does not have a commercial signature yet)
 
 ## Full documentation
 

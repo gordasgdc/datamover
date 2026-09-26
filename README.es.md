@@ -41,19 +41,19 @@ Descarga la última versión desde [Releases](https://github.com/gordasgdc/datam
 
 | Plataforma | Archivo | Descripción |
 |------------|---------|-------------|
-| Mac | `DataMover-Mac.zip` | `DataMover.app` nativa (SwiftUI) + guías PDF (RO/EN/ES) |
-| Windows | `DataMover-Windows.zip` | `DataMover.exe` + guías PDF (RO/EN/ES) |
+| Mac | `DataMover-<versión>.dmg` (y `DataMover.dmg`, nombre estable) | Imagen de disco firmada con Developer ID y notarizada por Apple: contiene el instalador `DataMover-<versión>.pkg` y la guía PDF |
+| Windows | `DataMover-WPF-Windows.zip` | App de Windows (WPF) + guías PDF |
 
 ## Instalación rápida
 
 ### Mac
-1. Descarga `DataMover-Mac.zip` y extráelo
-2. Doble clic en `Instaleaza_DataMover.command` (incluido en el archivo) — mueve automáticamente `DataMover.app` a `/Applications` (con confirmación) si aún no está ahí, elimina el aviso habitual de Gatekeeper y abre la app. Alternativa (sin mover automáticamente a Applications): clic derecho sobre `DataMover.app` → `Open` → confirma (la app está firmada ad-hoc, sin cuenta de Apple Developer de pago)
+1. Descarga `DataMover-<versión>.dmg` y ábrelo
+2. Doble clic en `DataMover-<versión>.pkg` — el instalador coloca la app directamente en `/Applications` (sin aviso de Gatekeeper: el paquete está notarizado)
 
 ### Windows
-1. Descarga `DataMover-Windows.zip` y extrae el contenido
+1. Descarga `DataMover-WPF-Windows.zip` y extrae el contenido
 2. Ejecuta `DataMover.exe`
-3. Si SmartScreen advierte, haz clic en "More info" → "Run anyway"
+3. Si SmartScreen avisa, pulsa "More info" → "Run anyway" (la versión de Windows aún no tiene una firma comercial)
 
 ## Documentación completa
 

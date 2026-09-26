@@ -42,19 +42,19 @@ Descarcă ultima versiune de la [Releases](https://github.com/gordasgdc/datamove
 
 | Platformă | Fișier | Descriere |
 |-----------|--------|-----------|
-| Mac | `DataMover-Mac.zip` | `DataMover.app` nativ (SwiftUI) + ghidurile PDF (RO/EN/ES) |
-| Windows | `DataMover-Windows.zip` | `DataMover.exe` + ghidurile PDF (RO/EN/ES) |
+| Mac | `DataMover-<versiune>.dmg` (și `DataMover.dmg`, nume stabil) | Imagine disc semnată Developer ID și notarizată Apple: conține instalatorul `DataMover-<versiune>.pkg` și ghidul PDF |
+| Windows | `DataMover-WPF-Windows.zip` | Aplicația Windows (WPF) + ghidurile PDF |
 
 ## Instalare rapidă
 
 ### Mac
-1. Descarcă `DataMover-Mac.zip` și extrage
-2. Dublu-click pe `Instaleaza_DataMover.command` (din arhivă) — mută automat `DataMover.app` în `/Applications` (cu confirmare) dacă nu e deja acolo, elimină avertismentul Gatekeeper obișnuit și deschide aplicația. Alternativ (fără mutare automată în Applications): click-dreapta pe `DataMover.app` → `Open` → confirmă (aplicația e semnată ad-hoc, fără cont Apple Developer plătit)
+1. Descarcă `DataMover-<versiune>.dmg` și deschide-l
+2. Dublu-click pe `DataMover-<versiune>.pkg` — instalatorul pune aplicația direct în `/Applications` (fără avertisment Gatekeeper: pachetul e notarizat)
 
 ### Windows
-1. Descarcă `DataMover-Windows.zip` și extrage conținutul
+1. Descarcă `DataMover-WPF-Windows.zip` și extrage conținutul
 2. Rulează `DataMover.exe`
-3. Dacă SmartScreen avertizează, apasă „More info” → „Run anyway”
+3. Dacă SmartScreen avertizează, apasă „More info” → „Run anyway” (build-ul Windows nu are încă o semnătură comercială)
 
 ## Documentație completă
 

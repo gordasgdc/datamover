@@ -3,3 +3,6 @@
 
 # Stare de lucru internă (Regula 50), doar local
 PROJECT_STATE.md
+
+# Capturi de verificare vizuală (conțin nume de volume locale), doar local
+design-review/
