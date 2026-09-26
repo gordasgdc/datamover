@@ -1,5 +1,16 @@
 # Changelog — DataMover
 
+## v2.17.0 (2026-09-27) — Licențe noi
+
+- Sistemul de licențiere a fost actualizat. Codurile emise înainte de această
+  versiune nu mai activează DataMover: la prima pornire, aplicația explică
+  pasul și afișează ID-ul calculatorului, pentru un cod nou.
+- Codurile noi sunt legate de calculator. Fără licență activă, transferurile
+  rămân limitate la 2 GB.
+- Pe macOS, aplicația verifică la pornire dacă există o versiune nouă.
+- Pe Windows, o licență retrasă nu mai deblochează transferurile mari, iar o
+  actualizare obligatorie nu mai poate fi amânată definitiv.
+
 ## v2.16.3 (2026-09-26) — Ghid de utilizare actualizat
 
 - Ghidul de utilizare (română, engleză, spaniolă) a fost rescris pentru
