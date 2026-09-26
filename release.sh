@@ -46,7 +46,12 @@ echo "════════════════════════�
 echo " Release DataMover $TAG"
 echo "════════════════════════════════════════════════════════════════"
 
-# ── Pas 0: repo curat, tag-ul nu exista deja ────────────────────────────
+# ── Pas 0: doar din main, repo curat, tag-ul nu exista deja ────────────
+BRANCH=$(git branch --show-current)
+if [ "$BRANCH" != "main" ]; then
+    echo "EROARE: release.sh ruleaza doar din main (ramura curenta: ${BRANCH:-detached})." >&2
+    exit 1
+fi
 if [ -n "$(git status --porcelain)" ]; then
     echo "EROARE: ai modificari necomise. Comite sau stash-uieste inainte de release." >&2
     git status --short >&2
@@ -194,6 +199,15 @@ for i in $(seq 1 40); do
     esac
     sleep 15
 done
+
+# Poarta explicita: dupa asteptare, doar "completed success" permite upload-ul
+# (bucla de mai sus se poate termina si prin expirarea celor 40 de incercari).
+if [ "$STATUS" != "completed success" ]; then
+    echo "EROARE: CI-ul nu a confirmat 'completed success' (ultima stare: $STATUS). Nu urc nimic." >&2
+    echo "Vezi: gh run view $RUN_ID" >&2
+    exit 1
+fi
+echo "    CI: completed success"
 
 # ── Pas 6: atasez artefactele Mac deja verificate la release-ul creat ───
 echo "==> [6/6] Urc artefactele Mac semnate pe release-ul $TAG…"
