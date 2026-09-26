@@ -73,6 +73,14 @@ notarize() {
     local target="$1"
     local upload_path
 
+    # Candidat local: doar semnătură Developer ID, fără încărcare la Apple.
+    # Gatekeeper NU acceptă un asemenea pachet descărcat de pe internet —
+    # înainte de livrare se reconstruiește fără această variabilă.
+    if [ "${DM_SKIP_NOTARIZE:-0}" = "1" ]; then
+        echo "==> [codesigning] DM_SKIP_NOTARIZE=1 — notarizarea și staple sunt sărite (candidat local)."
+        return 0
+    fi
+
     echo "==> [codesigning] Impachetez pentru notarizare…"
     if [ -d "$target" ]; then
         # .app e un director - trebuie arhivat intr-un ZIP real inainte de upload.
