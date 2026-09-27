@@ -34,6 +34,7 @@ public partial class MainWindow
         IsVisibleChanged += OnFlowVisibilityChanged;
         SystemParameters.StaticPropertyChanged += OnFlowSystemParametersChanged;
         RouteGrid.SizeChanged += OnFlowLayoutChanged;
+        SizeChanged += OnWindowWidthChanged;
         Closed += (_, _) => DisposeRouteFlow();
     }
 
@@ -46,8 +47,14 @@ public partial class MainWindow
         IsVisibleChanged -= OnFlowVisibilityChanged;
         SystemParameters.StaticPropertyChanged -= OnFlowSystemParametersChanged;
         RouteGrid.SizeChanged -= OnFlowLayoutChanged;
+        SizeChanged -= OnWindowWidthChanged;
         _flowClock.Stop();
     }
+
+    /// Sub 1100 DIP (ex. dimensiunea minimă 960 la scalare 150%), panoul de incidente se îngustează,
+    /// ca traseul (250 + 180 + 250) să încapă fără tăiere pe orizontală.
+    private void OnWindowWidthChanged(object s, SizeChangedEventArgs e) =>
+        IncidentColumn.Width = new GridLength(e.NewSize.Width < 1100 ? 200 : 300);
 
     private void OnFlowWindowStateChanged(object? s, EventArgs e) => UpdateFlowTimer();
     private void OnFlowVisibilityChanged(object s, DependencyPropertyChangedEventArgs e) => UpdateFlowTimer();

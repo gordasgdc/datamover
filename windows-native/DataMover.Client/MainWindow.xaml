@@ -247,7 +247,7 @@
                     <Grid x:Name="RouteGrid">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" MinWidth="250" MaxWidth="380" />
-                            <ColumnDefinition Width="212" />
+                            <ColumnDefinition Width="*" MinWidth="180" MaxWidth="240" />
                             <ColumnDefinition Width="*" MinWidth="250" MaxWidth="380" />
                         </Grid.ColumnDefinitions>
 
@@ -264,14 +264,14 @@
                         </StackPanel>
 
                         <!-- Nodul de verificare: legatura dintre sursa si copii. -->
-                        <Grid Grid.Column="1" Margin="34,22,34,12">
+                        <Grid Grid.Column="1" Margin="22,22,22,12">
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="*" />
                             </Grid.RowDefinitions>
 
                             <Border x:Name="VerifyNode" Background="{DynamicResource CardBackgroundBrush}" BorderBrush="{DynamicResource CardStrokeBrush}" BorderThickness="1"
-                                    CornerRadius="6" Padding="10,8" Margin="0,8,0,0">
+                                    CornerRadius="6" Padding="10,8" Margin="0,8,0,0" MaxWidth="160">
                                 <StackPanel>
                                     <Rectangle x:Name="RouteSpine" Height="3" Margin="0,0,0,6" Fill="{DynamicResource StatusWarningBrush}" RadiusX="1.5" RadiusY="1.5" />
                                     <TextBlock x:Name="NodeTitle" Text="Verificare în flux" FontSize="13" FontWeight="SemiBold" TextWrapping="Wrap" />
