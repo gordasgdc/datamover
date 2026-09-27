@@ -1,5 +1,13 @@
 # Changelog — DataMover
 
+## v2.17.1 (2026-09-27) — Traseu animat pe Windows
+
+- Windows: în timpul transferului, traseul sursă → verificare → copii arată
+  fluxul datelor, ca pe macOS. Animația se oprește la pauză și când fereastra
+  e minimizată și respectă setările Windows pentru animații și contrast ridicat.
+- Windows: la dimensiunea minimă a ferestrei și scalare 150%, sursa și copiile
+  se văd complet.
+
 ## v2.17.0 (2026-09-27) — Licențe noi
 
 - Sistemul de licențiere a fost actualizat. Codurile emise înainte de această
