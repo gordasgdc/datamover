@@ -336,6 +336,40 @@ finally { Directory.Delete(root, true); }
         && !UpdatePolicy.ShouldPrompt("2.17.0", false, "2.17.0", true) && UpdatePolicy.ShouldPrompt("2.17.0", false, "2.17.0", false)
         && !UpdatePolicy.ShouldRememberDismissal(true) && !UpdatePolicy.ShouldPrompt(null, true, null, true));
 }
+// Animatia traseului Windows (doar prezentare): faza, etape, tonuri.
+{
+    static bool Near(double a, double b) => Math.Abs(a - b) < 1e-9;
+    Check("traseu: offset 0 la start si periodic, in (-Period, 0]", Near(DataMover.Client.RouteFlow.DashOffset(0), 0)
+        && Near(DataMover.Client.RouteFlow.DashOffset(DataMover.Client.RouteFlow.Period / DataMover.Client.RouteFlow.UnitsPerSecond), 0)
+        && Enumerable.Range(1, 200).Select(i => DataMover.Client.RouteFlow.DashOffset(i * 0.0333)).All(o => o <= 0 && o > -DataMover.Client.RouteFlow.Period));
+    Check("traseu: punctele avanseaza spre copie (offset scade)", DataMover.Client.RouteFlow.DashOffset(0.1) < DataMover.Client.RouteFlow.DashOffset(0.05));
+    Check("traseu: 30 FPS maxim", Math.Abs(DataMover.Client.RouteFlow.FrameInterval.TotalMilliseconds - 1000.0 / 30) < 0.5);
+    Check("traseu: etape running/paused/result/prepare", DataMover.Client.RouteFlow.StageOf(true, false, false) == DataMover.Client.RouteStage.Running
+        && DataMover.Client.RouteFlow.StageOf(true, true, false) == DataMover.Client.RouteStage.Paused
+        && DataMover.Client.RouteFlow.StageOf(false, false, true) == DataMover.Client.RouteStage.Result
+        && DataMover.Client.RouteFlow.StageOf(false, false, false) == DataMover.Client.RouteStage.Prepare);
+    Check("traseu: animatie doar in transfer, cu animatii permise si fereastra vizibila",
+        DataMover.Client.RouteFlow.ShouldAnimate(DataMover.Client.RouteStage.Running, true, true)
+        && !DataMover.Client.RouteFlow.ShouldAnimate(DataMover.Client.RouteStage.Paused, true, true)
+        && !DataMover.Client.RouteFlow.ShouldAnimate(DataMover.Client.RouteStage.Result, true, true)
+        && !DataMover.Client.RouteFlow.ShouldAnimate(DataMover.Client.RouteStage.Prepare, true, true)
+        && !DataMover.Client.RouteFlow.ShouldAnimate(DataMover.Client.RouteStage.Running, false, true)
+        && !DataMover.Client.RouteFlow.ShouldAnimate(DataMover.Client.RouteStage.Running, true, false));
+    Check("traseu: punctat in transfer/pauza, continuu in pregatire/rezultat si fara animatii",
+        DataMover.Client.RouteFlow.IsDashed(DataMover.Client.RouteStage.Running, true) && DataMover.Client.RouteFlow.IsDashed(DataMover.Client.RouteStage.Paused, true)
+        && !DataMover.Client.RouteFlow.IsDashed(DataMover.Client.RouteStage.Prepare, true) && !DataMover.Client.RouteFlow.IsDashed(DataMover.Client.RouteStage.Result, true)
+        && !DataMover.Client.RouteFlow.IsDashed(DataMover.Client.RouteStage.Running, false));
+    Check("traseu: ancora pe nod limitata la marginile nodului", Near(DataMover.Client.RouteFlow.NodeAnchorY(50, 100, 300), 114)
+        && Near(DataMover.Client.RouteFlow.NodeAnchorY(500, 100, 300), 286) && Near(DataMover.Client.RouteFlow.NodeAnchorY(180, 100, 300), 180)
+        && Near(DataMover.Client.RouteFlow.NodeAnchorY(0, 100, 110), 105));
+    Check("traseu: tonuri din starea reala", DataMover.Client.RouteFlow.DestinationTone(DataMover.Client.RouteStage.Result, true, 2, 0, false, true) == DataMover.Client.FlowTone.Error
+        && DataMover.Client.RouteFlow.DestinationTone(DataMover.Client.RouteStage.Result, true, 0, 1, false, true) == DataMover.Client.FlowTone.Warning
+        && DataMover.Client.RouteFlow.DestinationTone(DataMover.Client.RouteStage.Result, true, 0, 0, false, true) == DataMover.Client.FlowTone.Success
+        && DataMover.Client.RouteFlow.DestinationTone(DataMover.Client.RouteStage.Running, true, 0, 0, false, false) == DataMover.Client.FlowTone.Active
+        && DataMover.Client.RouteFlow.DestinationTone(DataMover.Client.RouteStage.Running, true, 1, 0, false, false) == DataMover.Client.FlowTone.Error
+        && DataMover.Client.RouteFlow.DestinationTone(DataMover.Client.RouteStage.Running, false, 0, 0, false, false) == DataMover.Client.FlowTone.Offline
+        && DataMover.Client.RouteFlow.DestinationTone(DataMover.Client.RouteStage.Prepare, true, 0, 0, false, false) == DataMover.Client.FlowTone.Neutral);
+}
 // Identitatea buildului in jurnal: commitul real, nu "dev".
 {
     Check("build: commit din InformationalVersion", DataMover.Core.Diagnostics.BuildIdentity.FromInformationalVersion("2.16.1+E33723095B3B3ECC") == "e337230");

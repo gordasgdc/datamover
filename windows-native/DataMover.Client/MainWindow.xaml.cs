@@ -133,6 +133,7 @@ public partial class MainWindow : FluentWindow
     public MainWindow()
     {
         InitializeComponent();
+        InitRouteFlow();
         MainTitleBar.Title = $"DataMover {UpdateChecker.CurrentVersion}";
         ThemeSettings.ApplySaved();
         DependencyDot.Fill = SystemDependencyChecker.AllRequiredPresent(SystemDependencyChecker.CheckAll())

@@ -244,12 +244,15 @@
                                Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,2,0,14" TextWrapping="Wrap" />
 
                     <!-- Traseul, de la stanga la dreapta: surse -> verificare -> copii. -->
-                    <Grid>
+                    <Grid x:Name="RouteGrid">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" MinWidth="250" MaxWidth="380" />
-                            <ColumnDefinition Width="170" />
+                            <ColumnDefinition Width="212" />
                             <ColumnDefinition Width="*" MinWidth="250" MaxWidth="380" />
                         </Grid.ColumnDefinitions>
+
+                        <!-- Traseele animate (doar prezentare), sub plăci: vezi MainWindow.RouteFlow.cs. -->
+                        <Canvas x:Name="RouteFlowLayer" Grid.ColumnSpan="3" IsHitTestVisible="False" ClipToBounds="False" Focusable="False" />
 
                         <StackPanel AllowDrop="True" DragOver="OnSourcesDragOver" Drop="OnSourcesDrop" Background="Transparent">
                             <TextBlock Text="SURSĂ" Style="{StaticResource SectionLabel}" />
@@ -261,13 +264,13 @@
                         </StackPanel>
 
                         <!-- Nodul de verificare: legatura dintre sursa si copii. -->
-                        <Grid Grid.Column="1" Margin="12,22,12,12">
+                        <Grid Grid.Column="1" Margin="34,22,34,12">
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="*" />
                             </Grid.RowDefinitions>
 
-                            <Border Background="{DynamicResource CardBackgroundBrush}" BorderBrush="{DynamicResource CardStrokeBrush}" BorderThickness="1"
+                            <Border x:Name="VerifyNode" Background="{DynamicResource CardBackgroundBrush}" BorderBrush="{DynamicResource CardStrokeBrush}" BorderThickness="1"
                                     CornerRadius="6" Padding="10,8" Margin="0,8,0,0">
                                 <StackPanel>
                                     <Rectangle x:Name="RouteSpine" Height="3" Margin="0,0,0,6" Fill="{DynamicResource StatusWarningBrush}" RadiusX="1.5" RadiusY="1.5" />

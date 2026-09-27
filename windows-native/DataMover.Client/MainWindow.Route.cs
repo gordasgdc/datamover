@@ -117,6 +117,7 @@ public partial class MainWindow
     {
         var running = _runner.IsRunning;
         var hasResult = !running && _showingResult && _runner.LastResults.Count > 0;
+        UpdateRouteFlow(RouteFlow.StageOf(running, _runner.IsPaused, hasResult));
         long incoming = _sources.Sum(s => _bytesBySource.TryGetValue(s, out var b) ? b : 0);
 
         FolderPathText.Text = OffloadRunner.FolderName(ProjectBox.Text.Trim(), CardBox.Text.Trim(), AppSettings.FolderTemplate,
@@ -338,15 +339,49 @@ public partial class MainWindow
             }
             if (UiTest.Start)
             {
-                StartButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
-                var sw = Stopwatch.StartNew(); var shot = false;
-                while (sw.Elapsed.TotalSeconds < 120 && (_runner.IsRunning || !_showingResult))
+                FileStream? locked = UiTest.Lock is string lk ? new FileStream(lk, FileMode.Open, FileAccess.Read, FileShare.None) : null;
+                // Latența UI (sondă la 100 ms) și ticurile animației, pentru raportul de performanță.
+                var lag = new List<double>(); var probe = Stopwatch.StartNew(); var probing = true;
+                _ = Task.Run(async () =>
                 {
-                    await Task.Delay(150);
-                    if (!shot && _runner.IsRunning && _runner.ProgressPercent >= 20) { Snap(this, cap + "-transfer.png"); shot = true; }
+                    while (probing)
+                    {
+                        var t0 = probe.Elapsed.TotalMilliseconds;
+                        await Dispatcher.InvokeAsync(() => { }, System.Windows.Threading.DispatcherPriority.Input);
+                        lock (lag) lag.Add(probe.Elapsed.TotalMilliseconds - t0);
+                        await Task.Delay(100);
+                    }
+                });
+                var ticks = 0; EventHandler count = (_, _) => ticks++; _flowTimer.Tick += count;
+                StartButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+                var sw = Stopwatch.StartNew(); var shot = false; var frames = 0; var paused = false;
+                while (sw.Elapsed.TotalSeconds < 300 && (_runner.IsRunning || !_showingResult))
+                {
+                    await Task.Delay(frames < UiTest.Frames && shot ? 33 : 150);
+                    if (!shot && _runner.IsRunning && _runner.ProgressPercent >= 15) { Snap(this, cap + "-transfer.png"); shot = true; }
+                    if (shot && frames < UiTest.Frames && _runner.IsRunning && !_runner.IsPaused) Snap(this, $"{cap}-frame-{frames++:000}.png");
+                    if (UiTest.Pause && !paused && shot && frames >= UiTest.Frames && _runner.IsRunning)
+                    {
+                        paused = true;
+                        _runner.TogglePause(); await Task.Delay(700);
+                        var o1 = _flowDestPaths.FirstOrDefault()?.StrokeDashOffset ?? double.NaN;
+                        Snap(this, cap + "-paused.png"); await Task.Delay(1200);
+                        var o2 = _flowDestPaths.FirstOrDefault()?.StrokeDashOffset ?? double.NaN;
+                        File.WriteAllText(cap + "-pause.txt", $"timer activ in pauza={_flowTimer.IsEnabled} offset1={o1:0.###} offset2={o2:0.###} inghetat={o1 == o2}\n");
+                        _runner.TogglePause(); await Task.Delay(900);
+                        Snap(this, cap + "-resumed.png");
+                        File.AppendAllText(cap + "-pause.txt", $"dupa reluare timer activ={_flowTimer.IsEnabled} offset={_flowDestPaths.FirstOrDefault()?.StrokeDashOffset:0.###}\n");
+                    }
                 }
+                var secs = sw.Elapsed.TotalSeconds;
+                probing = false; _flowTimer.Tick -= count; locked?.Dispose();
                 await Task.Delay(800);
                 Snap(this, cap + "-result.png");
+                double[] l; lock (lag) l = lag.OrderBy(x => x).ToArray();
+                File.WriteAllText(cap + "-perf.txt",
+                    $"animatii={AnimationsAllowed} highContrast={HighContrast} durata_transfer_s={secs:0.00} ticuri={ticks} fps_mediu={(secs > 0 ? ticks / secs : 0):0.0} " +
+                    $"timer_activ_dupa_rezultat={_flowTimer.IsEnabled} latenta_ui_ms_p50={(l.Length > 0 ? l[l.Length / 2] : 0):0.0} p95={(l.Length > 0 ? l[(int)(l.Length * 0.95)] : 0):0.0} max={(l.Length > 0 ? l[^1] : 0):0.0} " +
+                    $"verdict={_runner.LastVerdict}\n");
             }
             Application.Current.Shutdown();
         };
@@ -377,7 +412,7 @@ public static class UiTest
     public static string? Root { get; set; }
     public static AppTheme? Theme; public static double Dpi = 96; public static int W = 1240, H = 780;
     public static List<string> Sources = new(), Dests = new();
-    public static bool Start, Settings; public static string? Capture;
+    public static bool Start, Settings, Pause; public static string? Capture, Lock; public static int Frames;
 
     public static void Parse(string[] args)
     {
@@ -389,6 +424,10 @@ public static class UiTest
         List<string> Paths(string? v) => (v ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries).Select(x => Path.Combine(Root!, x)).ToList();
         Sources = Paths(Val("--sources")); Dests = Paths(Val("--dests"));
         Start = args.Contains("--start"); Settings = args.Contains("--settings"); Capture = Val("--capture");
+        Pause = args.Contains("--pause"); Frames = int.TryParse(Val("--frames"), out var fr) ? fr : 0;
+        Lock = Val("--lock") is string lk ? Path.Combine(Root, lk) : null;
+        if (Val("--anim") == "off") MainWindow.FlowAnimationsOverride = false;
+        if (args.Contains("--hc")) MainWindow.FlowHighContrastOverride = true;
         // Izolare: jurnal separat, fara istoric/ejectare/notificari reale.
         StructuredLog.Shared = new StructuredLog(new StructuredLog.Config(Path.Combine(Root, "_log")));
         OffloadRunner.SideEffectsEnabled = false;
