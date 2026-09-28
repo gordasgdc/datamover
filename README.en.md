@@ -1,70 +1,55 @@
 # DataMover
 
-[Romanian](README.md) | [English](README.en.md) | [Spanish](README.es.md)
+Verified offload for video production: the card is read once, and the footage is
+copied to several independent drives at the same time. Each file gets its final
+name only after the copy's checksum matches the source.
 
-**Verified offload for video production teams**
+**Download and overview: [gordas.dev/datamover](https://gordas.dev/datamover/)** · current version **2.17.1**
 
-## Screenshots
+![DataMover on macOS during a transfer](docs/img/2.16/mac-transfer-dark-ro.webp)
 
-Native macOS UI (SwiftUI) — sources, disks and destinations in a single 3-column layout.
+## What it does
 
-| Main window | Copy settings |
-|-------------|---------------|
-| ![Main window](docs/img/mac-ui-main.png) | ![Copy settings](docs/img/mac-ui-settings.png) |
+- Reads the source once and writes to every destination in parallel (external drives, RAID, NAS, folders).
+- Copy contract for every file and every copy: write → flush to disk → read back and verify. An unverified file never appears under its final name.
+- xxHash64 verification by default; MD5, SHA-1, SHA-256 or SHA-512 on request.
+- Resume after an interruption: files already confirmed are not copied again, incomplete ones are cleaned up.
+- Delivery reports for each destination: PDF, HTML, CSV and MHL, with a verdict (verified, with warnings, unconfirmed, cancelled).
+- Romanian, English and Spanish interface, on macOS and Windows.
 
-| Copy history | Built-in user guide |
-|--------------|----------------------|
-| ![History](docs/img/mac-ui-history.png) | ![Guide](docs/img/mac-ui-help.png) |
+![DataMover on Windows during a transfer](docs/img/2.16/win-dark-1240-transfer.webp)
 
-## Features
+## Platforms and requirements
 
-- Simultaneous copy to any number of destinations (external drives, NAS, local folders)
-- Integrity verification, your choice: MD5, SHA-1, SHA-256, SHA-512, or size-only
-- Dark theme
-- CSV + PDF reports (table layout), with per-file status (OK / Mismatch / Error) and exact timestamp
-- Automatic resume on errors (checkpoint) — continues from where it left off
-- Copy history — view and delete individual or all entries (Mac)
-- Monitor Mode in the system tray — automatically detects inserted cards (Windows)
-- Per-destination progress bars, with current speed (MB/s) and quick folder access
-- Built-in user guide
-- Keyboard shortcuts for the main actions
-- Centralized log for long-term auditing
-- Parallel copy — all destinations complete simultaneously
-- Automatic folder naming: `Date_Project_Card`
-- Full localization RO/EN/ES
-- Support for macOS (native SwiftUI UI, Apple Silicon + Intel) and Windows 10/11
-- Customizable exclusions — files or extensions
+- **macOS 14 or later, Apple Silicon.** Package signed with Developer ID and notarized by Apple.
+- **Windows 11, 64-bit (x64).** On Windows 11 ARM64 it runs under the system's x64 emulation.
 
-## Download
+## Installation
 
-Download the latest version from [Releases](https://github.com/gordasgdc/datamover/releases).
+**macOS.** Download `DataMover.dmg` from [gordas.dev/datamover](https://gordas.dev/datamover/), open it and run the `.pkg` installer. The app is installed in `/Applications`.
 
-| Platform | File | Description |
-|----------|------|-------------|
-| Mac | `DataMover-<version>.dmg` (and `DataMover.dmg`, stable name) | Developer ID signed, Apple-notarized disk image: contains the `DataMover-<version>.pkg` installer and the PDF guide |
-| Windows | `DataMover-WPF-Windows.zip` | `DataMoverSetup.exe` installer for the Windows app (WPF) |
+**Windows.** Download `DataMover-WPF-Windows.zip`, extract it and run `DataMoverSetup.exe`. The app is installed in Program Files, with shortcuts.
 
-## Quick install
+> The Windows installer currently carries a self-signed signature, not a commercial Authenticode certificate. SmartScreen may show “Windows protected your PC” or “Unknown publisher”. If you downloaded the file from gordas.dev, choose **More info → Run anyway**.
 
-### Mac
-1. Download `DataMover-<version>.dmg` and open it
-2. Double-click `DataMover-<version>.pkg` — the installer puts the app straight into `/Applications` (no Gatekeeper warning: the package is notarized)
+## Trial and activation
 
-### Windows
-1. Download `DataMover-WPF-Windows.zip` and extract the contents
-2. Run `DataMoverSetup.exe` (installs the app into Program Files, with shortcuts)
-3. If SmartScreen warns, click "More info" → "Run anyway" (the Windows build does not have a commercial signature yet)
+- 7 days fully functional, no account needed.
+- Without activation, after the trial each transfer is limited to 2 GB.
+- Activation uses a personal code tied to the computer ID, obtained through a donation to development. Details in the app and on [gordas.dev/datamover](https://gordas.dev/datamover/).
 
-## Full documentation
+## Diagnostics
 
-See [CITESTE-MA.md](CITESTE-MA.md) (Romanian only for now) for detailed install, build, release, and troubleshooting instructions.
+The technical log stays local on your computer; nothing is sent automatically. For support, the app can create a diagnostic export with paths and personal data redacted, which you send only if you choose to.
 
-## Author
+## For developers
 
-**Cristi Gordas** ([@gordasgdc](https://github.com/gordasgdc))
+- [CITESTE-MA.md](CITESTE-MA.md) — building, publishing, troubleshooting (Romanian)
+- [ARCHITECTURE.md](ARCHITECTURE.md) · [RELIABILITY.md](RELIABILITY.md) · [CHANGELOG.md](CHANGELOG.md)
+- [support/JURNALE_SI_DIAGNOSTIC.md](support/JURNALE_SI_DIAGNOSTIC.md)
 
-Contact and links are available directly in the app, in the "Activate license" window.
+Language: [Română](README.md) · **English** · [Español](README.es.md)
 
 ## License
 
-This project is distributed under the [MIT License](LICENSE).
+Source code under the [MIT license](LICENSE). Author: Cristi Gordaș.

@@ -1,71 +1,55 @@
 # DataMover
-<a href="https://trendshift.io/repositories/14818?utm_source=repository-badge&amp;utm_medium=badge&amp;utm_campaign=badge-repository-14818" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/repositories/14818" alt="coderamp-labs%2Fgitingest | Trendshift" width="250" height="55"/></a>
 
-[Română](README.md) | [English](README.en.md) | [Español](README.es.md)
+Offload verificat pentru producție video: cardul este citit o singură dată, iar
+materialul este copiat simultan pe mai multe discuri independente. Fiecare fișier
+primește numele final abia după ce checksum-ul copiei se potrivește cu sursa.
 
-**Offload verificat pentru echipele de producție video**
+**Descărcare și prezentare: [gordas.dev/datamover](https://gordas.dev/datamover/)** · versiunea curentă **2.17.1**
 
-## Capturi de ecran
+![DataMover pe macOS, în timpul unui transfer](docs/img/2.16/mac-transfer-dark-ro.webp)
 
-UI nativ macOS (SwiftUI) — surse, discuri și destinații într-un singur layout pe 3 coloane.
+## Ce face
 
-| Fereastra principală | Setări de copiere |
-|-----------------------|--------------------|
-| ![Fereastra principala](docs/img/mac-ui-main.png) | ![Setari copiere](docs/img/mac-ui-settings.png) |
+- Citește sursa o singură dată și scrie în paralel pe toate destinațiile (discuri externe, RAID, NAS, foldere).
+- Contract de copiere pentru fiecare fișier și fiecare copie: scriere → flush pe disc → recitire și verificare. Un fișier neverificat nu apare niciodată sub numele final.
+- Verificare implicită cu xxHash64; la alegere MD5, SHA-1, SHA-256 sau SHA-512.
+- Reluare după întrerupere: fișierele deja confirmate nu se recopiază, iar cele incomplete se curăță.
+- Rapoarte de livrare pentru fiecare destinație: PDF, HTML, CSV și MHL, cu verdict (verificat, cu avertismente, neconfirmat, anulat).
+- Interfață în română, engleză și spaniolă, pe macOS și pe Windows.
 
-| Istoric copieri | Ghid de utilizare integrat |
-|------------------|------------------------------|
-| ![Istoric](docs/img/mac-ui-history.png) | ![Ghid](docs/img/mac-ui-help.png) |
+![DataMover pe Windows, în timpul unui transfer](docs/img/2.16/win-dark-1240-transfer.webp)
 
-## Funcționalități
+## Platforme și cerințe
 
-- Copiere simultană către oricâte destinații (drive-uri externe, NAS, foldere locale)
-- Verificare integritate la alegere: MD5, SHA-1, SHA-256, SHA-512 sau doar dimensiune
-- Temă întunecată
-- Rapoarte CSV + PDF (tabel), cu status per fișier (OK / Nepotrivire / Eroare) și timestamp exact
-- Reluare automată la erori (checkpoint) — continuă de unde a rămas
-- Istoric copieri — vizualizare și ștergere individuală sau completă (Mac)
-- Mod Monitorizare în system tray — detectează automat cardurile introduse (Windows)
-- Bare de progres per destinație, cu viteză curentă (MB/s) și deschidere rapidă a folderului
-- Ghid de utilizare integrat
-- Scurtături de tastatură pentru acțiunile principale
-- Log centralizat pentru audit pe termen lung
-- Copiere paralelă — toate destinațiile se completează simultan
-- Denumire automată a folderelor: `Data_Proiect_Card`
-- Localizare completă RO/EN/ES
-- Suport pentru macOS (UI nativ SwiftUI, Apple Silicon + Intel) și Windows 10/11
-- Excluderi personalizabile — fișiere sau extensii
+- **macOS 14 sau mai nou, Apple Silicon.** Pachet semnat Developer ID și notarizat de Apple.
+- **Windows 11, 64 de biți (x64).** Pe Windows 11 ARM64 rulează prin emularea x64 a sistemului.
 
-## Download
+## Instalare
 
-Descarcă ultima versiune de la [Releases](https://github.com/gordasgdc/datamover/releases).
+**macOS.** Descarcă `DataMover.dmg` de pe [gordas.dev/datamover](https://gordas.dev/datamover/), deschide-l și rulează instalatorul `.pkg`. Aplicația se instalează în `/Applications`.
 
-| Platformă | Fișier | Descriere |
-|-----------|--------|-----------|
-| Mac | `DataMover-<versiune>.dmg` (și `DataMover.dmg`, nume stabil) | Imagine disc semnată Developer ID și notarizată Apple: conține instalatorul `DataMover-<versiune>.pkg` și ghidul PDF |
-| Windows | `DataMover-WPF-Windows.zip` | Programul de instalare `DataMoverSetup.exe` al aplicației Windows (WPF) |
+**Windows.** Descarcă `DataMover-WPF-Windows.zip`, extrage arhiva și rulează `DataMoverSetup.exe`. Aplicația se instalează în Program Files, cu scurtături.
 
-## Instalare rapidă
+> Installerul Windows are deocamdată o semnătură self-signed, nu un certificat comercial Authenticode. SmartScreen poate afișa „Windows a protejat PC-ul” sau „Editor necunoscut”. Dacă ai descărcat fișierul de pe gordas.dev, alege **Mai multe informații → Rulați oricum**.
 
-### Mac
-1. Descarcă `DataMover-<versiune>.dmg` și deschide-l
-2. Dublu-click pe `DataMover-<versiune>.pkg` — instalatorul pune aplicația direct în `/Applications` (fără avertisment Gatekeeper: pachetul e notarizat)
+## Probă și activare
 
-### Windows
-1. Descarcă `DataMover-WPF-Windows.zip` și extrage conținutul
-2. Rulează `DataMoverSetup.exe` (instalează aplicația în Program Files, cu scurtături)
-3. Dacă SmartScreen avertizează, apasă „More info” → „Run anyway” (build-ul Windows nu are încă o semnătură comercială)
+- 7 zile complet funcțional, fără cont.
+- Fără activare, după perioada de probă fiecare transfer este limitat la 2 GB.
+- Activarea folosește un cod personal, legat de ID-ul calculatorului, obținut printr-o donație pentru dezvoltare. Detalii în aplicație și pe [gordas.dev/datamover](https://gordas.dev/datamover/).
 
-## Documentație completă
+## Diagnostic
 
-Vezi [CITESTE-MA.md](CITESTE-MA.md) pentru instrucțiuni detaliate de instalare, compilare, publicare de versiuni noi și depanare.
+Jurnalul tehnic rămâne local, pe calculatorul tău; nimic nu se trimite automat. Pentru suport, aplicația poate crea un export de diagnostic, cu căile și datele personale redactate, pe care îl trimiți doar dacă vrei.
 
-## Autor
+## Pentru dezvoltatori
 
-**Cristi Gordas** ([@gordasgdc](https://github.com/gordasgdc))
+- [CITESTE-MA.md](CITESTE-MA.md) — compilare, publicare, depanare
+- [ARCHITECTURE.md](ARCHITECTURE.md) · [RELIABILITY.md](RELIABILITY.md) · [CHANGELOG.md](CHANGELOG.md)
+- [support/JURNALE_SI_DIAGNOSTIC.md](support/JURNALE_SI_DIAGNOSTIC.md)
 
-Contact și link-uri disponibile direct din aplicație, în fereastra „Activează licența”.
+Limba: **Română** · [English](README.en.md) · [Español](README.es.md)
 
 ## Licență
 
-Acest proiect este distribuit sub [Licența MIT](LICENSE).
+Cod sursă sub [licența MIT](LICENSE). Autor: Cristi Gordaș.

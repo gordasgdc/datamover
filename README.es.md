@@ -1,70 +1,55 @@
 # DataMover
 
-[Rumano](README.md) | [Inglés](README.en.md) | [Español](README.es.md)
+Descarga verificada para producción de vídeo: la tarjeta se lee una sola vez y el
+material se copia a la vez en varios discos independientes. Cada archivo recibe
+su nombre final solo después de que el checksum de la copia coincida con el origen.
 
-**Offload verificado para equipos de producción de video**
+**Descarga y presentación: [gordas.dev/datamover](https://gordas.dev/datamover/)** · versión actual **2.17.1**
 
-## Capturas de pantalla
+![DataMover en macOS durante una transferencia](docs/img/2.16/mac-transfer-dark-ro.webp)
 
-UI nativa de macOS (SwiftUI) — orígenes, discos y destinos en un único diseño de 3 columnas.
+## Qué hace
 
-| Ventana principal | Ajustes de copia |
-|--------------------|-------------------|
-| ![Ventana principal](docs/img/mac-ui-main.png) | ![Ajustes de copia](docs/img/mac-ui-settings.png) |
+- Lee el origen una sola vez y escribe en paralelo en todos los destinos (discos externos, RAID, NAS, carpetas).
+- Contrato de copia para cada archivo y cada copia: escritura → vaciado a disco → relectura y verificación. Un archivo sin verificar nunca aparece con su nombre final.
+- Verificación con xxHash64 por defecto; MD5, SHA-1, SHA-256 o SHA-512 a elección.
+- Reanudación tras una interrupción: los archivos ya confirmados no se vuelven a copiar y los incompletos se limpian.
+- Informes de entrega por destino: PDF, HTML, CSV y MHL, con veredicto (verificado, con avisos, sin confirmar, cancelado).
+- Interfaz en rumano, inglés y español, en macOS y Windows.
 
-| Historial de copias | Guía de uso integrada |
-|----------------------|-------------------------|
-| ![Historial](docs/img/mac-ui-history.png) | ![Guia](docs/img/mac-ui-help.png) |
+![DataMover en Windows durante una transferencia](docs/img/2.16/win-dark-1240-transfer.webp)
 
-## Características
+## Plataformas y requisitos
 
-- Copia simultánea a cualquier número de destinos (unidades externas, NAS, carpetas locales)
-- Verificación de integridad, a elegir: MD5, SHA-1, SHA-256, SHA-512, o solo tamaño
-- Tema oscuro
-- Informes CSV + PDF (en tabla), con estado por archivo (OK / Discrepancia / Error) y marca de tiempo exacta
-- Reanudación automática en caso de errores (checkpoint) — continúa desde donde quedó
-- Historial de copias — ver y eliminar entradas individuales o todas (Mac)
-- Modo Monitor en la bandeja del sistema — detecta automáticamente las tarjetas insertadas (Windows)
-- Barras de progreso por destino, con velocidad actual (MB/s) y acceso rápido a la carpeta
-- Guía de uso integrada
-- Atajos de teclado para las acciones principales
-- Registro centralizado para auditoría a largo plazo
-- Copia paralela — todos los destinos se completan simultáneamente
-- Nombramiento automático de carpetas: `Fecha_Proyecto_Tarjeta`
-- Localización completa RO/EN/ES
-- Compatible con macOS (UI nativa SwiftUI, Apple Silicon + Intel) y Windows 10/11
-- Exclusiones personalizables — archivos o extensiones
+- **macOS 14 o posterior, Apple Silicon.** Paquete firmado con Developer ID y notarizado por Apple.
+- **Windows 11, 64 bits (x64).** En Windows 11 ARM64 funciona mediante la emulación x64 del sistema.
 
-## Descarga
+## Instalación
 
-Descarga la última versión desde [Releases](https://github.com/gordasgdc/datamover/releases).
+**macOS.** Descarga `DataMover.dmg` desde [gordas.dev/datamover](https://gordas.dev/datamover/), ábrelo y ejecuta el instalador `.pkg`. La aplicación se instala en `/Applications`.
 
-| Plataforma | Archivo | Descripción |
-|------------|---------|-------------|
-| Mac | `DataMover-<versión>.dmg` (y `DataMover.dmg`, nombre estable) | Imagen de disco firmada con Developer ID y notarizada por Apple: contiene el instalador `DataMover-<versión>.pkg` y la guía PDF |
-| Windows | `DataMover-WPF-Windows.zip` | Instalador `DataMoverSetup.exe` de la app de Windows (WPF) |
+**Windows.** Descarga `DataMover-WPF-Windows.zip`, extrae el archivo y ejecuta `DataMoverSetup.exe`. La aplicación se instala en Program Files, con accesos directos.
 
-## Instalación rápida
+> Por ahora, el instalador de Windows tiene una firma self-signed, no un certificado comercial Authenticode. SmartScreen puede mostrar «Windows protegió su PC» o «Editor desconocido». Si descargaste el archivo desde gordas.dev, elige **Más información → Ejecutar de todas formas**.
 
-### Mac
-1. Descarga `DataMover-<versión>.dmg` y ábrelo
-2. Doble clic en `DataMover-<versión>.pkg` — el instalador coloca la app directamente en `/Applications` (sin aviso de Gatekeeper: el paquete está notarizado)
+## Prueba y activación
 
-### Windows
-1. Descarga `DataMover-WPF-Windows.zip` y extrae el contenido
-2. Ejecuta `DataMoverSetup.exe` (instala la app en Program Files, con accesos directos)
-3. Si SmartScreen avisa, pulsa "More info" → "Run anyway" (la versión de Windows aún no tiene una firma comercial)
+- 7 días con todas las funciones, sin cuenta.
+- Sin activación, al terminar la prueba cada transferencia se limita a 2 GB.
+- La activación usa un código personal vinculado al ID del ordenador, que se obtiene con una donación para el desarrollo. Detalles en la aplicación y en [gordas.dev/datamover](https://gordas.dev/datamover/).
 
-## Documentación completa
+## Diagnóstico
 
-Consulta [CITESTE-MA.md](CITESTE-MA.md) (solo en rumano por ahora) para instrucciones detalladas de instalación, compilación, publicación de versiones y solución de problemas.
+El registro técnico se queda en tu ordenador; no se envía nada automáticamente. Para soporte, la aplicación puede crear una exportación de diagnóstico con las rutas y los datos personales ocultos, que envías solo si quieres.
 
-## Autor
+## Para desarrolladores
 
-**Cristi Gordas** ([@gordasgdc](https://github.com/gordasgdc))
+- [CITESTE-MA.md](CITESTE-MA.md) — compilación, publicación, resolución de problemas (en rumano)
+- [ARCHITECTURE.md](ARCHITECTURE.md) · [RELIABILITY.md](RELIABILITY.md) · [CHANGELOG.md](CHANGELOG.md)
+- [support/JURNALE_SI_DIAGNOSTIC.md](support/JURNALE_SI_DIAGNOSTIC.md)
 
-Contacto y enlaces disponibles directamente en la app, en la ventana "Activar licencia".
+Idioma: [Română](README.md) · [English](README.en.md) · **Español**
 
 ## Licencia
 
-Este proyecto se distribuye bajo la [Licencia MIT](LICENSE).
+Código fuente con [licencia MIT](LICENSE). Autor: Cristi Gordaș.
