@@ -1,115 +1,17 @@
-name: Release DataMover (Mac + Windows)
+name: Release (dezactivat)
 
-# Se ruleaza automat cand creezi un "tag" de versiune, de exemplu:
-#   git tag v1.0.0
-#   git push origin v1.0.0
-# Sau manual din tab-ul "Actions" -> "Run workflow" (introduci tag-ul dorit).
+# DataMover 2.18.1 și versiunile următoare se construiesc și se publică dintr-un depozit privat.
+# Acest workflow e INERT intenționat: nu poate construi și nu poate publica nimic.
+# (Înainte, un push de tag v*.*.* construia și publica automat un release din sursa acestui depozit.)
 on:
-  push:
-    tags:
-      - "v*.*.*"
-  workflow_dispatch:
-    inputs:
-      tag:
-        description: "Tag pentru release (ex: v1.0.0)"
-        required: true
+  workflow_dispatch: {}
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  # Client Windows WPF (.NET 8, Wpf.Ui) - SINGURUL client Windows activ.
-  # Job-ul vechi "build-windows" (Python/PyInstaller) a fost RETRAS
-  # 2026-09-06, decizie explicita a lui Cristi - vezi CLAUDE.md, sectiunea
-  # "Etapa 2026-09-06 (10)".
-  build-windows-wpf:
-    runs-on: windows-latest
-    # [CLAUDE.md Regula 34] `secrets` nu e permis direct intr-un `if:` de
-    # pas (confirmat cu actionlint) - valoarea trece printr-un `env:` la
-    # nivel de JOB (aici `secrets` E permis), pasii citesc
-    # `env.HAS_WIN_SELFSIGN` (context permis in `if:`).
-    env:
-      HAS_WIN_SELFSIGN: ${{ secrets.WIN_SELFSIGN_PFX_BASE64 != '' }}
-    steps:
-      - name: Descarca codul din repo
-        uses: actions/checkout@v4
-
-      - name: Instaleaza .NET 8 SDK
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: "8.0.x"
-
-      - name: Publica clientul WPF (self-contained, win-x64)
-        run: |
-          dotnet publish windows-native/DataMover.Client/DataMover.Client.csproj `
-            -c Release -r win-x64 --self-contained true `
-            -p:PublishSingleFile=false `
-            -o windows-native/publish
-
-      # [CLAUDE.md Regula 34, 2026-09-06] Semnare Self-Signed, DOAR pentru
-      # testare interna/cerc restrans - vezi mac-native/codesigning/
-      # README-windows.md. Ruleaza DOAR daca secretele exista - altfel
-      # build-ul continua NESEMNAT, exact ca inainte, fara nicio eroare.
-      - name: Semneaza DataMover.exe (Self-Signed, test intern)
-        if: ${{ env.HAS_WIN_SELFSIGN == 'true' }}
-        shell: pwsh
-        env:
-          WIN_SELFSIGN_PFX_BASE64: ${{ secrets.WIN_SELFSIGN_PFX_BASE64 }}
-          WIN_SELFSIGN_PFX_PASSWORD: ${{ secrets.WIN_SELFSIGN_PFX_PASSWORD }}
-        run: .\mac-native\codesigning\sign-windows.ps1 -TargetPath "windows-native\publish\DataMover.exe"
-
-      - name: Compileaza instalatorul (Inno Setup)
-        run: |
-          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" windows-native\installer.iss
-
-      - name: Semneaza installer-ul final (Self-Signed, test intern)
-        if: ${{ env.HAS_WIN_SELFSIGN == 'true' }}
-        shell: pwsh
-        env:
-          WIN_SELFSIGN_PFX_BASE64: ${{ secrets.WIN_SELFSIGN_PFX_BASE64 }}
-          WIN_SELFSIGN_PFX_PASSWORD: ${{ secrets.WIN_SELFSIGN_PFX_PASSWORD }}
-        run: .\mac-native\codesigning\sign-windows.ps1 -TargetPath "windows-native\Output\DataMoverSetup.exe"
-
-      - name: Arhiveaza instalatorul intr-un .zip
-        run: |
-          mkdir windows-native\dist_final
-          copy "windows-native\Output\DataMoverSetup.exe" windows-native\dist_final\
-          Compress-Archive -Path "windows-native\dist_final\*" -DestinationPath "DataMover-WPF-Windows.zip"
-
-      - name: Salveaza pentru pasul de release
-        uses: actions/upload-artifact@v4
-        with:
-          retention-days: 1
-          name: windows-wpf-build
-          path: DataMover-WPF-Windows.zip
-
-  # NOTA (2026-08-25): job-ul "build-mac" a fost ELIMINAT — semna ad-hoc
-  # (`codesign --sign -`, `TeamIdentifier=not set`), zero certificare
-  # Apple reala, si folosea un launcher cu `xattr -dr com.apple.quarantine`
-  # ca sa treaca de Gatekeeper. Mac-ul se compileaza acum LOCAL, cu
-  # `mac-native/build_installer.sh` (semnat cu Developer ID Application +
-  # Installer, notarizat, stapled — identic cu gdc-plugin-manager si
-  # cursorpro-gdc), pentru ca certificatul e deja configurat in Keychain-ul
-  # local, nu in secretele acestui repo CI. Fluxul de release e acum:
-  # 1. Ruleaza local `cd mac-native && ./build_installer.sh`.
-  # 2. Ruleaza acest workflow (push de tag) pentru artefactul Windows.
-  # 3. `gh release create` cu ambele artefacte (pkg+zip Mac local +
-  #    zip Windows descarcat din acest workflow) — vezi CLAUDE.md.
-  create-release:
-    needs: [build-windows-wpf]
+  inactiv:
     runs-on: ubuntu-latest
     steps:
-      - name: Descarca fisierul Windows compilat (client WPF)
-        uses: actions/download-artifact@v4
-        with:
-          name: windows-wpf-build
-          path: release-files
-
-      - name: Creeaza Release-ul pe GitHub (Windows) — Mac se ataseaza manual, local
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
-          files: release-files/*
-          generate_release_notes: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Niciun release din acest depozit
+        run: echo "Release-urile se publică manual din sursa privată. Nimic de făcut aici."
