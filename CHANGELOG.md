@@ -1,5 +1,22 @@
 # Changelog — DataMover
 
+## v2.18.1 (2026-10-05) — Demo permanent și licențe noi
+
+- DataMover rămâne gratuit în modul Demo, fără limită de timp: fiecare transfer nou poate avea cel mult 1 GB
+  (exact 1.000.000.000 de octeți). Nu mai există perioadă de probă.
+- Licențele pot fi pe câteva ore, zile, luni, un an sau fără expirare, obținute prin donație sau acordate gratuit.
+  Activarea se confirmă online (cu date tehnice minime) și poate continua apoi fără internet.
+- Când o licență expiră sau este oprită, aplicația rămâne deschisă și revine în Demo; nu se șterge nimic. Un transfer aflat în
+  execuție se termină; un transfer mare întrerupt nu se mai reia fără o licență actuală (fișierele parțiale rămân pe disc).
+- Fereastra „Licență și activare”: pregătești cererea, o trimiți tu prin WhatsApp sau e-mail, apoi lipești sau
+  imporți licența primită (și prin dublu-clic pe un fișier .dmlicense). Ofertele apar doar din lista semnată.
+- Termeni de utilizare (RO/EN/ES) și Open Source Notices, în aplicație (Ajutor / Profil).
+- Windows: profilul (nume, e-mail) rămâne doar pe calculator; dezinstalarea te întreabă dacă păstrezi licența (în mod silențios:
+  `unins000.exe /VERYSILENT /KeepLicense=1`). Open Source Notices conține textele integrale ale licențelor componentelor terțe.
+- Pachetul de diagnostic arată starea accesului (Demo/Full, tipul, valabilitatea), fără identificatori, chei sau text de licență;
+  jurnalele ascund cererile de activare și licențele.
+- DataMover este acum software proprietar de la această versiune; versiunile până la 2.17.1 rămân sub licența MIT.
+
 ## v2.17.1 (2026-09-27) — Traseu animat pe Windows
 
 - Windows: în timpul transferului, traseul sursă → verificare → copii arată

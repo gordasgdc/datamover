@@ -4,7 +4,9 @@ Descarga verificada para producción de vídeo: la tarjeta se lee una sola vez y
 material se copia a la vez en varios discos independientes. Cada archivo recibe
 su nombre final solo después de que el checksum de la copia coincida con el origen.
 
-**Descarga y presentación: [gordas.dev/datamover](https://gordas.dev/datamover/)** · versión actual **2.17.1**
+**Descarga y presentación: [gordas.dev/datamover](https://gordas.dev/datamover/)** · versión actual **2.18.1**
+
+> DataMover es software propietario desde la versión **2.18.1**. El código publicado aquí (hasta la **2.17.1** incluida) sigue bajo la licencia MIT. Términos: [gordas.dev/datamover/termeni.html#es](https://gordas.dev/datamover/termeni.html#es)
 
 ![DataMover en macOS durante una transferencia](docs/img/2.16/mac-transfer-dark-ro.webp)
 
@@ -28,15 +30,15 @@ su nombre final solo después de que el checksum de la copia coincida con el ori
 
 **macOS.** Descarga `DataMover.dmg` desde [gordas.dev/datamover](https://gordas.dev/datamover/), ábrelo y ejecuta el instalador `.pkg`. La aplicación se instala en `/Applications`.
 
-**Windows.** Descarga `DataMover-WPF-Windows.zip`, extrae el archivo y ejecuta `DataMoverSetup.exe`. La aplicación se instala en Program Files, con accesos directos.
+**Windows.** Descarga `DataMover-WPF-Windows.zip`, extrae el archivo y ejecuta `DataMoverSetup-2.18.1.exe`. La aplicación se instala en Program Files, con accesos directos.
 
-> Por ahora, el instalador de Windows tiene una firma self-signed, no un certificado comercial Authenticode. SmartScreen puede mostrar «Windows protegió su PC» o «Editor desconocido». Si descargaste el archivo desde gordas.dev, elige **Más información → Ejecutar de todas formas**.
+> Por ahora, el instalador de Windows tiene una firma self-signed, no un certificado comercial Authenticode. SmartScreen puede mostrar «Windows protegió su PC» o «Editor desconocido». Si descargaste el archivo desde gordas.dev, elige **Más información → Ejecutar de todas formas**. Huella del certificado «GDC (self-signed)»: SHA-1 `302C942ED83EDE43965C0CBAB368DC08936A2472`, SHA-256 `3ECEA21C150493988552D2E7D4B6A4CBE8ED511C564BFB2E4D0BB621850AF4D9`.
 
-## Prueba y activación
+## Demo y licencia
 
-- 7 días con todas las funciones, sin cuenta.
-- Sin activación, al terminar la prueba cada transferencia se limita a 2 GB.
-- La activación usa un código personal vinculado al ID del ordenador, que se obtiene con una donación para el desarrollo. Detalles en la aplicación y en [gordas.dev/datamover](https://gordas.dev/datamover/).
+- **Demo** es gratuito y permanente: todas las funciones, pero cada transferencia nueva se limita a 1 GB (1.000.000.000 de bytes). Sin periodo de prueba y sin límite de tiempo.
+- Una **licencia** personal (unas horas, días, meses, un año o sin caducidad), obtenida mediante una donación para el desarrollo o concedida gratuitamente. Se solicita desde la aplicación (Licencia y activación) y se confirma en línea con datos técnicos mínimos. Cuando caduca, la aplicación vuelve a Demo y no se borra nada. Detalles y términos: [gordas.dev/datamover](https://gordas.dev/datamover/).
+
 
 ## Diagnóstico
 
