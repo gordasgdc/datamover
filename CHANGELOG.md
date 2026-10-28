@@ -1,5 +1,14 @@
 # Changelog — DataMover
 
+## v2.19.0 (2026-10-29) — Cererea de licență direct din aplicație
+
+- Alegi oferta, vezi rezumatul și apeși «Trimite cererea»: cererea ajunge la GDC. După confirmarea donației, licența se activează
+  singură în aplicație, fără cod de copiat; «Verifică aprobarea» arată starea cererii (macOS și Windows).
+- Fără conexiune, cererea nu se pierde: «Trimite din nou» folosește aceeași cerere, fără dubluri.
+- WhatsApp și e-mailul rămân: mesajul pregătit conține identificatorul aceleiași cereri și oferta aleasă.
+- Când lista de oferte nu se poate încărca, aplicația arată motivul exact și «Reîncearcă».
+- Termenii de utilizare (versiunea 2.1) și ghidurile au fost actualizate.
+
 ## v2.18.1 (2026-10-05) — Demo permanent și licențe noi
 
 - DataMover rămâne gratuit în modul Demo, fără limită de timp: fiecare transfer nou poate avea cel mult 1 GB

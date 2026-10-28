@@ -4,7 +4,7 @@ Verified offload for video production: the card is read once, and the footage is
 copied to several independent drives at the same time. Each file gets its final
 name only after the copy's checksum matches the source.
 
-**Download and overview: [gordas.dev/datamover](https://gordas.dev/datamover/)** · current version **2.18.1**
+**Download and overview: [gordas.dev/datamover](https://gordas.dev/datamover/)** · current version **2.19.0**
 
 > DataMover is proprietary software from version **2.18.1**. The code published here (up to and including **2.17.1**) remains under the MIT licence. Terms: [gordas.dev/datamover/termeni.html#en](https://gordas.dev/datamover/termeni.html#en)
 
@@ -30,7 +30,7 @@ name only after the copy's checksum matches the source.
 
 **macOS.** Download `DataMover.dmg` from [gordas.dev/datamover](https://gordas.dev/datamover/), open it and run the `.pkg` installer. The app is installed in `/Applications`.
 
-**Windows.** Download `DataMover-WPF-Windows.zip`, extract it and run `DataMoverSetup-2.18.1.exe`. The app is installed in Program Files, with shortcuts.
+**Windows.** Download `DataMover-WPF-Windows.zip`, extract it and run `DataMoverSetup-2.19.0.exe`. The app is installed in Program Files, with shortcuts.
 
 > The Windows installer currently carries a self-signed signature, not a commercial Authenticode certificate. SmartScreen may show “Windows protected your PC” or “Unknown publisher”. If you downloaded the file from gordas.dev, choose **More info → Run anyway**. Fingerprint of the “GDC (self-signed)” certificate: SHA-1 `302C942ED83EDE43965C0CBAB368DC08936A2472`, SHA-256 `3ECEA21C150493988552D2E7D4B6A4CBE8ED511C564BFB2E4D0BB621850AF4D9`.
 
