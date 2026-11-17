@@ -1,5 +1,15 @@
 # Changelog — DataMover
 
+## v2.20.0 (2026-11-17) — Metadate din clipuri, pregătite pentru DaVinci Resolve
+
+- Opțiune nouă, **Extrage metadatele** (macOS și Windows): după ce copia unui clip e verificată, DataMover citește camera, obiectivul,
+  gamutul și curba, balansul de alb, expunerea și timecode-ul și scrie `<clip>.gdc-metadata.json` lângă clipul din fiecare destinație verificată.
+- Opțional, un CSV pentru DaVinci Resolve (`GDC-Metadata-Resolve.csv`) în folderul fiecărei destinații; clipurile omonime cu valori diferite rămân în afara lui.
+- Rezultatul extracției e separat de verdictul copiei: erorile de metadate apar ca avertismente, iar o copie neverificată nu se extrage.
+  Fișierele generate nu intră în MHL, iar un fișier existent cu același nume nu se suprascrie.
+- ExifTool nu e inclus: se obține separat de pe site-ul oficial. Pe Windows, aplicația îl detectează sau îți lasă să alegi executabilul, fără să editezi PATH, și arată «ExifTool disponibil» sau «Extracție parțială» cu pașii de configurare (RO/EN/ES); pe Mac se folosește instalarea Homebrew.
+  Până când ExifTool e disponibil, extracția poate fi parțială: rămân gamutul și curba Canon/Sony și timecode-ul, iar copia rămâne verificată. Ghidurile RO/EN/ES au un exemplu complet, de la card la Resolve.
+
 ## v2.19.0 (2026-10-29) — Cererea de licență direct din aplicație
 
 - Alegi oferta, vezi rezumatul și apeși «Trimite cererea»: cererea ajunge la GDC. După confirmarea donației, licența se activează
